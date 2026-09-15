@@ -89,6 +89,19 @@ function totalMovementsOut(movements = []) {
   return movements.filter(m => !m.voided_at && m.direction === 'out').reduce((s, m) => s + toNumber(m.amount), 0);
 }
 
+function totalMovementsIn(movements = []) {
+  return movements.filter(m => !m.voided_at && m.direction === 'in').reduce((s, m) => s + toNumber(m.amount), 0);
+}
+
+// Mismo criterio ya usado en el hero: no hay tabla de perfiles/miembros del
+// negocio para resolver un user id a un nombre real, así que solo se puede
+// distinguir "vos" (usuario de la sesión actual) de "otro usuario".
+function resolveResponsable(session, user) {
+  if (!session) return '—';
+  if (session.opened_by === user?.id) return user?.user_metadata?.name || user?.email || '—';
+  return 'otro usuario';
+}
+
 // Mezcla pagos y movimientos en orden cronológico para la tabla unificada
 function mergeEntries(payments = [], movements = []) {
   return [
@@ -395,6 +408,167 @@ function MovementsTable({ payments, movements, currency, onEditPayment, onVoidPa
             })}
           </tbody>
         </table>
+      </div>
+    </div>
+  );
+}
+
+// ─── Detalle histórico de una caja (modal) ─────────────────────────────────────
+// Reutiliza exactamente los mismos cálculos que ya usa el resto de la página
+// (calcSessionBalance, summarizePayments, totalPayments, totalMovementsOut/In)
+// y los mismos componentes de presentación (MethodBreakdown, MovementsTable) --
+// no duplica lógica de conciliación. `payments`/`movements` llegan ya filtrados
+// exclusivamente por session.id (getCashSessionPayments/getCashSessionMovements
+// en CrmCash), nunca desde la caja activa ni mezclados con otro turno del mismo
+// día -- ver auditoría en el mensaje de commit.
+function CashSessionDetailModal({
+  session, sessions, payments, movements, currency, user, loadError,
+  onClose, onEditPayment, onVoidPayment, onVoidMovement,
+}) {
+  if (!session) return null;
+
+  const balance          = calcSessionBalance(session, payments, movements);
+  const cobros           = totalPayments(payments);
+  const entradasManuales = totalMovementsIn(movements);
+  const salidas          = totalMovementsOut(movements);
+  const methodSummary    = summarizePayments(payments);
+  // cash_difference/expected_cash/counted_cash existen en el esquema
+  // (arqueo de cierre) pero closeCashSession() hoy nunca los escribe -- por
+  // eso este bloque solo aparece cuando el dato realmente existe para esta
+  // caja puntual, en vez de mostrar un "—" fijo en todas.
+  const hasArqueo = session.cash_difference !== null && session.cash_difference !== undefined;
+
+  return (
+    <div className="fixed inset-0 z-modal flex items-center justify-center bg-slate-900/40 px-4 py-6">
+      <div className="flex max-h-full w-full max-w-2xl flex-col rounded-2xl border border-gray-100 bg-white shadow-xl">
+        <div className="flex items-start justify-between gap-3 border-b border-gray-100 px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-gray-900">{turnLabel(session, sessions)}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                session.status === 'open' ? 'bg-emerald-50 text-emerald-700' : 'bg-gray-100 text-gray-500'
+              }`}>
+                {session.status === 'open' ? 'Abierta' : 'Cerrada'}
+              </span>
+              <span className="text-xs capitalize text-gray-400">{fmtDate(session.date)}</span>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} className="shrink-0 text-gray-400 hover:text-gray-600" aria-label="Cerrar detalle">
+            <Icon name="X" size={18} />
+          </button>
+        </div>
+
+        <div className="flex-1 space-y-5 overflow-y-auto px-5 py-4">
+          {loadError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              <p className="font-semibold">No se pudieron cargar todos los movimientos de esta caja</p>
+              {loadError.payments && <p className="mt-1">Pagos: {loadError.payments}</p>}
+              {loadError.movements && <p className="mt-1">Movimientos: {loadError.movements}</p>}
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Responsable</p>
+              <p className="mt-0.5 font-medium text-gray-700">{resolveResponsable(session, user)}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Apertura</p>
+              <p className="mt-0.5 font-medium text-gray-700">{fmtTime(session.opened_at)}</p>
+            </div>
+            <div>
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">Cierre</p>
+              <p className="mt-0.5 font-medium text-gray-700">{session.closed_at ? fmtTime(session.closed_at) : '—'}</p>
+            </div>
+          </div>
+
+          <div className="rounded-2xl border border-gray-100 bg-gray-50 p-4">
+            <p className="mb-3 text-xs font-bold uppercase tracking-wide text-gray-400">Resumen</p>
+            <div className="space-y-1.5 text-sm">
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500">Fondo inicial</span>
+                <span className="font-semibold text-gray-700">{formatMoney(toNumber(session.initial_amount), currency)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <span className="text-gray-500">Cobros del turno</span>
+                <span className="font-semibold text-emerald-700">+{formatMoney(cobros, currency)}</span>
+              </div>
+              {entradasManuales > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500">Entradas manuales</span>
+                  <span className="font-semibold text-blue-600">+{formatMoney(entradasManuales, currency)}</span>
+                </div>
+              )}
+              {salidas > 0 && (
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500">Salidas / Gastos</span>
+                  <span className="font-semibold text-red-600">−{formatMoney(salidas, currency)}</span>
+                </div>
+              )}
+              <div className="flex items-center justify-between border-t border-gray-200 pt-1.5">
+                <span className="font-bold text-gray-900">Saldo {session.status === 'open' ? 'esperado' : 'final'}</span>
+                <span className="text-base font-black text-gray-900">{formatMoney(balance, currency)}</span>
+              </div>
+            </div>
+
+            {hasArqueo && (
+              <div className="mt-3 space-y-1.5 border-t border-gray-200 pt-3 text-sm">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Arqueo de cierre</p>
+                {session.expected_cash != null && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">Efectivo esperado</span>
+                    <span className="font-semibold text-gray-700">{formatMoney(toNumber(session.expected_cash), currency)}</span>
+                  </div>
+                )}
+                {session.counted_cash != null && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-gray-500">Efectivo contado</span>
+                    <span className="font-semibold text-gray-700">{formatMoney(toNumber(session.counted_cash), currency)}</span>
+                  </div>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-gray-500">Diferencia</span>
+                  <span className={`font-bold ${
+                    session.cash_difference > 0 ? 'text-emerald-700' : session.cash_difference < 0 ? 'text-red-600' : 'text-gray-700'
+                  }`}>
+                    {session.cash_difference > 0 ? '+' : ''}{formatMoney(toNumber(session.cash_difference), currency)}
+                  </span>
+                </div>
+                {session.closing_notes && (
+                  <p className="text-xs text-gray-500">{session.closing_notes}</p>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-400">Cobros por método de pago</p>
+            <MethodBreakdown summary={methodSummary} currency={currency} />
+          </div>
+
+          <div>
+            <p className="mb-2 text-xs font-bold uppercase tracking-wide text-gray-400">Movimientos del turno</p>
+            <MovementsTable
+              payments={payments}
+              movements={movements}
+              currency={currency}
+              onEditPayment={onEditPayment}
+              onVoidPayment={onVoidPayment}
+              onVoidMovement={onVoidMovement}
+              sessionOpen={session.status === 'open'}
+            />
+          </div>
+        </div>
+
+        <div className="flex justify-end border-t border-gray-100 px-5 py-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50"
+          >
+            Cerrar
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -1087,8 +1261,6 @@ export default function CrmCash() {
   const sessionOutflows   = useMemo(() => totalMovementsOut(currentMvts), [currentMvts]);
   const sessionSummary    = useMemo(() => summarizePayments(currentPayments), [currentPayments]);
   const currentBalance    = useMemo(() => calcSessionBalance(currentSession, currentPayments, currentMvts), [currentSession, currentPayments, currentMvts]);
-  const detailSummary     = useMemo(() => summarizePayments(detailPayments), [detailPayments]);
-  const detailBalance     = useMemo(() => calcSessionBalance(detailSession, detailPayments, detailMvts), [detailSession, detailPayments, detailMvts]);
 
   const handleOpen = async ({ initialAmount, notes }) => {
     if (!business?.id) return;
@@ -1301,9 +1473,7 @@ export default function CrmCash() {
                         <span>
                           Responsable:{' '}
                           <span className="font-medium text-gray-700">
-                            {currentSession.opened_by === user?.id
-                              ? (user?.user_metadata?.name || user?.email || '—')
-                              : 'otro usuario'}
+                            {resolveResponsable(currentSession, user)}
                           </span>
                         </span>
                         <span>
@@ -1466,6 +1636,22 @@ export default function CrmCash() {
                 />
               )}
 
+              {detailSession && (
+                <CashSessionDetailModal
+                  session={detailSession}
+                  sessions={sessions}
+                  payments={detailPayments}
+                  movements={detailMvts}
+                  currency={business?.currency}
+                  user={user}
+                  loadError={sessionLoadErrors[detailSession.id]}
+                  onClose={() => setDetailSessionId(null)}
+                  onEditPayment={setEditingPayment}
+                  onVoidPayment={setVoidingPayment}
+                  onVoidMovement={setVoidingMovement}
+                />
+              )}
+
               {activeTab === 'movimientos' && (
                 currentSession ? (
                   <div className="space-y-3">
@@ -1558,46 +1744,6 @@ export default function CrmCash() {
                           </div>
                         );
                       })}
-                    </div>
-                  )}
-
-                  {detailSession && (
-                    <div className="mt-4 space-y-3 border-t border-gray-100 pt-4">
-                      <div className="flex items-center justify-between gap-3">
-                        <div>
-                          <p className="text-sm font-bold text-gray-900">{turnLabel(detailSession, sessions)}</p>
-                          <p className="mt-1 text-xs text-gray-400">
-                            {turnTimeRange(detailSession)} · Inicial: {formatMoney(toNumber(detailSession.initial_amount), business?.currency)} · Saldo: {formatMoney(detailBalance, business?.currency)}
-                          </p>
-                        </div>
-                        <button
-                          onClick={() => setDetailSessionId(null)}
-                          className="rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50"
-                        >
-                          Ocultar detalle
-                        </button>
-                      </div>
-                      {sessionLoadErrors[detailSession.id] && (
-                        <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                          <p className="font-semibold">No se pudieron cargar todos los movimientos de esta caja</p>
-                          {sessionLoadErrors[detailSession.id].payments && (
-                            <p className="mt-1">Pagos: {sessionLoadErrors[detailSession.id].payments}</p>
-                          )}
-                          {sessionLoadErrors[detailSession.id].movements && (
-                            <p className="mt-1">Movimientos: {sessionLoadErrors[detailSession.id].movements}</p>
-                          )}
-                        </div>
-                      )}
-                      <MethodBreakdown summary={detailSummary} currency={business?.currency} />
-                      <MovementsTable
-                        payments={detailPayments}
-                        movements={detailMvts}
-                        currency={business?.currency}
-                        onEditPayment={setEditingPayment}
-                        onVoidPayment={setVoidingPayment}
-                        onVoidMovement={setVoidingMovement}
-                        sessionOpen={detailSession?.status === 'open'}
-                      />
                     </div>
                   )}
                 </div>
