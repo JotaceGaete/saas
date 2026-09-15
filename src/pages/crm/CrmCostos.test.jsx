@@ -36,6 +36,8 @@ const updateCostItemMock = vi.fn();
 const deleteCostItemMock = vi.fn();
 // legacy -- PROVEEDORES-CORE-4B: no debe volver a invocarse desde esta página
 const getPurchaseTotalsForPeriodMock = vi.fn();
+// TAX-SUMMARY-1 — Ventas + IVA del mes
+const getSalesTaxSummaryForPeriodMock = vi.fn();
 
 vi.mock('services/crmService', () => ({
   getCostItems: (...a) => getCostItemsMock(...a),
@@ -43,6 +45,7 @@ vi.mock('services/crmService', () => ({
   updateCostItem: (...a) => updateCostItemMock(...a),
   deleteCostItem: (...a) => deleteCostItemMock(...a),
   getPurchaseTotalsForPeriod: (...a) => getPurchaseTotalsForPeriodMock(...a),
+  getSalesTaxSummaryForPeriod: (...a) => getSalesTaxSummaryForPeriodMock(...a),
 }));
 
 const getSupplierPurchaseTotalsForPeriodMock = vi.fn();
@@ -85,12 +88,29 @@ const FIXED_ITEM = { id: 'cost1', category: 'rent', name: 'Arriendo Local', amou
 // nunca 'fixed'.
 const CASH_ITEM = { id: 'cost2', category: 'utilities', name: 'Luz', amount: 60000, type: 'variable', source: 'cash_outflow' };
 
+// TAX-SUMMARY-1 — mismos montos del reporte real que mandó el contador,
+// para que el test cuadre exactamente con el caso que motivó el ticket.
+const SALES_SUMMARY_OK = {
+  boleta: 117000,
+  factura: 23000,
+  pagoElectronico: 269000,
+  total: 409000,
+  incompatibleCurrencyRows: 0,
+  errors: { crm: null, catalog: null },
+};
+const SALES_SUMMARY_EMPTY = {
+  boleta: 0, factura: 0, pagoElectronico: 0, total: 0,
+  incompatibleCurrencyRows: 0, errors: { crm: null, catalog: null },
+};
+
 beforeEach(() => {
   navigateMock.mockReset();
   [getCostItemsMock, createCostItemMock, updateCostItemMock, deleteCostItemMock,
-    getPurchaseTotalsForPeriodMock, getSupplierPurchaseTotalsForPeriodMock].forEach((m) => m.mockReset());
+    getPurchaseTotalsForPeriodMock, getSupplierPurchaseTotalsForPeriodMock,
+    getSalesTaxSummaryForPeriodMock].forEach((m) => m.mockReset());
   getCostItemsMock.mockResolvedValue([]);
   getSupplierPurchaseTotalsForPeriodMock.mockResolvedValue(OK_TOTALS);
+  getSalesTaxSummaryForPeriodMock.mockResolvedValue(SALES_SUMMARY_EMPTY);
   business = { id: 'biz1', currency: 'CLP', planSlug: 'business', planExpiresAt: null, trialExpiresAt: null };
 });
 
@@ -376,5 +396,86 @@ describe('CAJA-COSTOS-1 — CASO 6: un costo variable desde Caja no infla el cos
 
     // El gasto variable sigue visible en la lista de costos (no se ocultan datos).
     expect(screen.getByText('Reparación')).toBeInTheDocument();
+  });
+});
+
+/**
+ * TAX-SUMMARY-1 — tarjeta "Ventas e IVA del mes". Concepto comercial
+ * (Ventas del mes + desglose por canal) separado del tributario: el IVA
+ * débito de ventas NO se calcula (una Nota de Venta/boleta/pago
+ * electrónico registrado no confirma un DTE realmente emitido); el IVA
+ * crédito de compras sí se muestra, con el dato real ya capturado por
+ * getSupplierPurchaseTotalsForPeriod (totalTaxCredit), sin recalcularlo.
+ */
+describe('TAX-SUMMARY-1 — tarjeta "Ventas e IVA del mes"', () => {
+  it('llama a getSalesTaxSummaryForPeriod(businessId, month, year, currency) para el período visible', async () => {
+    renderPage();
+    await waitFor(() => expect(getSalesTaxSummaryForPeriodMock).toHaveBeenCalledWith(
+      'biz1', expect.any(Number), expect.any(Number), 'CLP',
+    ));
+  });
+
+  it('con datos reales del reporte del contador: muestra Ventas del mes y el desglose Factura/Boleta/Pago electrónico', async () => {
+    getSalesTaxSummaryForPeriodMock.mockResolvedValue(SALES_SUMMARY_OK);
+    renderPage();
+
+    expect(await screen.findByText('Ventas e IVA del mes')).toBeInTheDocument();
+    const card = screen.getByText('Ventas e IVA del mes').closest('div').parentElement.parentElement;
+    expect(within(card).getByText('$409.000')).toBeInTheDocument(); // total ventas
+    expect(within(card).getByText('Factura')).toBeInTheDocument();
+    expect(within(card).getByText('$23.000')).toBeInTheDocument();
+    expect(within(card).getByText('Boleta electrónica')).toBeInTheDocument();
+    expect(within(card).getByText('$117.000')).toBeInTheDocument();
+    expect(within(card).getByText('Pago electrónico')).toBeInTheDocument();
+    expect(within(card).getByText('$269.000')).toBeInTheDocument();
+  });
+
+  it('muestra el IVA crédito de compras usando el dato REAL de getSupplierPurchaseTotalsForPeriod (totalTaxCredit), sin recalcularlo', async () => {
+    getSalesTaxSummaryForPeriodMock.mockResolvedValue(SALES_SUMMARY_OK);
+    getSupplierPurchaseTotalsForPeriodMock.mockResolvedValue({ ...OK_TOTALS, totalTaxCredit: 8000 });
+    renderPage();
+
+    expect(await screen.findByText(/IVA crédito \(compras registradas\)/)).toBeInTheDocument();
+    const row = screen.getByText(/IVA crédito \(compras registradas\)/).closest('div');
+    expect(within(row).getByText('$8.000')).toBeInTheDocument();
+  });
+
+  it('el IVA débito de ventas se muestra como "No calculable", nunca como un monto estimado (una Nota de Venta no es un DTE)', async () => {
+    getSalesTaxSummaryForPeriodMock.mockResolvedValue(SALES_SUMMARY_OK);
+    renderPage();
+
+    expect(await screen.findByText('IVA débito (ventas)')).toBeInTheDocument();
+    expect(screen.getByText('No calculable')).toBeInTheDocument();
+    expect(screen.getByText(/Walinka no puede confirmar qué ventas tienen una boleta o factura afecta realmente emitida/)).toBeInTheDocument();
+    // No debe haber ningún monto asociado a IVA débito (nada de "19%" ni "estimado").
+    expect(screen.queryByText(/IVA débito.*estimado/)).not.toBeInTheDocument();
+  });
+
+  it('el desglose por canal se etiqueta explícitamente como comercial, no tributario', async () => {
+    getSalesTaxSummaryForPeriodMock.mockResolvedValue(SALES_SUMMARY_OK);
+    renderPage();
+    expect(await screen.findByText('Desglose comercial por canal')).toBeInTheDocument();
+  });
+
+  it('siempre muestra el aviso de que las cifras son referenciales, no un documento tributario oficial', async () => {
+    getSalesTaxSummaryForPeriodMock.mockResolvedValue(SALES_SUMMARY_OK);
+    renderPage();
+    expect(await screen.findByText(/no reemplazan tu declaración de IVA ni documentos tributarios oficiales/i)).toBeInTheDocument();
+  });
+
+  it('sin ventas en el período, muestra el estado vacío en vez de $0 desglosados', async () => {
+    getSalesTaxSummaryForPeriodMock.mockResolvedValue(SALES_SUMMARY_EMPTY);
+    renderPage();
+    expect(await screen.findByText(/No hay ventas registradas en/)).toBeInTheDocument();
+    expect(screen.queryByText('Factura')).not.toBeInTheDocument();
+  });
+
+  it('si getSalesTaxSummaryForPeriod falla, avisa que las cifras pueden estar incompletas en vez de mostrar ceros silenciosos', async () => {
+    getSalesTaxSummaryForPeriodMock.mockResolvedValue({
+      boleta: 0, factura: 0, pagoElectronico: 0, total: 0, incompatibleCurrencyRows: 0,
+      errors: { crm: { message: 'boom' }, catalog: null },
+    });
+    renderPage();
+    expect(await screen.findByText(/No se pudieron cargar todas las ventas del período/)).toBeInTheDocument();
   });
 });

@@ -1179,6 +1179,106 @@ export async function getOperatingSalesForPeriod(businessId, month, year, busine
   };
 }
 
+/**
+ * TAX-SUMMARY-1 — desglose COMERCIAL de ventas del período por canal
+ * (Factura / Boleta electrónica / Pago electrónico), para el resumen
+ * "Compras y Ventas" que ayuda a cuadrar el reporte mensual que envía el
+ * contador. Función NUEVA, separada de getOperatingSalesForPeriod
+ * (Termómetro) a propósito: mismas dos fuentes y mismos filtros de
+ * exclusión, pero esa función ya tiene consumidores reales con su forma
+ * actual (crmTotal/catalogTotal) -- no se le agrega un tercer bucket para
+ * no arriesgar esos consumidores por un reporte nuevo y no relacionado.
+ *
+ * IMPORTANTE -- esto es un desglose COMERCIAL, no tributario:
+ *   - crm_invoices ("Nota de Venta") es un documento comercial interno de
+ *     Walinka, no un DTE. Que source='pos' (venta de mostrador/TPV, ver
+ *     crm_create_pos_sale en 20260910220000_crm_pos_atomic_sale.sql) o
+ *     source='crm' (default de la columna, ver
+ *     20260531200000_crm_invoices_source.sql) NO significa que exista una
+ *     Boleta o Factura electrónica realmente emitida -- Walinka no lo
+ *     registra ni puede confirmarlo.
+ *   - wa_orders pagados (checkout del catálogo público / Mercado Pago)
+ *     tampoco implica un DTE emitido: confirma un cobro, no un documento
+ *     tributario.
+ *   - Por lo tanto estos tres buckets (boleta/factura/pagoElectronico) NO
+ *     deben usarse para calcular IVA débito. Sirven solo para mostrar el
+ *     volumen de ventas comerciales por canal, igual que hace el
+ *     Termómetro con crmTotal/catalogTotal. El caller (SalesVatSummaryCard
+ *     en CrmCostos.jsx) no calcula ni muestra un IVA débito a partir de
+ *     estos totales -- ver el comentario de esa tarjeta para el porqué.
+ *
+ * Mismo criterio de inclusión que ya usa getOperatingSalesForPeriod para
+ * las ventas comerciales: se excluyen únicamente las crm_invoices
+ * anuladas -- 'pendiente' y 'parcial' cuentan igual que 'pagada' porque
+ * son ventas comerciales igualmente válidas (el status/pago de una Nota
+ * de Venta no determina si existe o no un DTE detrás). No es un cambio de
+ * criterio: es el mismo `neq('status', 'anulada')` que ya existía.
+ *
+ * Esta función NUNCA calcula ni guarda IVA -- solo agrega totales
+ * comerciales ya registrados (source-of-truth: crm_invoices.total /
+ * wa_orders.total_amount).
+ */
+export async function getSalesTaxSummaryForPeriod(businessId, month, year, businessCurrency = 'CLP') {
+  const fromDate = `${year}-${String(month).padStart(2, '0')}-01`;
+  const toDate = `${year}-${String(month + 1).padStart(2, '0')}-01`;
+  const normalizedToDate = month === 12 ? `${year + 1}-01-01` : toDate;
+  const fromInstant = new Date(year, month - 1, 1, 0, 0, 0, 0).toISOString();
+  const toInstant = new Date(year, month, 1, 0, 0, 0, 0).toISOString();
+
+  const [crmResult, catalogResult] = await Promise.all([
+    supabase
+      .from('crm_invoices')
+      .select('total, source')
+      .eq('business_id', businessId)
+      .neq('status', 'anulada')
+      .is('order_id', null)
+      .gte('issue_date', fromDate)
+      .lt('issue_date', normalizedToDate),
+    supabase
+      .from('wa_orders')
+      .select('total_amount, currency, paid_at, updated_at')
+      .eq('business_id', businessId)
+      .eq('payment_status', 'pagado')
+      .or(`and(paid_at.gte.${fromInstant},paid_at.lt.${toInstant}),and(paid_at.is.null,updated_at.gte.${fromInstant},updated_at.lt.${toInstant})`),
+  ]);
+
+  let boletaTotal = 0;
+  let facturaTotal = 0;
+  if (!crmResult.error) {
+    for (const row of crmResult.data || []) {
+      const amount = Number(row.total || 0);
+      if (row.source === 'pos') boletaTotal += amount;
+      else facturaTotal += amount;
+    }
+  }
+
+  let pagoElectronicoTotal = 0;
+  let incompatibleCurrencyRows = 0;
+  const targetCurrency = String(businessCurrency || 'CLP').toUpperCase();
+  if (!catalogResult.error) {
+    for (const row of catalogResult.data || []) {
+      const rowCurrency = String(row.currency || targetCurrency).toUpperCase();
+      if (rowCurrency !== targetCurrency) {
+        incompatibleCurrencyRows += 1;
+        continue;
+      }
+      pagoElectronicoTotal += Number(row.total_amount || 0);
+    }
+  }
+
+  return {
+    boleta: boletaTotal,
+    factura: facturaTotal,
+    pagoElectronico: pagoElectronicoTotal,
+    total: boletaTotal + facturaTotal + pagoElectronicoTotal,
+    incompatibleCurrencyRows,
+    errors: {
+      crm: crmResult.error || null,
+      catalog: catalogResult.error || null,
+    },
+  };
+}
+
 /** Costos del período con fecha económica para gastos variables de Caja. */
 export async function getOperatingCostItemsForPeriod(businessId, month, year) {
   const { data, error } = await supabase
