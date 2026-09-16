@@ -534,3 +534,110 @@ describe('getDailySummary — top productos y unidades vendidas', () => {
     expect(result.sales.topProducts[0]).toMatchObject({ name: 'Pan', quantity: 10 });
   });
 });
+
+describe('getDailySummary — "sin actividad" y "no pudimos obtener el dato" son estados DISTINTOS', () => {
+  it('consulta de ventas falla → sales.available=false, NUNCA se muestra $0 como dato válido', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      crm_invoices: { data: null, error: { message: 'conexión perdida' } },
+    });
+
+    const result = await getDailySummary('biz1', '2026-09-16');
+    expect(result.sales.available).toBe(false);
+    expect(result.sales.net).toBeNull();
+    expect(result.sales.gross).toBeNull();
+    expect(result.sales.count).toBeNull();
+    // Sin ventas confiables tampoco se puede calcular el saldo del día.
+    expect(result.profitability.available).toBe(false);
+    expect(result.profitability.estimatedResult).toBeNull();
+    expect(result.alerts).toContainEqual(expect.objectContaining({ type: 'data_unavailable', section: 'sales' }));
+  });
+
+  it('consulta de cobros falla → collections.available=false, NUNCA se muestra $0 como dato válido', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      crm_invoices: { data: [], error: null },
+      crm_payments: { data: null, error: { message: 'timeout' } },
+    });
+
+    const result = await getDailySummary('biz1', '2026-09-16');
+    expect(result.collections.available).toBe(false);
+    expect(result.collections.total).toBeNull();
+    expect(result.collections.byMethod).toBeNull();
+    expect(result.alerts).toContainEqual(expect.objectContaining({ type: 'data_unavailable', section: 'collections' }));
+  });
+
+  it('consulta de gastos falla → expenses.available=false, NUNCA se muestra $0 como dato válido', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      crm_invoices: { data: [], error: null },
+      crm_cost_items: { data: null, error: { message: 'timeout' } },
+    });
+
+    const result = await getDailySummary('biz1', '2026-09-16');
+    expect(result.expenses.available).toBe(false);
+    expect(result.expenses.total).toBeNull();
+    expect(result.expenses.byCategory).toBeNull();
+    // Sin gastos confiables tampoco se puede calcular el saldo del día.
+    expect(result.profitability.available).toBe(false);
+    expect(result.alerts).toContainEqual(expect.objectContaining({ type: 'data_unavailable', section: 'expenses' }));
+  });
+
+  it('consulta de inventario falla → inventory.available=false, NUNCA afirma stock 0 ni "sin movimientos" como si fuera real', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      crm_invoices: { data: [], error: null },
+      wa_products: { data: null, error: { message: 'timeout' } },
+    });
+
+    const result = await getDailySummary('biz1', '2026-09-16');
+    expect(result.inventory.available).toBe(false);
+    expect(result.inventory.lowStockCount).toBeNull();
+    expect(result.inventory.movementsSummary).toBeNull();
+    expect(result.alerts).toContainEqual(expect.objectContaining({ type: 'data_unavailable', section: 'inventory' }));
+  });
+
+  it('consulta de sesiones de caja falla → cash.available=false, nunca se afirma "no hubo caja abierta"', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      crm_invoices: { data: [], error: null },
+      crm_cash_sessions: { data: null, error: { message: 'timeout' } },
+    });
+
+    const result = await getDailySummary('biz1', '2026-09-16');
+    expect(result.cash.available).toBe(false);
+    expect(result.cash.sessions).toEqual([]);
+    expect(result.alerts).toContainEqual(expect.objectContaining({ type: 'data_unavailable', section: 'cash' }));
+  });
+
+  it('sesión abierta cuyos pagos/movimientos fallan → liveEstimate=null (nunca un saldo calculado sobre datos parciales)', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      crm_invoices: { data: [], error: null },
+      crm_cash_sessions: {
+        data: [{ id: 'sess-open', status: 'open', opened_at: '2026-09-16T09:00:00-03:00', closed_at: null, initial_amount: 20000 }],
+        error: null,
+      },
+      crm_payments: { data: null, error: { message: 'timeout' } },
+    });
+
+    const result = await getDailySummary('biz1', '2026-09-16');
+    const session = result.cash.sessions[0];
+    expect(session.liveEstimateUnavailable).toBe(true);
+    expect(session.liveEstimate).toBeNull();
+    expect(result.alerts).toContainEqual(expect.objectContaining({ type: 'data_unavailable', section: 'cash', sessionId: 'sess-open' }));
+  });
+
+  it('día sin actividad real (todas las consultas OK, sin filas) sigue reportando available=true en todas las secciones', async () => {
+    mockTables(EMPTY_TABLES);
+    const result = await getDailySummary('biz1', '2026-09-16');
+    expect(result.sales.available).toBe(true);
+    expect(result.collections.available).toBe(true);
+    expect(result.expenses.available).toBe(true);
+    expect(result.cash.available).toBe(true);
+    expect(result.inventory.available).toBe(true);
+    expect(result.profitability.available).toBe(true);
+    // "Sin actividad" real SÍ es 0 -- no hay alerta de datos no disponibles.
+    expect(result.alerts.filter(a => a.type === 'data_unavailable')).toEqual([]);
+  });
+});

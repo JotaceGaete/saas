@@ -2184,6 +2184,21 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
   if (stockProductsRes.error) errors.inventoryProducts = stockProductsRes.error;
   if (stockMovementsRes.error) errors.inventoryMovements = stockMovementsRes.error;
 
+  // "Sin actividad" y "no pudimos obtener el dato" son estados DISTINTOS --
+  // para las secciones financieras críticas (ventas/cobros/gastos/caja) un
+  // error de consulta NUNCA debe traducirse en $0: eso se leería como un día
+  // real sin actividad. Cada sección crítica declara su propia
+  // disponibilidad; cuando es false, el objeto devuelto trae los totales en
+  // null (nunca 0) y la UI debe mostrar "No pudimos obtener la información"
+  // en vez de renderizar esos números. Inventario es secundario -- se
+  // permite degradar (misma regla: null, nunca 0/"sin movimientos" como si
+  // fuera real).
+  const salesAvailable = !invoicesRes.error;
+  const collectionsAvailable = !collectionsRes.error;
+  const expensesAvailable = !(costItemsRes.error || movementsRes.error);
+  const cashAvailable = !sessionsRes.error;
+  const inventoryAvailable = !(stockProductsRes.error || stockMovementsRes.error);
+
   // ── Ventas (crm_invoices.issue_date = :date) ──────────────────────────────
   const allInvoices = invoicesRes.data || [];
   const activeInvoices = allInvoices.filter(inv => inv.status !== 'anulada');
@@ -2236,6 +2251,11 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
   // igual que getInvoicePaymentSummary -- nunca cuenta 'credit' como cobro).
   const pendingInvoices = activeInvoices.filter(inv => inv.status === 'pendiente' || inv.status === 'parcial');
   let pendingToday = 0;
+  // pendingToday depende de saber CUÁLES facturas de hoy están pendientes --
+  // si invoicesRes falló, activeInvoices/pendingInvoices vienen vacíos por el
+  // fallback `|| []` de arriba, y sin este flag un pendingToday=0 se leería
+  // como "nada pendiente" en vez de "no lo sabemos".
+  let pendingTodayAvailable = salesAvailable;
   if (pendingInvoices.length) {
     const ids = pendingInvoices.map(inv => inv.id);
     const { data: pendingPayments, error: pendingErr } = await supabase
@@ -2244,6 +2264,7 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
       .in('invoice_id', ids);
     if (pendingErr) {
       errors.pendingCollection = pendingErr;
+      pendingTodayAvailable = false;
     } else {
       const paidByInvoice = {};
       for (const p of pendingPayments || []) {
@@ -2312,8 +2333,11 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
         closed_at: session.closed_at,
         initial_amount: session.initial_amount,
         // [] real (cierre legacy sin arqueo) se distingue de null explícitamente
-        // -- "Sin arqueo registrado" en la UI, nunca recalculado.
-        reconciliation: reconRows && reconRows.length ? reconRows : null,
+        // -- "Sin arqueo registrado" en la UI, nunca recalculado. Un error de
+        // consulta es un tercer estado (reconciliationUnavailable=true): NO es
+        // lo mismo que "sin arqueo registrado", la UI debe distinguirlos.
+        reconciliation: !reconErr && reconRows && reconRows.length ? reconRows : null,
+        reconciliationUnavailable: Boolean(reconErr),
         isLiveEstimate: false,
       });
     } else {
@@ -2326,6 +2350,27 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
       ]);
       if (payRes.error) errors[`sessionPayments:${session.id}`] = payRes.error;
       if (movRes.error) errors[`sessionMovements:${session.id}`] = movRes.error;
+
+      if (payRes.error || movRes.error) {
+        // No se puede calcular el efectivo esperado sin ambas consultas --
+        // NUNCA se presenta un estimado calculado sobre datos parciales
+        // (equivaldría a mostrar un saldo de caja falso). liveEstimate=null +
+        // liveEstimateUnavailable=true es un estado explícito y distinto de
+        // "caja abierta sin movimientos todavía".
+        cashSessions.push({
+          id: session.id,
+          status: session.status,
+          opened_at: session.opened_at,
+          closed_at: session.closed_at,
+          initial_amount: session.initial_amount,
+          reconciliation: null,
+          isLiveEstimate: true,
+          liveEstimate: null,
+          liveEstimateUnavailable: true,
+        });
+        continue;
+      }
+
       const sessPayments = (payRes.data || []).filter(p => !p.voided_at);
       const sessMovements = (movRes.data || []).filter(m => !m.voided_at);
 
@@ -2369,6 +2414,7 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
         initial_amount: session.initial_amount,
         reconciliation: null,
         isLiveEstimate: true,
+        liveEstimateUnavailable: false,
         liveEstimate: {
           // Efectivo físico -- lo único que respalda "Saldo esperado en caja".
           cashReceived: round2(cashReceived),
@@ -2456,6 +2502,32 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
   // omite deliberadamente en V1: no hay una regla simple/determinista sin
   // inventar un umbral -- ver RESUMEN-DEL-DIA-2 en el reporte del PR.
 
+  // Fallas de consulta en secciones financieras críticas se anuncian como
+  // alerta (severity 'error') además de marcar available=false en la
+  // sección -- defensa en profundidad: aunque la UI olvide chequear
+  // `available` en algún punto, el comerciante igual ve que algo no cargó,
+  // nunca un $0 silencioso.
+  if (!salesAvailable) {
+    alerts.push({ type: 'data_unavailable', severity: 'error', message: 'No pudimos obtener las ventas de este día. Los datos no están disponibles temporalmente.', section: 'sales' });
+  }
+  if (!collectionsAvailable) {
+    alerts.push({ type: 'data_unavailable', severity: 'error', message: 'No pudimos obtener el dinero recibido de este día.', section: 'collections' });
+  }
+  if (!expensesAvailable) {
+    alerts.push({ type: 'data_unavailable', severity: 'error', message: 'No pudimos obtener los gastos de este día.', section: 'expenses' });
+  }
+  if (!cashAvailable) {
+    alerts.push({ type: 'data_unavailable', severity: 'error', message: 'No pudimos obtener el estado de caja de este día.', section: 'cash' });
+  }
+  for (const session of cashSessions) {
+    if (session.reconciliationUnavailable || session.liveEstimateUnavailable) {
+      alerts.push({ type: 'data_unavailable', severity: 'error', message: 'No pudimos obtener el estado de una sesión de caja.', section: 'cash', sessionId: session.id });
+    }
+  }
+  if (!inventoryAvailable) {
+    alerts.push({ type: 'data_unavailable', severity: 'warning', message: 'No pudimos obtener la información de inventario de este día.', section: 'inventory' });
+  }
+
   // ── Metadata y limitaciones históricas ─────────────────────────────────────
   const historicalLimitations = [];
   if (!isToday) {
@@ -2465,9 +2537,15 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
   historicalLimitations.push('profitability.estimatedResult no incluye costo de mercadería vendida (COGS) -- no existe costo unitario de producto en el esquema.');
   historicalLimitations.push('La fecha usa el criterio de "fecha local del navegador" (getLocalDateString), igual que Caja/TPV/Termómetro -- no hay configuración de zona horaria a nivel de negocio.');
 
+  // "Saldo antes de costo de mercadería" combina ventas y gastos -- si
+  // cualquiera de las dos consultas de origen falló, el resultado no es
+  // confiable y NO se presenta como un número (ni como 0).
+  const profitabilityAvailable = salesAvailable && expensesAvailable;
+
   return {
     date,
-    sales: {
+    sales: salesAvailable ? {
+      available: true,
       gross: round2(gross),
       net: round2(net),
       discount: round2(discountTotal),
@@ -2478,28 +2556,44 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
       topProducts,
       byChannel: { pos: round2(pos), crmManual: round2(crmManual), online: round2(online) },
       voidedCount,
+    } : {
+      available: false,
+      gross: null, net: null, discount: null, count: null, avgTicket: null, unitsSold: null,
+      byHour: [], topProducts: [], byChannel: null, voidedCount: null,
     },
     collections: {
-      byMethod: collectionsByMethod,
-      total: round2(collectionsTotal),
-      pendingToday: round2(pendingToday),
+      available: collectionsAvailable,
+      byMethod: collectionsAvailable ? collectionsByMethod : null,
+      total: collectionsAvailable ? round2(collectionsTotal) : null,
+      pendingTodayAvailable,
+      pendingToday: pendingTodayAvailable ? round2(pendingToday) : null,
     },
-    expenses: {
+    expenses: expensesAvailable ? {
+      available: true,
       total: round2(expensesTotal),
       byCategory: expensesByCategory,
       cashOutflowsNonExpense,
+    } : {
+      available: false,
+      total: null, byCategory: null, cashOutflowsNonExpense: null,
     },
     cash: {
-      sessions: cashSessions,
+      available: cashAvailable,
+      sessions: cashAvailable ? cashSessions : [],
     },
-    inventory: {
+    inventory: inventoryAvailable ? {
+      available: true,
       movementsSummary,
       notableMovements,
       lowStockCount,
       isLowStockForToday: isToday,
+    } : {
+      available: false,
+      movementsSummary: null, notableMovements: [], lowStockCount: null, isLowStockForToday: isToday,
     },
     profitability: {
-      estimatedResult,
+      available: profitabilityAvailable,
+      estimatedResult: profitabilityAvailable ? estimatedResult : null,
       formula: 'net_sales_minus_expenses',
       label: profitabilityLabel,
       disclaimer: profitabilityDisclaimer,

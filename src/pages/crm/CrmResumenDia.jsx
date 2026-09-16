@@ -69,23 +69,42 @@ function Section({ title, subtitle, icon, right, children }) {
   );
 }
 
-function KpiCard({ label, value, hint, tone = 'text-gray-900', emphasize = false, badge }) {
+function KpiCard({ label, value, hint, tone = 'text-gray-900', emphasize = false, badge, unavailable = false }) {
   return (
     <div className="rounded-2xl border border-gray-100 bg-white p-4 shadow-sm">
       <div className="flex items-center justify-between gap-2">
         <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">{label}</p>
         {badge}
       </div>
-      <p className={`mt-1.5 tabular-nums font-black leading-tight ${emphasize ? 'text-2xl' : 'text-lg'} ${tone}`}>
-        {value}
-      </p>
-      {hint && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
+      {unavailable ? (
+        <p className="mt-1.5 flex items-center gap-1 text-sm font-bold text-red-500">
+          <Icon name="AlertCircle" size={13} />
+          No disponible
+        </p>
+      ) : (
+        <p className={`mt-1.5 tabular-nums font-black leading-tight ${emphasize ? 'text-2xl' : 'text-lg'} ${tone}`}>
+          {value}
+        </p>
+      )}
+      {hint && !unavailable && <p className="mt-1 text-xs text-gray-400">{hint}</p>}
     </div>
   );
 }
 
 function EmptyRow({ children }) {
   return <p className="py-6 text-center text-sm text-gray-400">{children}</p>;
+}
+
+// "Sin actividad" (datos reales, todos en cero) y "no pudimos obtener el
+// dato" (falló la consulta) son estados DISTINTOS -- este componente es
+// SIEMPRE el segundo caso, nunca se reutiliza para un $0 real.
+function UnavailableNotice({ children }) {
+  return (
+    <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+      <Icon name="AlertCircle" size={15} className="mt-0.5 shrink-0" />
+      <span>{children || 'No pudimos obtener esta información. Intenta recargar en unos minutos.'}</span>
+    </div>
+  );
 }
 
 function DateSelector({ date, onChange }) {
@@ -177,10 +196,11 @@ function ExpensesByCategoryChart({ byCategory, currency }) {
   );
 }
 
-const ALERT_ICON = { warning: 'AlertTriangle', info: 'Info' };
+const ALERT_ICON = { warning: 'AlertTriangle', info: 'Info', error: 'AlertCircle' };
 const ALERT_TONE = {
   warning: { bg: 'bg-amber-50', border: 'border-amber-200', color: 'text-amber-800', icon: '#b45309' },
   info: { bg: 'bg-blue-50', border: 'border-blue-200', color: 'text-blue-800', icon: '#1d4ed8' },
+  error: { bg: 'bg-red-50', border: 'border-red-200', color: 'text-red-800', icon: '#b91c1c' },
 };
 
 export default function CrmResumenDia() {
@@ -273,7 +293,8 @@ export default function CrmResumenDia() {
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
               <KpiCard
                 label="Ventas netas"
-                value={formatMoney(sales.net, currency)}
+                value={sales.available ? formatMoney(sales.net, currency) : undefined}
+                unavailable={!sales.available}
                 hint="Lo que se vendió hoy"
                 tone="text-blue-700"
                 emphasize
@@ -281,7 +302,8 @@ export default function CrmResumenDia() {
               />
               <KpiCard
                 label="Dinero recibido"
-                value={formatMoney(collections.total, currency)}
+                value={collections.available ? formatMoney(collections.total, currency) : undefined}
+                unavailable={!collections.available}
                 hint="Lo que efectivamente entró en caja/cuentas"
                 tone="text-emerald-700"
                 emphasize
@@ -289,127 +311,160 @@ export default function CrmResumenDia() {
               />
               <KpiCard
                 label="Gastos"
-                value={formatMoney(expenses.total, currency)}
-                hint={expenses.cashOutflowsNonExpense > 0 ? `+ ${formatMoney(expenses.cashOutflowsNonExpense, currency)} en otros egresos` : undefined}
+                value={expenses.available ? formatMoney(expenses.total, currency) : undefined}
+                unavailable={!expenses.available}
+                hint={expenses.available && expenses.cashOutflowsNonExpense > 0 ? `+ ${formatMoney(expenses.cashOutflowsNonExpense, currency)} en otros egresos` : undefined}
                 tone="text-red-600"
               />
               <KpiCard
                 label="Saldo antes de costo de mercadería"
-                value={`${profitability.estimatedResult > 0 ? '+' : ''}${formatMoney(profitability.estimatedResult, currency)}`}
+                value={profitability.available ? `${profitability.estimatedResult > 0 ? '+' : ''}${formatMoney(profitability.estimatedResult, currency)}` : undefined}
+                unavailable={!profitability.available}
                 hint="No es la ganancia del día — no incluye costo de mercadería"
                 tone={resultTone}
               />
-              <KpiCard label="N° de ventas" value={sales.count} />
-              <KpiCard label="Ticket promedio" value={formatMoney(sales.avgTicket, currency)} />
+              <KpiCard label="N° de ventas" value={sales.available ? sales.count : undefined} unavailable={!sales.available} />
+              <KpiCard label="Ticket promedio" value={sales.available ? formatMoney(sales.avgTicket, currency) : undefined} unavailable={!sales.available} />
             </div>
 
             {/* 2. Ventas ---------------------------------------------------------- */}
             <Section title="Ventas" subtitle="Notas de venta emitidas este día (excluye anuladas)" icon="TrendingUp">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <KpiCard label="Bruta" value={formatMoney(sales.gross, currency)} />
-                <KpiCard label="Descuentos" value={formatMoney(sales.discount, currency)} />
-                <KpiCard label="Neta" value={formatMoney(sales.net, currency)} tone="text-blue-700" />
-                <KpiCard label="Unidades vendidas" value={sales.unitsSold} />
-              </div>
+              {!sales.available ? (
+                <UnavailableNotice>No pudimos obtener las ventas de este día. Intenta recargar en unos minutos.</UnavailableNotice>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <KpiCard label="Bruta" value={formatMoney(sales.gross, currency)} />
+                    <KpiCard label="Descuentos" value={formatMoney(sales.discount, currency)} />
+                    <KpiCard label="Neta" value={formatMoney(sales.net, currency)} tone="text-blue-700" />
+                    <KpiCard label="Unidades vendidas" value={sales.unitsSold} />
+                  </div>
 
-              <div className="mt-5">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Ventas por hora</p>
-                <SalesByHourChart byHour={sales.byHour} currency={currency} />
-              </div>
+                  <div className="mt-5">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Ventas por hora</p>
+                    <SalesByHourChart byHour={sales.byHour} currency={currency} />
+                  </div>
 
-              <div className="mt-5 grid gap-5 sm:grid-cols-2">
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Productos más vendidos</p>
-                  {sales.topProducts.length === 0 ? (
-                    <EmptyRow>Sin ventas de productos este día.</EmptyRow>
-                  ) : (
-                    <ul className="space-y-2">
-                      {sales.topProducts.map((p, i) => (
-                        <li key={p.productId || p.name || i} className="flex items-center justify-between gap-2 rounded-xl border border-gray-100 px-3 py-2 text-sm">
-                          <span className="min-w-0 truncate font-medium text-gray-700">{p.name || 'Producto'}</span>
-                          <span className="shrink-0 tabular-nums text-gray-500">{p.quantity} un · {formatMoney(p.subtotal, currency)}</span>
+                  <div className="mt-5 grid gap-5 sm:grid-cols-2">
+                    <div>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Productos más vendidos</p>
+                      {sales.topProducts.length === 0 ? (
+                        <EmptyRow>Sin ventas de productos este día.</EmptyRow>
+                      ) : (
+                        <ul className="space-y-2">
+                          {sales.topProducts.map((p, i) => (
+                            <li key={p.productId || p.name || i} className="flex items-center justify-between gap-2 rounded-xl border border-gray-100 px-3 py-2 text-sm">
+                              <span className="min-w-0 truncate font-medium text-gray-700">{p.name || 'Producto'}</span>
+                              <span className="shrink-0 tabular-nums text-gray-500">{p.quantity} un · {formatMoney(p.subtotal, currency)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                    <div>
+                      <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Ventas por canal</p>
+                      <ul className="space-y-2 text-sm">
+                        <li className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2">
+                          <span className="font-medium text-gray-700">TPV (caja física)</span>
+                          <span className="tabular-nums text-gray-500">{formatMoney(sales.byChannel.pos, currency)}</span>
                         </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-                <div>
-                  <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Ventas por canal</p>
-                  <ul className="space-y-2 text-sm">
-                    <li className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2">
-                      <span className="font-medium text-gray-700">TPV (caja física)</span>
-                      <span className="tabular-nums text-gray-500">{formatMoney(sales.byChannel.pos, currency)}</span>
-                    </li>
-                    <li className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2">
-                      <span className="font-medium text-gray-700">Notas de venta manuales</span>
-                      <span className="tabular-nums text-gray-500">{formatMoney(sales.byChannel.crmManual, currency)}</span>
-                    </li>
-                    <li className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2">
-                      <span className="font-medium text-gray-700">Tienda online</span>
-                      <span className="tabular-nums text-gray-500">{formatMoney(sales.byChannel.online, currency)}</span>
-                    </li>
-                  </ul>
-                  {sales.voidedCount > 0 && (
-                    <p className="mt-2 text-xs text-gray-400">{sales.voidedCount} venta{sales.voidedCount === 1 ? '' : 's'} anulada{sales.voidedCount === 1 ? '' : 's'} este día (no incluida{sales.voidedCount === 1 ? '' : 's'} arriba).</p>
-                  )}
-                </div>
-              </div>
+                        <li className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2">
+                          <span className="font-medium text-gray-700">Notas de venta manuales</span>
+                          <span className="tabular-nums text-gray-500">{formatMoney(sales.byChannel.crmManual, currency)}</span>
+                        </li>
+                        <li className="flex items-center justify-between rounded-xl border border-gray-100 px-3 py-2">
+                          <span className="font-medium text-gray-700">Tienda online</span>
+                          <span className="tabular-nums text-gray-500">{formatMoney(sales.byChannel.online, currency)}</span>
+                        </li>
+                      </ul>
+                      {sales.voidedCount > 0 && (
+                        <p className="mt-2 text-xs text-gray-400">{sales.voidedCount} venta{sales.voidedCount === 1 ? '' : 's'} anulada{sales.voidedCount === 1 ? '' : 's'} este día (no incluida{sales.voidedCount === 1 ? '' : 's'} arriba).</p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
             </Section>
 
             {/* 3. Dinero recibido --------------------------------------------------- */}
             <Section title="Dinero recibido" subtitle="Pagos efectivamente recibidos este día, por medio" icon="Wallet">
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {METHOD_ORDER.filter(m => collections.byMethod[m] > 0).map(m => (
-                  <div key={m} className="rounded-xl border border-gray-100 px-3 py-2">
-                    <p className="text-xs text-gray-400">{PAYMENT_METHOD_LABELS[m] || m}</p>
-                    <p className="tabular-nums text-sm font-bold text-gray-800">{formatMoney(collections.byMethod[m], currency)}</p>
+              {!collections.available ? (
+                <UnavailableNotice>No pudimos obtener el dinero recibido de este día. Intenta recargar en unos minutos.</UnavailableNotice>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {METHOD_ORDER.filter(m => collections.byMethod[m] > 0).map(m => (
+                      <div key={m} className="rounded-xl border border-gray-100 px-3 py-2">
+                        <p className="text-xs text-gray-400">{PAYMENT_METHOD_LABELS[m] || m}</p>
+                        <p className="tabular-nums text-sm font-bold text-gray-800">{formatMoney(collections.byMethod[m], currency)}</p>
+                      </div>
+                    ))}
+                    {METHOD_ORDER.every(m => collections.byMethod[m] <= 0) && <EmptyRow>Sin cobros registrados este día.</EmptyRow>}
                   </div>
-                ))}
-                {METHOD_ORDER.every(m => collections.byMethod[m] <= 0) && <EmptyRow>Sin cobros registrados este día.</EmptyRow>}
-              </div>
-              <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 px-4 py-3">
-                <span className="text-sm font-semibold text-emerald-800">Total recibido</span>
-                <span className="tabular-nums text-lg font-black text-emerald-700">{formatMoney(collections.total, currency)}</span>
-              </div>
-              {collections.pendingToday > 0 && (
-                <p className="mt-3 flex items-center gap-2 text-sm text-amber-700">
-                  <Icon name="Clock" size={14} />
-                  Ventas de hoy pendientes de cobro: <strong className="tabular-nums">{formatMoney(collections.pendingToday, currency)}</strong>
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2 rounded-xl bg-emerald-50 px-4 py-3">
+                    <span className="text-sm font-semibold text-emerald-800">Total recibido</span>
+                    <span className="tabular-nums text-lg font-black text-emerald-700">{formatMoney(collections.total, currency)}</span>
+                  </div>
+                </>
+              )}
+              {collections.pendingTodayAvailable ? (
+                collections.pendingToday > 0 && (
+                  <p className="mt-3 flex items-center gap-2 text-sm text-amber-700">
+                    <Icon name="Clock" size={14} />
+                    Ventas de hoy pendientes de cobro: <strong className="tabular-nums">{formatMoney(collections.pendingToday, currency)}</strong>
+                  </p>
+                )
+              ) : (
+                <p className="mt-3 flex items-center gap-2 text-sm text-red-600">
+                  <Icon name="AlertCircle" size={14} />
+                  No pudimos calcular las ventas pendientes de cobro de este día.
                 </p>
               )}
             </Section>
 
             {/* 4. Gastos y egresos ---------------------------------------------------- */}
             <Section title="Gastos y egresos" subtitle="Gastos variables del día y otros movimientos de caja que no son gasto" icon="Receipt">
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-                <KpiCard label="Gastos del día" value={formatMoney(expenses.total, currency)} tone="text-red-600" />
-                <KpiCard label="Otros egresos de caja" value={formatMoney(expenses.cashOutflowsNonExpense, currency)} hint="Retiros, traslados — no son gasto" />
-                <KpiCard label="Total egresado" value={formatMoney(expenses.total + expenses.cashOutflowsNonExpense, currency)} />
-              </div>
-              <div className="mt-5">
-                <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Gastos por categoría</p>
-                <ExpensesByCategoryChart byCategory={expenses.byCategory} currency={currency} />
-              </div>
+              {!expenses.available ? (
+                <UnavailableNotice>No pudimos obtener los gastos de este día. Intenta recargar en unos minutos.</UnavailableNotice>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                    <KpiCard label="Gastos del día" value={formatMoney(expenses.total, currency)} tone="text-red-600" />
+                    <KpiCard label="Otros egresos de caja" value={formatMoney(expenses.cashOutflowsNonExpense, currency)} hint="Retiros, traslados — no son gasto" />
+                    <KpiCard label="Total egresado" value={formatMoney(expenses.total + expenses.cashOutflowsNonExpense, currency)} />
+                  </div>
+                  <div className="mt-5">
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Gastos por categoría</p>
+                    <ExpensesByCategoryChart byCategory={expenses.byCategory} currency={currency} />
+                  </div>
+                </>
+              )}
             </Section>
 
             {/* 5. Saldo antes de costo de mercadería ------------------------------ */}
             <Section title="Saldo antes de costo de mercadería" icon="Calculator">
-              <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className={`tabular-nums text-3xl font-black ${resultTone}`}>
-                    {profitability.estimatedResult > 0 ? '+' : ''}{formatMoney(profitability.estimatedResult, currency)}
+              {!profitability.available ? (
+                <UnavailableNotice>No pudimos calcular el saldo del día porque faltan datos de ventas o de gastos. Intenta recargar en unos minutos.</UnavailableNotice>
+              ) : (
+                <>
+                  <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className={`tabular-nums text-3xl font-black ${resultTone}`}>
+                        {profitability.estimatedResult > 0 ? '+' : ''}{formatMoney(profitability.estimatedResult, currency)}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">Ventas netas − Gastos registrados</p>
+                    </div>
+                  </div>
+                  <p className="mt-4 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
+                    <Icon name="AlertTriangle" size={12} className="mr-1 inline align-text-bottom" />
+                    Ventas netas menos gastos registrados. No incluye el costo de los productos vendidos, por lo que no representa la ganancia del día.
                   </p>
-                  <p className="mt-1 text-xs text-gray-500">Ventas netas − Gastos registrados</p>
-                </div>
-              </div>
-              <p className="mt-4 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
-                <Icon name="AlertTriangle" size={12} className="mr-1 inline align-text-bottom" />
-                Ventas netas menos gastos registrados. No incluye el costo de los productos vendidos, por lo que no representa la ganancia del día.
-              </p>
-              <p className="mt-2 rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500">
-                <Icon name="Info" size={12} className="mr-1 inline align-text-bottom" />
-                {profitability.disclaimer}
-              </p>
+                  <p className="mt-2 rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500">
+                    <Icon name="Info" size={12} className="mr-1 inline align-text-bottom" />
+                    {profitability.disclaimer}
+                  </p>
+                </>
+              )}
             </Section>
 
             {/* 6. Caja y conciliación ------------------------------------------------ */}
@@ -427,7 +482,9 @@ export default function CrmResumenDia() {
                 </button>
               }
             >
-              {cash.sessions.length === 0 ? (
+              {!cash.available ? (
+                <UnavailableNotice>No pudimos obtener el estado de caja de este día. Intenta recargar en unos minutos.</UnavailableNotice>
+              ) : cash.sessions.length === 0 ? (
                 <EmptyRow>No hubo caja abierta este día.</EmptyRow>
               ) : (
                 <div className="space-y-3">
@@ -445,7 +502,13 @@ export default function CrmResumenDia() {
                         </div>
                       </div>
 
-                      {session.isLiveEstimate && (
+                      {session.isLiveEstimate && session.liveEstimateUnavailable && (
+                        <div className="mt-3">
+                          <UnavailableNotice>No pudimos obtener el estado de esta caja abierta. Intenta recargar en unos minutos.</UnavailableNotice>
+                        </div>
+                      )}
+
+                      {session.isLiveEstimate && !session.liveEstimateUnavailable && (
                         <div className="mt-3">
                           <p className="mb-2 inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800">
                             <Icon name="Clock" size={12} />
@@ -478,7 +541,13 @@ export default function CrmResumenDia() {
                         </div>
                       )}
 
-                      {!session.isLiveEstimate && session.reconciliation && (
+                      {!session.isLiveEstimate && session.reconciliationUnavailable && (
+                        <div className="mt-3">
+                          <UnavailableNotice>No pudimos obtener el arqueo de esta caja. Intenta recargar en unos minutos.</UnavailableNotice>
+                        </div>
+                      )}
+
+                      {!session.isLiveEstimate && !session.reconciliationUnavailable && session.reconciliation && (
                         <div className="mt-3 overflow-x-auto">
                           <table className="w-full text-sm">
                             <thead>
@@ -505,7 +574,7 @@ export default function CrmResumenDia() {
                         </div>
                       )}
 
-                      {!session.isLiveEstimate && !session.reconciliation && (
+                      {!session.isLiveEstimate && !session.reconciliationUnavailable && !session.reconciliation && (
                         <p className="mt-3 text-xs text-gray-400">Sin arqueo registrado para esta caja (cierre anterior al asistente de conciliación).</p>
                       )}
                     </div>
@@ -529,29 +598,35 @@ export default function CrmResumenDia() {
                 </button>
               }
             >
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                <KpiCard label="Entradas" value={inventory.movementsSummary.entrada} />
-                <KpiCard label="Salidas" value={inventory.movementsSummary.salida} />
-                <KpiCard label="Ajustes" value={inventory.movementsSummary.ajuste} />
-                <KpiCard
-                  label="Bajo stock mínimo"
-                  value={inventory.lowStockCount}
-                  hint={inventory.isLowStockForToday ? undefined : 'Refleja el stock actual, no el de esta fecha'}
-                  tone={inventory.lowStockCount > 0 ? 'text-amber-600' : 'text-gray-900'}
-                />
-              </div>
-              {inventory.notableMovements.length > 0 && (
-                <ul className="mt-4 space-y-1.5">
-                  {inventory.notableMovements.map((m, i) => (
-                    <li key={i} className="flex items-center justify-between gap-2 rounded-xl border border-gray-100 px-3 py-2 text-sm">
-                      <span className="min-w-0 truncate">
-                        <span className="font-medium text-gray-700">{m.productName}</span>
-                        <span className="ml-2 text-xs text-gray-400">{STOCK_TYPE_LABELS[m.type] || m.type}</span>
-                      </span>
-                      <span className="shrink-0 tabular-nums text-gray-500">{m.quantity} · {fmtTime(m.created_at)}</span>
-                    </li>
-                  ))}
-                </ul>
+              {!inventory.available ? (
+                <UnavailableNotice>No pudimos obtener la información de inventario de este día. Intenta recargar en unos minutos.</UnavailableNotice>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    <KpiCard label="Entradas" value={inventory.movementsSummary.entrada} />
+                    <KpiCard label="Salidas" value={inventory.movementsSummary.salida} />
+                    <KpiCard label="Ajustes" value={inventory.movementsSummary.ajuste} />
+                    <KpiCard
+                      label="Bajo stock mínimo"
+                      value={inventory.lowStockCount}
+                      hint={inventory.isLowStockForToday ? undefined : 'Refleja el stock actual, no el de esta fecha'}
+                      tone={inventory.lowStockCount > 0 ? 'text-amber-600' : 'text-gray-900'}
+                    />
+                  </div>
+                  {inventory.notableMovements.length > 0 && (
+                    <ul className="mt-4 space-y-1.5">
+                      {inventory.notableMovements.map((m, i) => (
+                        <li key={i} className="flex items-center justify-between gap-2 rounded-xl border border-gray-100 px-3 py-2 text-sm">
+                          <span className="min-w-0 truncate">
+                            <span className="font-medium text-gray-700">{m.productName}</span>
+                            <span className="ml-2 text-xs text-gray-400">{STOCK_TYPE_LABELS[m.type] || m.type}</span>
+                          </span>
+                          <span className="shrink-0 tabular-nums text-gray-500">{m.quantity} · {fmtTime(m.created_at)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
               )}
             </Section>
 
