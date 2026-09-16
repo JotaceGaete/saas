@@ -2078,3 +2078,399 @@ export async function voidCashMovement(movementId, { voidReason, voidedBy = null
     .single();
   return { data, error };
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// RESUMEN-DEL-DIA-1 — informe operativo diario integral
+//
+// Arquitectura: agregador JS puro (Promise.all sobre SELECTs ya cubiertos por
+// RLS existente), no una RPC nueva -- cada consulta es un SELECT acotado por
+// business_id, sin agregación cross-negocio ni necesidad de SECURITY DEFINER
+// (a diferencia de las RPC de TPV/cierre de caja). Reutiliza, sin duplicar
+// lógica: getCashDayPayments, getCashDayMovements, getCashSessionsForDate,
+// getCashSessionReconciliation, getCashSessionPayments, getCashSessionMovements,
+// getOperatingCostItemsForPeriod (misma derivación de economicDate que ya usa
+// Termómetro/Caja) y getCrmStockProducts.
+//
+// VENTA (crm_invoices.issue_date) vs DINERO RECIBIDO (crm_payments.payment_date)
+// son conceptos deliberadamente separados en el objeto de retorno -- nunca se
+// mezclan en un solo "revenue". Una venta a crédito (cuenta corriente) suma a
+// sales.net pero nunca a collections.total; un cobro hoy de una deuda antigua
+// suma a collections.total pero no a sales.net de hoy (payment_date=hoy no
+// implica issue_date=hoy de la factura que paga).
+//
+// Zona horaria: usa el mismo criterio de "fecha local del navegador" que el
+// resto del CRM (getLocalDateString) -- no existe configuración de timezone a
+// nivel de negocio. No se intenta resolver esa limitación acá, solo evitar
+// mezclar UTC y local dentro de este informe.
+// ═════════════════════════════════════════════════════════════════════════════
+
+const DAILY_SUMMARY_METHOD_ORDER = ['cash', 'card', 'debit_card', 'credit_card', 'bank_transfer', 'mercado_pago', 'check', 'other'];
+
+function emptyByMethod() {
+  return Object.fromEntries(DAILY_SUMMARY_METHOD_ORDER.map(m => [m, 0]));
+}
+
+function round2(n) {
+  return +(Number(n) || 0).toFixed(2);
+}
+
+// Igual criterio que getLocalDateString(): construye el instante UTC que
+// corresponde a la medianoche LOCAL de :date, para acotar consultas por
+// created_at (timestamptz) sin mezclar UTC/local -- mismo patrón que
+// getOperatingSalesForPeriod() usa para el rango mensual.
+function localDayInstantRange(date) {
+  const [y, m, d] = String(date).split('-').map(Number);
+  return {
+    startInstant: new Date(y, (m || 1) - 1, d || 1, 0, 0, 0, 0).toISOString(),
+    endInstant: new Date(y, (m || 1) - 1, (d || 1) + 1, 0, 0, 0, 0).toISOString(),
+  };
+}
+
+// Hora LOCAL (0-23) de un timestamp -- Date#getHours() ya usa el timezone del
+// runtime, igual convención que el resto de la app. Un comprobante emitido
+// justo en la medianoche local puede caer en la hora 23 o 0 del día contiguo
+// según el offset -- limitación conocida, documentada, no resuelta acá.
+function localHourOf(isoString) {
+  if (!isoString) return null;
+  const d = new Date(isoString);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.getHours();
+}
+
+/**
+ * Informe operativo diario integral (RESUMEN-DEL-DIA-1). Ver contrato de
+ * retorno documentado en el ticket -- shape estable, campos aditivos.
+ */
+export async function getDailySummary(businessId, date = getLocalDateString()) {
+  const generatedAt = new Date().toISOString();
+  const isToday = date === getLocalDateString();
+  const [year, month] = String(date).split('-').map(Number);
+  const { startInstant, endInstant } = localDayInstantRange(date);
+
+  const [
+    invoicesRes,
+    collectionsRes,
+    costItemsRes,
+    movementsRes,
+    sessionsRes,
+    stockProductsRes,
+    stockMovementsRes,
+  ] = await Promise.all([
+    supabase
+      .from('crm_invoices')
+      .select('id, status, total, subtotal, discount_amount, source, order_id, created_at, issue_date, crm_invoice_items(product_id, name, quantity, subtotal)')
+      .eq('business_id', businessId)
+      .eq('issue_date', date),
+    getCashDayPayments(businessId, date),
+    getOperatingCostItemsForPeriod(businessId, month, year),
+    getCashDayMovements(businessId, date),
+    getCashSessionsForDate(businessId, date),
+    getCrmStockProducts(businessId),
+    supabase
+      .from('crm_stock_movements')
+      .select('id, product_id, type, quantity, notes, created_at, wa_products(name)')
+      .eq('business_id', businessId)
+      .gte('created_at', startInstant)
+      .lt('created_at', endInstant)
+      .order('created_at', { ascending: false }),
+  ]);
+
+  const errors = {};
+  if (invoicesRes.error) errors.sales = invoicesRes.error;
+  if (collectionsRes.error) errors.collections = collectionsRes.error;
+  if (costItemsRes.error) errors.expenses = costItemsRes.error;
+  if (movementsRes.error) errors.cashMovements = movementsRes.error;
+  if (sessionsRes.error) errors.cashSessions = sessionsRes.error;
+  if (stockProductsRes.error) errors.inventoryProducts = stockProductsRes.error;
+  if (stockMovementsRes.error) errors.inventoryMovements = stockMovementsRes.error;
+
+  // ── Ventas (crm_invoices.issue_date = :date) ──────────────────────────────
+  const allInvoices = invoicesRes.data || [];
+  const activeInvoices = allInvoices.filter(inv => inv.status !== 'anulada');
+  const voidedCount = allInvoices.length - activeInvoices.length;
+
+  const gross = activeInvoices.reduce((s, inv) => s + Number(inv.subtotal || 0), 0);
+  const discountTotal = activeInvoices.reduce((s, inv) => s + Number(inv.discount_amount || 0), 0);
+  const net = activeInvoices.reduce((s, inv) => s + Number(inv.total || 0), 0);
+  const salesCount = activeInvoices.length;
+  const avgTicket = salesCount > 0 ? net / salesCount : 0;
+
+  const byHourMap = {};
+  let pos = 0;
+  let crmManual = 0;
+  let online = 0;
+  const productAgg = new Map();
+  let unitsSold = 0;
+
+  for (const inv of activeInvoices) {
+    const total = Number(inv.total || 0);
+    const hour = localHourOf(inv.created_at);
+    if (hour != null) byHourMap[hour] = (byHourMap[hour] || 0) + total;
+
+    // Único señal real de canal en el esquema hoy: order_id (tienda
+    // online/checkout) y source ('pos' | 'crm'). No existe un canal
+    // "WhatsApp" ni otros -- no se inventan acá.
+    if (inv.order_id) online += total;
+    else if (inv.source === 'pos') pos += total;
+    else crmManual += total;
+
+    for (const item of inv.crm_invoice_items || []) {
+      const qty = Number(item.quantity || 0);
+      unitsSold += qty;
+      const key = item.product_id || `__name:${item.name}`;
+      const existing = productAgg.get(key) || { productId: item.product_id || null, name: item.name, quantity: 0, subtotal: 0 };
+      existing.quantity += qty;
+      existing.subtotal += Number(item.subtotal || 0);
+      productAgg.set(key, existing);
+    }
+  }
+
+  const byHour = Array.from({ length: 24 }, (_, hour) => ({ hour, total: round2(byHourMap[hour] || 0) }));
+  const topProducts = [...productAgg.values()]
+    .sort((a, b) => b.quantity - a.quantity || b.subtotal - a.subtotal)
+    .slice(0, 5)
+    .map(p => ({ ...p, quantity: p.quantity, subtotal: round2(p.subtotal) }));
+
+  // Ventas del día pendientes de cobro: facturas emitidas HOY con status
+  // pendiente/parcial, menos lo efectivamente cobrado (cualquier fecha,
+  // igual que getInvoicePaymentSummary -- nunca cuenta 'credit' como cobro).
+  const pendingInvoices = activeInvoices.filter(inv => inv.status === 'pendiente' || inv.status === 'parcial');
+  let pendingToday = 0;
+  if (pendingInvoices.length) {
+    const ids = pendingInvoices.map(inv => inv.id);
+    const { data: pendingPayments, error: pendingErr } = await supabase
+      .from('crm_payments')
+      .select('invoice_id, amount, payment_method, payment_status, voided_at')
+      .in('invoice_id', ids);
+    if (pendingErr) {
+      errors.pendingCollection = pendingErr;
+    } else {
+      const paidByInvoice = {};
+      for (const p of pendingPayments || []) {
+        if (!isActiveReceivedPayment(p)) continue;
+        paidByInvoice[p.invoice_id] = (paidByInvoice[p.invoice_id] || 0) + Number(p.amount || 0);
+      }
+      for (const inv of pendingInvoices) {
+        const paid = paidByInvoice[inv.id] || 0;
+        pendingToday += Math.max(0, Number(inv.total || 0) - paid);
+      }
+    }
+  }
+
+  // ── Dinero recibido (crm_payments.payment_date = :date) ───────────────────
+  // getCashDayPayments ya excluye payment_method='credit' y normaliza el
+  // método -- pero no filtra voided_at (mismo patrón que CrmCash.jsx: se
+  // filtra acá, client-side).
+  const dayPayments = (collectionsRes.data || []).filter(p => !p.voided_at);
+  const collectionsByMethod = emptyByMethod();
+  let collectionsTotal = 0;
+  for (const p of dayPayments) {
+    const method = DAILY_SUMMARY_METHOD_ORDER.includes(p.payment_method) ? p.payment_method : 'other';
+    collectionsByMethod[method] += Number(p.amount || 0);
+    collectionsTotal += Number(p.amount || 0);
+  }
+  for (const key of DAILY_SUMMARY_METHOD_ORDER) collectionsByMethod[key] = round2(collectionsByMethod[key]);
+
+  // ── Gastos (crm_cost_items variables cuya economicDate = :date) ───────────
+  // Reutiliza getOperatingCostItemsForPeriod tal cual -- misma derivación de
+  // economicDate (source_movement_id -> crm_cash_movements.movement_date,
+  // o created_at para variables sin movimiento vinculado) que ya usa
+  // Termómetro/Caja. Los ítems 'fixed' nunca tienen economicDate diario, así
+  // que naturalmente no entran en "gastos del día".
+  const costItems = costItemsRes.data || [];
+  const variableItemsToday = costItems.filter(item => item.type === 'variable' && !item.excluded && item.economicDate === date);
+  const expensesByCategory = {};
+  let expensesTotal = 0;
+  for (const item of variableItemsToday) {
+    const amount = Number(item.amount || 0);
+    expensesByCategory[item.category] = (expensesByCategory[item.category] || 0) + amount;
+    expensesTotal += amount;
+  }
+  for (const key of Object.keys(expensesByCategory)) expensesByCategory[key] = round2(expensesByCategory[key]);
+
+  // Egreso de caja que NO es un gasto nuevo: is_expense=false discrimina de
+  // forma autoritativa (columna real, ver 20260620200000_crm_cash_movements.sql
+  // y 20260913170000_crm_cash_movements_purpose.sql) -- is_expense=true es
+  // exactamente lo que generó (o generará) un crm_cost_item variable, así que
+  // ya está contado arriba; sumarlo de nuevo acá sería doble conteo.
+  const dayMovements = (movementsRes.data || []).filter(m => !m.voided_at);
+  const cashOutflowsNonExpense = round2(
+    dayMovements.filter(m => m.direction === 'out' && !m.is_expense).reduce((s, m) => s + Number(m.amount || 0), 0)
+  );
+
+  // ── Caja y conciliación (multi-sesión) ─────────────────────────────────────
+  const daySessions = sessionsRes.data || [];
+  const cashSessions = [];
+  for (const session of daySessions) {
+    if (session.status === 'closed') {
+      const { data: reconRows, error: reconErr } = await getCashSessionReconciliation(businessId, session.id);
+      if (reconErr) errors[`reconciliation:${session.id}`] = reconErr;
+      cashSessions.push({
+        id: session.id,
+        status: session.status,
+        opened_at: session.opened_at,
+        closed_at: session.closed_at,
+        initial_amount: session.initial_amount,
+        // [] real (cierre legacy sin arqueo) se distingue de null explícitamente
+        // -- "Sin arqueo registrado" en la UI, nunca recalculado.
+        reconciliation: reconRows && reconRows.length ? reconRows : null,
+        isLiveEstimate: false,
+      });
+    } else {
+      // Caja abierta: estimado EN VIVO, nunca presentado como conciliación
+      // definitiva. Reutiliza exactamente lo que usa CrmCash.jsx para el
+      // saldo en caja de una sesión abierta.
+      const [payRes, movRes] = await Promise.all([
+        getCashSessionPayments(businessId, session),
+        getCashSessionMovements(businessId, session.id),
+      ]);
+      if (payRes.error) errors[`sessionPayments:${session.id}`] = payRes.error;
+      if (movRes.error) errors[`sessionMovements:${session.id}`] = movRes.error;
+      const sessPayments = (payRes.data || []).filter(p => !p.voided_at);
+      const sessMovements = (movRes.data || []).filter(m => !m.voided_at);
+      const received = sessPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
+      const manualIn = sessMovements.filter(m => m.direction === 'in').reduce((s, m) => s + Number(m.amount || 0), 0);
+      const outflow = sessMovements.filter(m => m.direction === 'out').reduce((s, m) => s + Number(m.amount || 0), 0);
+      cashSessions.push({
+        id: session.id,
+        status: session.status,
+        opened_at: session.opened_at,
+        closed_at: session.closed_at,
+        initial_amount: session.initial_amount,
+        reconciliation: null,
+        isLiveEstimate: true,
+        liveEstimate: {
+          received: round2(received),
+          manualIn: round2(manualIn),
+          outflow: round2(outflow),
+          expectedBalance: round2(Number(session.initial_amount || 0) + received + manualIn - outflow),
+        },
+      });
+    }
+  }
+
+  // ── Inventario (ledger del día -- no reconstrucción histórica) ────────────
+  const activeProducts = stockProductsRes.data || [];
+  // Mismo umbral que stockStatus() en CrmStock.jsx: stock_actual <= stock_minimo
+  // con ambos configurados. Refleja el stock ACTUAL, no el de :date si :date
+  // no es hoy -- no se reconstruye stock histórico (fuera de alcance V1).
+  const lowStockCount = activeProducts.filter(p => p.stock_actual != null && p.stock_minimo != null && p.stock_actual <= p.stock_minimo).length;
+
+  const dayStockMovements = stockMovementsRes.data || [];
+  const movementsSummary = { entrada: 0, salida: 0, ajuste: 0 };
+  for (const m of dayStockMovements) {
+    if (movementsSummary[m.type] == null) continue;
+    movementsSummary[m.type] += Math.abs(Number(m.quantity || 0));
+  }
+  // crm_stock_movements no guarda cantidad "antes/después" (columnas
+  // inexistentes en el esquema -- verificado) -- solo tipo/cantidad/nota, así
+  // que "notables" es una muestra reciente, no un antes→después.
+  const notableMovements = dayStockMovements.slice(0, 5).map(m => ({
+    productId: m.product_id,
+    productName: m.wa_products?.name || 'Producto',
+    type: m.type,
+    quantity: m.quantity,
+    notes: m.notes || null,
+    created_at: m.created_at,
+  }));
+
+  // ── Resultado del día (estimado, sin COGS) ─────────────────────────────────
+  const estimatedResult = round2(net - expensesTotal);
+  const profitabilityDisclaimer = 'Resultado estimado = Ventas netas − Gastos del día. No incluye el costo de la mercadería vendida (COGS): Walinka no registra costo unitario de producto en ningún lugar del esquema. Nunca lo presentes como margen real.';
+
+  // ── Alertas (reglas deterministas, sin umbrales inventados) ────────────────
+  const alerts = [];
+  if (isToday && lowStockCount > 0) {
+    alerts.push({
+      type: 'low_stock',
+      severity: 'warning',
+      message: `${lowStockCount} producto${lowStockCount === 1 ? '' : 's'} bajo el stock mínimo`,
+    });
+  }
+  for (const session of cashSessions) {
+    if (!session.reconciliation) continue;
+    const diff = session.reconciliation.reduce((s, r) => s + Number(r.difference || 0), 0);
+    if (Math.abs(diff) >= 0.01) {
+      alerts.push({
+        type: 'cash_difference',
+        severity: 'warning',
+        message: `Diferencia de caja en una sesión cerrada: ${diff > 0 ? '+' : ''}${diff.toLocaleString('es-CL')}`,
+        sessionId: session.id,
+      });
+    }
+  }
+  if (pendingToday > 0) {
+    alerts.push({
+      type: 'pending_collection',
+      severity: 'info',
+      message: `Hay ${pendingToday.toLocaleString('es-CL')} pendientes de cobro por ventas de hoy`,
+    });
+  }
+  if (voidedCount > 0) {
+    alerts.push({
+      type: 'voided_sales',
+      severity: 'info',
+      message: `${voidedCount} venta${voidedCount === 1 ? '' : 's'} anulada${voidedCount === 1 ? '' : 's'} hoy`,
+    });
+  }
+  // Regla (e) del ticket (gasto inusualmente alto vs. promedio histórico) se
+  // omite deliberadamente en V1: no hay una regla simple/determinista sin
+  // inventar un umbral -- ver RESUMEN-DEL-DIA-2 en el reporte del PR.
+
+  // ── Metadata y limitaciones históricas ─────────────────────────────────────
+  const historicalLimitations = [];
+  if (!isToday) {
+    historicalLimitations.push('inventory.lowStockCount refleja el stock ACTUAL (de hoy), no el stock histórico de la fecha consultada -- Walinka no reconstruye stock retroactivo (ver RESUMEN-DEL-DIA-2).');
+    historicalLimitations.push('cash.sessions con isLiveEstimate=true reflejan el estado de caja en el momento en que se generó este informe, no el de la fecha consultada.');
+  }
+  historicalLimitations.push('profitability.estimatedResult no incluye costo de mercadería vendida (COGS) -- no existe costo unitario de producto en el esquema.');
+  historicalLimitations.push('La fecha usa el criterio de "fecha local del navegador" (getLocalDateString), igual que Caja/TPV/Termómetro -- no hay configuración de zona horaria a nivel de negocio.');
+
+  return {
+    date,
+    sales: {
+      gross: round2(gross),
+      net: round2(net),
+      discount: round2(discountTotal),
+      count: salesCount,
+      avgTicket: round2(avgTicket),
+      unitsSold,
+      byHour,
+      topProducts,
+      byChannel: { pos: round2(pos), crmManual: round2(crmManual), online: round2(online) },
+      voidedCount,
+    },
+    collections: {
+      byMethod: collectionsByMethod,
+      total: round2(collectionsTotal),
+      pendingToday: round2(pendingToday),
+    },
+    expenses: {
+      total: round2(expensesTotal),
+      byCategory: expensesByCategory,
+      cashOutflowsNonExpense,
+    },
+    cash: {
+      sessions: cashSessions,
+    },
+    inventory: {
+      movementsSummary,
+      notableMovements,
+      lowStockCount,
+      isLowStockForToday: isToday,
+    },
+    profitability: {
+      estimatedResult,
+      formula: 'net_sales_minus_expenses',
+      disclaimer: profitabilityDisclaimer,
+    },
+    alerts,
+    metadata: {
+      is_today: isToday,
+      business_id: businessId,
+      generated_at: generatedAt,
+      historical_limitations: historicalLimitations,
+      errors,
+    },
+  };
+}

@@ -32,6 +32,7 @@ const NAV_ITEMS = [
     premiumGated: true,
     subItems: [
       { label: 'Resumen',          path: '/crm' },
+      { label: 'Resumen del día',  path: '/crm/resumen-dia' },
       { label: 'Clientes',         path: '/crm/clientes' },
       { label: 'Presupuestos',     path: '/crm/presupuestos' },
       { label: 'Notas de venta',   path: '/crm/facturas' },
