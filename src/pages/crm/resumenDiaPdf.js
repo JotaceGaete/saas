@@ -312,3 +312,23 @@ export function buildResumenDiaPdfFilename(businessName, date) {
   const dateStr = String(date || '').slice(0, 10) || 'sin-fecha';
   return `${slug}-resumen-${dateStr}.pdf`;
 }
+
+// ─── Slot único para los botones del header (Imprimir / Descargar PDF) ────────
+
+/**
+ * PanelHeader monta `children` Y `mobileActions` al mismo tiempo -- solo
+ * ALTERNA cuál queda visible por CSS responsive (`hidden lg:flex` /
+ * `lg:hidden`), nunca desmonta el que no corresponde al breakpoint actual.
+ * Si el mismo elemento de acciones (que incluye un <PDFDownloadLink>, con
+ * efectos propios al montarse -- genera el PDF) se pasa a AMBOS props,
+ * terminan existiendo dos instancias montadas y generando el PDF en
+ * simultáneo. Esta función devuelve exactamente un slot activo según el
+ * breakpoint real (`isMobileHeader`, calculado en el componente vía
+ * matchMedia sobre el mismo corte `lg` de 1024px que usa PanelHeader) --
+ * nunca ambos, así solo existe un <PDFDownloadLink> montado a la vez.
+ */
+export function getResumenDiaHeaderActionSlots(isMobileHeader, actions) {
+  return isMobileHeader
+    ? { children: null, mobileActions: actions }
+    : { children: actions, mobileActions: undefined };
+}

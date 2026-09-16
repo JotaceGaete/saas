@@ -21,7 +21,7 @@ vi.mock('../../lib/supabase', () => ({
 }));
 
 import { getDailySummary, PAYMENT_METHOD_LABELS } from '../../services/crmService';
-import { buildResumenDiaPdfViewModel, buildResumenDiaPdfFilename } from './resumenDiaPdf';
+import { buildResumenDiaPdfViewModel, buildResumenDiaPdfFilename, getResumenDiaHeaderActionSlots } from './resumenDiaPdf';
 import { formatMoney } from '../../utils/formatMoney';
 
 beforeEach(() => {
@@ -412,5 +412,38 @@ describe('buildResumenDiaPdfFilename', () => {
 
   it('usa el sufijo YYYY-MM-DD de la fecha dada', () => {
     expect(buildResumenDiaPdfFilename('Test', '2025-01-05')).toBe('test-resumen-2025-01-05.pdf');
+  });
+});
+
+describe('getResumenDiaHeaderActionSlots — un solo <PDFDownloadLink> montado a la vez', () => {
+  // PanelHeader monta `children` y `mobileActions` simultáneamente (solo
+  // alterna cuál se ve por CSS `hidden lg:flex` / `lg:hidden`) -- nunca
+  // desmonta el otro. reportActions incluye un <PDFDownloadLink>, que genera
+  // el PDF al montarse: pasarlo a ambos props produce dos generadores
+  // activos en simultáneo. Esta función es la que garantiza un único slot.
+  const actions = { marker: 'reportActions' };
+
+  it('en móvil: el slot activo es mobileActions, children queda null', () => {
+    const slots = getResumenDiaHeaderActionSlots(true, actions);
+    expect(slots.mobileActions).toBe(actions);
+    expect(slots.children).toBeNull();
+  });
+
+  it('en desktop: el slot activo es children, mobileActions queda undefined', () => {
+    const slots = getResumenDiaHeaderActionSlots(false, actions);
+    expect(slots.children).toBe(actions);
+    expect(slots.mobileActions).toBeUndefined();
+  });
+
+  it('NUNCA hay dos slots con las acciones a la vez (la condición que monta ambos en PanelHeader)', () => {
+    for (const isMobileHeader of [true, false]) {
+      const slots = getResumenDiaHeaderActionSlots(isMobileHeader, actions);
+      // Replica la condición real de PanelHeader.jsx: `children && mobileActions`
+      // controla si ambos árboles quedan montados -- debe ser siempre falsy.
+      expect(Boolean(slots.children && slots.mobileActions)).toBe(false);
+      // Y las acciones deben seguir siendo accesibles en AMBOS breakpoints:
+      // exactamente uno de los dos slots las contiene.
+      expect([slots.children, slots.mobileActions].filter((s) => s === actions)).toHaveLength(1);
+    }
   });
 });

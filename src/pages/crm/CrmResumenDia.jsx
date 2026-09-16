@@ -11,7 +11,7 @@ import { useAuth } from 'contexts/AuthContext';
 import { formatMoney } from 'utils/formatMoney';
 import { PAYMENT_METHOD_LABELS, getDailySummary, getLocalDateString } from 'services/crmService';
 import CrmResumenDiaPdfDocument from './CrmResumenDiaPdfDocument';
-import { buildResumenDiaPdfFilename } from './resumenDiaPdf';
+import { buildResumenDiaPdfFilename, getResumenDiaHeaderActionSlots } from './resumenDiaPdf';
 
 // RESUMEN-DEL-DIA-2 — hoja imprimible: se oculta todo lo demás en @media
 // print (sidebar/app-shell, header, selector de fecha, los propios botones
@@ -260,6 +260,25 @@ export default function CrmResumenDia() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // PanelHeader monta `children` y `mobileActions` simultáneamente (solo
+  // alterna cuál se ve por CSS) -- como reportActions incluye un
+  // <PDFDownloadLink> (genera el PDF al montarse), pasarlo a ambos props
+  // produciría dos generadores de PDF activos a la vez. Se decide un único
+  // slot en JS según el mismo corte `lg` (1024px) que usa PanelHeader --
+  // mismo patrón de detección de breakpoint que ya usa CrmDocumentPdf.jsx
+  // (isMobile vía matchMedia) para el mismo tipo de problema.
+  const [isMobileHeader, setIsMobileHeader] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 1024;
+  });
+
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 1023px)');
+    const handler = (e) => setIsMobileHeader(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
+
   const currency = business?.currency || 'CLP';
 
   const load = useCallback(async () => {
@@ -343,6 +362,11 @@ export default function CrmResumenDia() {
     </>
   );
 
+  // Exactamente un slot activo (children O mobileActions, nunca ambos) --
+  // ver getResumenDiaHeaderActionSlots: evita montar dos <PDFDownloadLink>
+  // simultáneos.
+  const headerActionSlots = getResumenDiaHeaderActionSlots(isMobileHeader, reportActions);
+
   return (
     <DashboardAppShell>
       <style>{PRINT_STYLE}</style>
@@ -360,9 +384,9 @@ export default function CrmResumenDia() {
             {fmtDateLong(date)}
           </p>
         }
-        mobileActions={reportActions}
+        mobileActions={headerActionSlots.mobileActions}
       >
-        {reportActions}
+        {headerActionSlots.children}
       </PanelHeader>
 
       <DashboardLayoutContent innerClassName="lg:max-w-6xl">
