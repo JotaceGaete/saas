@@ -260,3 +260,80 @@ describe('CrmResumenDia.jsx — pantalla y PrintView reciben el mismo `summary` 
     expect(codeOnly).toMatch(/\.print-avoid-break[\s\S]{0,80}break-inside:\s*avoid/);
   });
 });
+
+describe('CrmResumenDia.jsx — páginas fantasma en impresión (regresión)', () => {
+  // Bug real después de mergear la corrección de impresión: Chrome generaba
+  // 4 páginas (1 con contenido, 1 con Caja/Inventario/Alertas + mucho
+  // espacio libre, 2 completamente vacías) porque `visibility:hidden` NUNCA
+  // saca un elemento del flujo -- el dashboard completo (9 secciones, con
+  // tarjetas grandes) seguía montado, oculto pero con su altura real
+  // intacta, hermano de la hoja imprimible. Además `.panel-root`/
+  // `.panel-main` (DashboardAppShell.jsx) fuerzan `min-h-screen` -- son
+  // ANCESTROS de la hoja imprimible, así que nunca pueden ocultarse con
+  // display:none (eso también taparía la hoja imprimible).
+  const codeOnly = crmResumenDiaSource
+    .split('\n')
+    .map((line) => line.replace(/\/\/.*$/, ''))
+    .join('\n');
+
+  it('el dashboard de pantalla tiene una clase dedicada (.resumen-dia-screen-only), hermana de la hoja imprimible', () => {
+    expect(codeOnly).toMatch(/className="resumen-dia-screen-only\s+flex flex-col gap-5 md:gap-6"/);
+  });
+
+  it('esa clase se oculta con display:none REAL en impresión (no solo visibility) -- elimina la altura fantasma del dashboard', () => {
+    expect(codeOnly).toMatch(/\.resumen-dia-screen-only\s*\{[^}]*display:\s*none\s*!important/);
+  });
+
+  it('el dashboard NUNCA es ancestro de la hoja imprimible -- CrmResumenDiaPrintView aparece DESPUÉS de que .resumen-dia-screen-only se cierra', () => {
+    const openIdx = codeOnly.indexOf('className="resumen-dia-screen-only');
+    expect(openIdx).toBeGreaterThan(-1);
+    // Cuenta apertura/cierre de <div ...> desde el div del dashboard hasta
+    // encontrar su propio cierre -- si CrmResumenDiaPrintView aparece ANTES
+    // de que el contador vuelva a 0, sería un descendiente (el bug que este
+    // fix evita), no un hermano.
+    const rest = codeOnly.slice(openIdx);
+    let depth = 0;
+    let closeOffset = -1;
+    const tagRe = /<div\b|<\/div>/g;
+    let match;
+    while ((match = tagRe.exec(rest))) {
+      depth += match[0] === '<div' ? 1 : -1;
+      if (depth === 0) { closeOffset = match.index; break; }
+    }
+    expect(closeOffset).toBeGreaterThan(-1);
+    const printViewIdx = rest.indexOf('<CrmResumenDiaPrintView');
+    expect(printViewIdx).toBeGreaterThan(closeOffset);
+  });
+
+  it('.panel-root/.panel-main (ancestros reales de la hoja imprimible) resetean min-height en impresión, pero NUNCA se ocultan con display:none', () => {
+    expect(codeOnly).toMatch(/\.panel-root,\s*\n?\s*\.panel-main\s*\{[^}]*min-height:\s*0\s*!important/);
+    expect(codeOnly).not.toMatch(/\.panel-root[^}]*display:\s*none/);
+    expect(codeOnly).not.toMatch(/\.panel-main[^}]*display:\s*none/);
+  });
+
+  it('html/body también resetean min-height en impresión', () => {
+    const printBlockMatch = codeOnly.match(/html, body \{([^}]*)\}/);
+    expect(printBlockMatch).not.toBeNull();
+    expect(printBlockMatch[1]).toMatch(/min-height:\s*0\s*!important/);
+  });
+});
+
+describe('CrmResumenDiaPrintView.jsx — "Saldo antes de costo de mercadería" tiene una sola explicación', () => {
+  it('no repite dos veces la misma frase del disclaimer -- ya no hay un texto fijo hardcodeado, viene una sola vez de vm.disclaimer', () => {
+    const source = printViewSource;
+    const occurrences = (source.match(/Ventas netas menos gastos registrados\. No incluye el costo de los productos vendidos/g) || []).length;
+    expect(occurrences).toBe(0);
+  });
+
+  it('la única explicación viene de vm.disclaimer (crmService.js), no de un texto fijo duplicado', () => {
+    expect(printViewSource).toMatch(/\{vm\.disclaimer\}/);
+  });
+
+  it('en el DOM renderizado, la frase requerida aparece UNA sola vez, no dos', async () => {
+    mockTables(EMPTY_TABLES);
+    const summary = await getDailySummary('biz1', '2026-09-16');
+    render(<CrmResumenDiaPrintView summary={summary} business={BUSINESS} date="2026-09-16" />);
+
+    expect(screen.getAllByText(/no representa la ganancia del día/i)).toHaveLength(1);
+  });
+});

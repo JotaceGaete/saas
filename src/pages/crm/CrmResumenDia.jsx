@@ -31,6 +31,31 @@ import { buildResumenDiaPdfFilename, getResumenDiaHeaderActionSlots } from './re
 // (.order-print-sheet) y CrmBarcodes.jsx -- no se inventa un mecanismo de
 // impresión distinto.
 //
+// PÁGINAS FANTASMA (bug real encontrado después de mergear la corrección de
+// impresión): `visibility: hidden` NUNCA saca un elemento del flujo -- solo
+// lo hace invisible, pero su ALTURA sigue contando para la paginación de
+// impresión. El dashboard de pantalla (9 secciones completas, con tarjetas
+// grandes) seguía montado, oculto pero con su altura real intacta, JUSTO AL
+// LADO de la hoja imprimible (misma jerarquía, son hermanos). Además
+// DashboardAppShell.jsx pone `min-h-screen` (min-height: 100vh) en
+// `.panel-root` y `.panel-main`, que son ANCESTROS de la hoja imprimible --
+// tampoco se pueden ocultar con `display:none` (eso también taparía a la
+// propia hoja imprimible, que es descendiente de ambos). Resultado: el
+// documento de impresión terminaba teniendo la altura de "1 pantalla completa
+// (min-height) + todo el dashboard invisible", mucho más alta que el
+// contenido real -- de ahí las páginas 3 y 4 completamente en blanco.
+//
+// Fix de dos partes:
+//   1. El wrapper del dashboard (`.resumen-dia-screen-only`, hermano de la
+//      hoja imprimible, nunca su ancestro) se oculta con `display:none`
+//      real -- sí es seguro acá porque NO es ancestro de `.resumen-dia-
+//      print-sheet`, así que no le afecta. Esto elimina el mayor
+//      contribuyente de altura fantasma.
+//   2. `.panel-root`/`.panel-main` (ancestros reales de la hoja imprimible,
+//      ver DashboardAppShell.jsx) resetean su `min-height`/`height` a 0 y
+//      `overflow` a visible en impresión -- nunca se ocultan (romperían la
+//      hoja imprimible), solo dejan de forzar espacio de más.
+//
 // `break-inside: avoid` se aplica SOLO a bloques chicos vía `.print-avoid-
 // break` (encabezado+primera fila, tarjetas de resumen, filas de tabla,
 // cajas de nota/sesión) -- nunca a una sección completa grande, que era
@@ -49,10 +74,30 @@ const PRINT_STYLE = `
     margin: 0 !important;
     padding: 0 !important;
     background: #fff !important;
+    height: auto !important;
+    min-height: 0 !important;
   }
 
   body * {
     visibility: hidden !important;
+  }
+
+  /* Hermano de la hoja imprimible, NUNCA su ancestro -- display:none acá es
+     seguro y elimina la altura fantasma del dashboard completo (la causa
+     principal de las páginas en blanco). */
+  .resumen-dia-screen-only {
+    display: none !important;
+  }
+
+  /* Ancestros reales de la hoja imprimible (ver DashboardAppShell.jsx) --
+     nunca display:none (eso también ocultaría la hoja imprimible, que
+     cuelga de ellos), solo se les quita el min-height/height que fuerza
+     espacio de más durante la impresión. */
+  .panel-root,
+  .panel-main {
+    min-height: 0 !important;
+    height: auto !important;
+    overflow: visible !important;
   }
 
   .resumen-dia-print-sheet,
@@ -452,7 +497,7 @@ export default function CrmResumenDia() {
           <EmptyRow>No se pudo cargar el resumen.</EmptyRow>
         ) : (
           <>
-          <div className="flex flex-col gap-5 md:gap-6">
+          <div className="resumen-dia-screen-only flex flex-col gap-5 md:gap-6">
             {/* 1. Cabecera / KPIs ------------------------------------------------ */}
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
               <KpiCard

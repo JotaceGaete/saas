@@ -85,15 +85,15 @@ function Table({ head, rows, renderRow, emptyLabel }) {
 function SalesSection({ vm }) {
   if (!vm.available) {
     return (
-      <section className="mb-3">
-        <h2 className="print-heading mb-1 text-[10.5pt] font-bold text-[#1B2F4E]">1. Ventas</h2>
+      <section className="mb-4">
+        <h2 className="print-heading mb-1.5 text-[10.5pt] font-bold text-[#1B2F4E]">1. Ventas</h2>
         <Unavailable message={vm.message} />
       </section>
     );
   }
   return (
-    <section className="mb-3">
-      <h2 className="print-heading mb-1 text-[10.5pt] font-bold text-[#1B2F4E]">1. Ventas</h2>
+    <section className="mb-4">
+      <h2 className="print-heading mb-1.5 text-[10.5pt] font-bold text-[#1B2F4E]">1. Ventas</h2>
       <p className="mb-1.5 text-[7.5pt] text-gray-400">Notas de venta emitidas este día (excluye anuladas)</p>
       <div className="mb-2 flex flex-wrap gap-1.5">
         <Kpi label="Bruta" item={vm.gross} />
@@ -141,8 +141,8 @@ function SalesSection({ vm }) {
 
 function CollectionsSection({ vm }) {
   return (
-    <section className="mb-3">
-      <h2 className="print-heading mb-1 text-[10.5pt] font-bold text-[#1B2F4E]">2. Dinero recibido</h2>
+    <section className="mb-4">
+      <h2 className="print-heading mb-1.5 text-[10.5pt] font-bold text-[#1B2F4E]">2. Dinero recibido</h2>
       <p className="mb-1.5 text-[7.5pt] text-gray-400">Pagos efectivamente recibidos este día, por medio</p>
       {!vm.available ? (
         <Unavailable message={vm.message} />
@@ -178,15 +178,15 @@ function CollectionsSection({ vm }) {
 function ExpensesSection({ vm }) {
   if (!vm.available) {
     return (
-      <section className="mb-3">
-        <h2 className="print-heading mb-1 text-[10.5pt] font-bold text-[#1B2F4E]">3. Gastos y egresos</h2>
+      <section className="mb-4">
+        <h2 className="print-heading mb-1.5 text-[10.5pt] font-bold text-[#1B2F4E]">3. Gastos y egresos</h2>
         <Unavailable message={vm.message} />
       </section>
     );
   }
   return (
-    <section className="mb-3">
-      <h2 className="print-heading mb-1 text-[10.5pt] font-bold text-[#1B2F4E]">3. Gastos y egresos</h2>
+    <section className="mb-4">
+      <h2 className="print-heading mb-1.5 text-[10.5pt] font-bold text-[#1B2F4E]">3. Gastos y egresos</h2>
       <p className="mb-1.5 text-[7.5pt] text-gray-400">Gastos variables del día y otros movimientos de caja que no son gasto</p>
       <div className="mb-2 flex flex-wrap gap-1.5">
         <Kpi label="Gastos del día" item={vm.total} tone="#B91C1C" />
@@ -212,8 +212,8 @@ function ExpensesSection({ vm }) {
 
 function ProfitabilitySection({ vm }) {
   return (
-    <section className="print-avoid-break mb-3">
-      <h2 className="print-heading mb-1 text-[10.5pt] font-bold text-[#1B2F4E]">Saldo antes de costo de mercadería</h2>
+    <section className="print-avoid-break mb-4">
+      <h2 className="print-heading mb-1.5 text-[10.5pt] font-bold text-[#1B2F4E]">Saldo antes de costo de mercadería</h2>
       {!vm.available ? (
         <Unavailable message={vm.message} />
       ) : (
@@ -221,10 +221,10 @@ function ProfitabilitySection({ vm }) {
           <p className="text-[15pt] font-bold" style={{ color: vm.positive ? '#15803D' : vm.negative ? '#B91C1C' : '#475569' }}>
             {vm.positive ? '+' : ''}{vm.formatted}
           </p>
-          <p className="mt-1 rounded bg-amber-50 px-2 py-1.5 text-[7.5pt] leading-tight text-amber-800">
-            Ventas netas menos gastos registrados. No incluye el costo de los productos vendidos, por lo que no representa la ganancia del día.
-          </p>
-          <p className="mt-1 rounded bg-gray-50 px-2 py-1.5 text-[7.5pt] leading-tight text-gray-500">{vm.disclaimer}</p>
+          {/* Una sola explicación -- vm.disclaimer (crmService.js) ya
+              contiene la frase requerida como sus primeras dos oraciones;
+              antes se repetía dos veces (un párrafo fijo + este). */}
+          <p className="mt-1 rounded bg-amber-50 px-2 py-1.5 text-[7.5pt] leading-tight text-amber-800">{vm.disclaimer}</p>
         </>
       )}
     </section>
@@ -302,8 +302,8 @@ function CashSessionBlock({ session }) {
 
 function CashSection({ vm }) {
   return (
-    <section className="mb-3">
-      <h2 className="print-heading mb-1 text-[10.5pt] font-bold text-[#1B2F4E]">4. Caja y conciliación</h2>
+    <section className="mb-4">
+      <h2 className="print-heading mb-1.5 text-[10.5pt] font-bold text-[#1B2F4E]">4. Caja y conciliación</h2>
       <p className="mb-1.5 text-[7.5pt] text-gray-400">Puede haber más de una caja abierta/cerrada este día (cambios de turno)</p>
       {!vm.available ? (
         <Unavailable message={vm.message} />
@@ -319,15 +319,15 @@ function CashSection({ vm }) {
 function InventorySection({ vm }) {
   if (!vm.available) {
     return (
-      <section className="mb-3">
-        <h2 className="print-heading mb-1 text-[10.5pt] font-bold text-[#1B2F4E]">5. Inventario</h2>
+      <section className="mb-4">
+        <h2 className="print-heading mb-1.5 text-[10.5pt] font-bold text-[#1B2F4E]">5. Inventario</h2>
         <Unavailable message={vm.message} />
       </section>
     );
   }
   return (
-    <section className="mb-3">
-      <h2 className="print-heading mb-1 text-[10.5pt] font-bold text-[#1B2F4E]">5. Inventario</h2>
+    <section className="mb-4">
+      <h2 className="print-heading mb-1.5 text-[10.5pt] font-bold text-[#1B2F4E]">5. Inventario</h2>
       <p className="mb-1.5 text-[7.5pt] text-gray-400">Movimientos de stock registrados este día</p>
       <div className="mb-1.5 flex flex-wrap gap-1.5">
         <Kpi label="Entradas" item={{ formatted: String(vm.movementsSummary.entrada) }} />
@@ -363,8 +363,8 @@ function AlertsSection({ alerts }) {
   if (!alerts.length) return null;
   const tone = { warning: { bg: '#FEF9C3', color: '#B45309' }, info: { bg: '#DBEAFE', color: '#1D4ED8' }, error: { bg: '#FEE2E2', color: '#B91C1C' } };
   return (
-    <section className="mb-3">
-      <h2 className="print-heading mb-1 text-[10.5pt] font-bold text-[#1B2F4E]">6. Alertas</h2>
+    <section className="mb-4">
+      <h2 className="print-heading mb-1.5 text-[10.5pt] font-bold text-[#1B2F4E]">6. Alertas</h2>
       {alerts.map((a, i) => {
         const t = tone[a.severity] || tone.info;
         return (
