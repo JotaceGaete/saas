@@ -11,14 +11,33 @@ import { useAuth } from 'contexts/AuthContext';
 import { formatMoney } from 'utils/formatMoney';
 import { PAYMENT_METHOD_LABELS, getDailySummary, getLocalDateString } from 'services/crmService';
 import CrmResumenDiaPdfDocument from './CrmResumenDiaPdfDocument';
+import CrmResumenDiaPrintView from './CrmResumenDiaPrintView';
 import { buildResumenDiaPdfFilename, getResumenDiaHeaderActionSlots } from './resumenDiaPdf';
 
-// RESUMEN-DEL-DIA-2 — hoja imprimible: se oculta todo lo demás en @media
-// print (sidebar/app-shell, header, selector de fecha, los propios botones
-// Imprimir/Descargar) y se muestra SOLO el contenido con esta clase, en
-// blanco, tamaño A4. Mismo mecanismo "ocultar todo salvo una clase" que ya
-// usan OrderDetailDrawer.jsx (.order-print-sheet) y CrmBarcodes.jsx -- no se
-// inventa un mecanismo de impresión distinto.
+// RESUMEN-DEL-DIA-2 — CORRECCIÓN DE IMPRESIÓN A4.
+//
+// window.print() imprimía literalmente el dashboard de pantalla (tarjetas
+// grandes pensadas para pantalla, mucho espacio en blanco, 4 páginas para
+// poca información) porque la clase `.resumen-dia-print-sheet` envolvía
+// directamente esas mismas tarjetas. Ahora esa clase envuelve un componente
+// DEDICADO y oculto en pantalla (<CrmResumenDiaPrintView>) que consume el
+// mismo buildResumenDiaPdfViewModel() que ya usa el PDF -- nunca recalcula
+// nada, solo cambia el layout visual.
+//
+// Se oculta todo lo demás en @media print (sidebar/app-shell, header,
+// selector de fecha, los propios botones Imprimir/Descargar, el dashboard de
+// pantalla) y se muestra SOLO el contenido con esta clase. Mismo mecanismo
+// "ocultar todo salvo una clase" que ya usan OrderDetailDrawer.jsx
+// (.order-print-sheet) y CrmBarcodes.jsx -- no se inventa un mecanismo de
+// impresión distinto.
+//
+// `break-inside: avoid` se aplica SOLO a bloques chicos vía `.print-avoid-
+// break` (encabezado+primera fila, tarjetas de resumen, filas de tabla,
+// cajas de nota/sesión) -- nunca a una sección completa grande, que era
+// justamente la causa de los cortes de página pobres. `.print-heading` evita
+// que un título quede solo al final de una página (break-after, no
+// break-inside: no retiene el contenido que sigue, solo pega el título a su
+// primera línea).
 const PRINT_STYLE = `
 @page {
   size: A4;
@@ -42,7 +61,7 @@ const PRINT_STYLE = `
   }
 
   .resumen-dia-print-sheet {
-    display: flex !important;
+    display: block !important;
     position: absolute !important;
     left: 0 !important;
     top: 0 !important;
@@ -52,9 +71,27 @@ const PRINT_STYLE = `
     background: #fff !important;
   }
 
-  .resumen-dia-print-sheet section {
+  .resumen-dia-print-sheet .print-avoid-break {
     break-inside: avoid !important;
     page-break-inside: avoid !important;
+  }
+
+  .resumen-dia-print-sheet .print-heading {
+    break-after: avoid !important;
+    page-break-after: avoid !important;
+  }
+
+  .resumen-dia-print-sheet table {
+    border-collapse: collapse !important;
+  }
+
+  .resumen-dia-print-sheet tr {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  .resumen-dia-print-sheet thead {
+    display: table-header-group !important;
   }
 }
 `;
@@ -414,7 +451,8 @@ export default function CrmResumenDia() {
         ) : !summary ? (
           <EmptyRow>No se pudo cargar el resumen.</EmptyRow>
         ) : (
-          <div className="resumen-dia-print-sheet flex flex-col gap-5 md:gap-6">
+          <>
+          <div className="flex flex-col gap-5 md:gap-6">
             {/* 1. Cabecera / KPIs ------------------------------------------------ */}
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
               <KpiCard
@@ -789,6 +827,17 @@ export default function CrmResumenDia() {
               </div>
             </Section>
           </div>
+
+          {/* Hoja imprimible dedicada -- oculta en pantalla (`hidden`), visible
+              SOLO bajo @media print vía la clase .resumen-dia-print-sheet
+              (PRINT_STYLE la fuerza a display:block con !important). NO son
+              las tarjetas de arriba: es CrmResumenDiaPrintView, compacta,
+              construida sobre el mismo buildResumenDiaPdfViewModel() que ya
+              usa el PDF -- ningún cálculo nuevo. */}
+          <div className="resumen-dia-print-sheet hidden">
+            <CrmResumenDiaPrintView summary={summary} business={business} date={date} />
+          </div>
+          </>
         )}
       </DashboardLayoutContent>
     </DashboardAppShell>
