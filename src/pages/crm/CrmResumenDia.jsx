@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from 'recharts';
+import { PDFDownloadLink } from '@react-pdf/renderer';
 import DashboardAppShell from 'components/ui/DashboardAppShell';
 import DashboardLayoutContent from 'components/ui/DashboardLayoutContent';
 import PanelHeader from 'components/ui/PanelHeader';
@@ -9,6 +10,54 @@ import Icon from 'components/AppIcon';
 import { useAuth } from 'contexts/AuthContext';
 import { formatMoney } from 'utils/formatMoney';
 import { PAYMENT_METHOD_LABELS, getDailySummary, getLocalDateString } from 'services/crmService';
+import CrmResumenDiaPdfDocument from './CrmResumenDiaPdfDocument';
+import { buildResumenDiaPdfFilename, getResumenDiaHeaderActionSlots } from './resumenDiaPdf';
+
+// RESUMEN-DEL-DIA-2 — hoja imprimible: se oculta todo lo demás en @media
+// print (sidebar/app-shell, header, selector de fecha, los propios botones
+// Imprimir/Descargar) y se muestra SOLO el contenido con esta clase, en
+// blanco, tamaño A4. Mismo mecanismo "ocultar todo salvo una clase" que ya
+// usan OrderDetailDrawer.jsx (.order-print-sheet) y CrmBarcodes.jsx -- no se
+// inventa un mecanismo de impresión distinto.
+const PRINT_STYLE = `
+@page {
+  size: A4;
+  margin: 12mm;
+}
+
+@media print {
+  html, body {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #fff !important;
+  }
+
+  body * {
+    visibility: hidden !important;
+  }
+
+  .resumen-dia-print-sheet,
+  .resumen-dia-print-sheet * {
+    visibility: visible !important;
+  }
+
+  .resumen-dia-print-sheet {
+    display: flex !important;
+    position: absolute !important;
+    left: 0 !important;
+    top: 0 !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    background: #fff !important;
+  }
+
+  .resumen-dia-print-sheet section {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}
+`;
 
 // Mismo vocabulario de categorías que CrmCostos.jsx / crm_cost_items_category_check
 // (rent, salaries, utilities, services, taxes, supplies, other) -- no se inventan
@@ -211,6 +260,25 @@ export default function CrmResumenDia() {
   const [loading, setLoading] = useState(true);
   const [errorMsg, setErrorMsg] = useState('');
 
+  // PanelHeader monta `children` y `mobileActions` simultáneamente (solo
+  // alterna cuál se ve por CSS) -- como reportActions incluye un
+  // <PDFDownloadLink> (genera el PDF al montarse), pasarlo a ambos props
+  // produciría dos generadores de PDF activos a la vez. Se decide un único
+  // slot en JS según el mismo corte `lg` (1024px) que usa PanelHeader --
+  // mismo patrón de detección de breakpoint que ya usa CrmDocumentPdf.jsx
+  // (isMobile vía matchMedia) para el mismo tipo de problema.
+  const [isMobileHeader, setIsMobileHeader] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    return window.innerWidth < 1024;
+  });
+
+  useEffect(() => {
+    const mql = window.matchMedia('(max-width: 1023px)');
+    const handler = (e) => setIsMobileHeader(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, []);
+
   const currency = business?.currency || 'CLP';
 
   const load = useCallback(async () => {
@@ -245,8 +313,63 @@ export default function CrmResumenDia() {
     return 'text-gray-500';
   }, [profitability]);
 
+  const canExport = !loading && !!summary;
+  const pdfFilename = buildResumenDiaPdfFilename(business?.name, date);
+
+  const printButton = (
+    <button
+      type="button"
+      onClick={() => window.print()}
+      disabled={!canExport}
+      className="flex flex-1 items-center justify-center gap-2 rounded-lg border border-gray-200 px-3 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 lg:flex-none lg:px-4"
+    >
+      <Icon name="Printer" size={14} />
+      Imprimir
+    </button>
+  );
+
+  // El PDFDownloadLink de @react-pdf/renderer NO puede renderizar `document`
+  // undefined -- por eso solo se monta cuando ya hay `summary` (guardia
+  // equivalente a `!summary` que ya usa el resto de esta página). Consume el
+  // MISMO `summary` que ya está en memoria: nunca vuelve a llamar a
+  // getDailySummary.
+  const downloadButton = canExport ? (
+    <PDFDownloadLink
+      document={<CrmResumenDiaPdfDocument summary={summary} business={business} date={date} />}
+      fileName={pdfFilename}
+      className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white hover:bg-blue-700 lg:flex-none lg:px-4"
+    >
+      {({ loading: pdfLoading }) => pdfLoading
+        ? <><Icon name="Loader2" size={14} className="animate-spin" />Preparando…</>
+        : <><Icon name="Download" size={14} />Descargar PDF</>
+      }
+    </PDFDownloadLink>
+  ) : (
+    <button
+      type="button"
+      disabled
+      className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-3 py-2 text-xs font-bold text-white opacity-40 lg:flex-none lg:px-4"
+    >
+      <Icon name="Download" size={14} />
+      Descargar PDF
+    </button>
+  );
+
+  const reportActions = (
+    <>
+      {printButton}
+      {downloadButton}
+    </>
+  );
+
+  // Exactamente un slot activo (children O mobileActions, nunca ambos) --
+  // ver getResumenDiaHeaderActionSlots: evita montar dos <PDFDownloadLink>
+  // simultáneos.
+  const headerActionSlots = getResumenDiaHeaderActionSlots(isMobileHeader, reportActions);
+
   return (
     <DashboardAppShell>
+      <style>{PRINT_STYLE}</style>
       <PanelHeader
         title={
           <>
@@ -261,7 +384,10 @@ export default function CrmResumenDia() {
             {fmtDateLong(date)}
           </p>
         }
-      />
+        mobileActions={headerActionSlots.mobileActions}
+      >
+        {headerActionSlots.children}
+      </PanelHeader>
 
       <DashboardLayoutContent innerClassName="lg:max-w-6xl">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -288,7 +414,7 @@ export default function CrmResumenDia() {
         ) : !summary ? (
           <EmptyRow>No se pudo cargar el resumen.</EmptyRow>
         ) : (
-          <>
+          <div className="resumen-dia-print-sheet flex flex-col gap-5 md:gap-6">
             {/* 1. Cabecera / KPIs ------------------------------------------------ */}
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
               <KpiCard
@@ -662,7 +788,7 @@ export default function CrmResumenDia() {
                 </p>
               </div>
             </Section>
-          </>
+          </div>
         )}
       </DashboardLayoutContent>
     </DashboardAppShell>
