@@ -85,6 +85,26 @@ SET LOCAL ROLE authenticated;
 SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', true);
 SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-0000000000f1','role','authenticated')::text, true);
 
+-- NOTA DE AISLAMIENTO DE ROL (todos los escenarios que inspeccionan
+-- crm_payments/crm_invoices DESPUÉS de invocar la RPC): la LLAMADA a
+-- crm_create_pos_sale corre bajo `role=authenticated` + auth.uid() real --
+-- eso es lo que efectivamente ejercita el chequeo de ownership
+-- (`IF NOT EXISTS (... wa_businesses WHERE user_id = v_user_id)`) de la
+-- propia RPC, y nunca se debilita. Pero una lectura POSTERIOR de
+-- crm_payments hecha todavía bajo `authenticated` falla en este shadow
+-- local con "permission denied for table wa_businesses": la policy de
+-- crm_payments evalúa un subquery contra wa_businesses, y el shadow local
+-- de Supabase no replica el GRANT implícito de plataforma sobre esa tabla
+-- (mismo problema ya documentado en
+-- verify_crm_cash_documents_reconciliation.sql). No es un bug de RLS de
+-- producción -- es una limitación conocida del entorno local. La
+-- inspección de verificación (no la invocación de la RPC) se hace
+-- entonces bajo el rol que conecta psql (postgres/superuser, que
+-- bypasea RLS por defecto), exactamente el mismo patrón ya usado en
+-- verify_crm_cash_session_reconciliations.sql (RESET ROLE antes de leer,
+-- SET LOCAL ROLE authenticated de nuevo antes de la siguiente invocación
+-- real). No se toca ningún GRANT/policy real del esquema.
+
 -- ══════════════════════════════════════════════════════════════════════════
 -- ESCENARIO A: cash aceptado. Venta pagada 100% en efectivo -> éxito,
 -- payment_method persistido = 'cash', cash_session_id asociado (#17).
@@ -92,9 +112,7 @@ SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0
 DO $$
 DECLARE
   v_biz     UUID := current_setting('test.biz_id')::uuid;
-  v_session UUID := current_setting('test.session_id')::uuid;
   v_invoice public.crm_invoices;
-  v_pay     public.crm_payments;
 BEGIN
   SELECT * INTO v_invoice FROM public.crm_create_pos_sale(
     v_biz, 'test-key-A-cash',
@@ -104,13 +122,27 @@ BEGIN
     NULL, 'CLP'
   );
   ASSERT v_invoice.status = 'pagada', 'FAIL escenario A: status debería ser pagada, fue ' || v_invoice.status;
+  PERFORM set_config('test.invoice_a', v_invoice.id::text, true);
+END $$;
 
-  SELECT * INTO v_pay FROM public.crm_payments WHERE invoice_id = v_invoice.id;
+RESET ROLE;
+
+DO $$
+DECLARE
+  v_invoice_id UUID := current_setting('test.invoice_a')::uuid;
+  v_session    UUID := current_setting('test.session_id')::uuid;
+  v_pay        public.crm_payments;
+BEGIN
+  SELECT * INTO v_pay FROM public.crm_payments WHERE invoice_id = v_invoice_id;
   ASSERT v_pay.payment_method = 'cash', 'FAIL escenario A: payment_method debería ser cash, fue ' || v_pay.payment_method;
   ASSERT v_pay.cash_session_id = v_session, 'FAIL escenario A: cash_session_id debería ser la sesión abierta de prueba';
 
   RAISE NOTICE 'OK: escenario A -- cash aceptado, venta pagada, payment_method=cash, cash_session_id asociado correctamente';
 END $$;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', true);
+SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-0000000000f1','role','authenticated')::text, true);
 
 -- ══════════════════════════════════════════════════════════════════════════
 -- ESCENARIO B: card (legacy) sigue aceptado -- compatibilidad histórica.
@@ -119,7 +151,6 @@ DO $$
 DECLARE
   v_biz     UUID := current_setting('test.biz_id')::uuid;
   v_invoice public.crm_invoices;
-  v_pay     public.crm_payments;
 BEGIN
   SELECT * INTO v_invoice FROM public.crm_create_pos_sale(
     v_biz, 'test-key-B-card',
@@ -129,12 +160,25 @@ BEGIN
     NULL, 'CLP'
   );
   ASSERT v_invoice.status = 'pagada', 'FAIL escenario B: status debería ser pagada, fue ' || v_invoice.status;
+  PERFORM set_config('test.invoice_b', v_invoice.id::text, true);
+END $$;
 
-  SELECT * INTO v_pay FROM public.crm_payments WHERE invoice_id = v_invoice.id;
+RESET ROLE;
+
+DO $$
+DECLARE
+  v_invoice_id UUID := current_setting('test.invoice_b')::uuid;
+  v_pay        public.crm_payments;
+BEGIN
+  SELECT * INTO v_pay FROM public.crm_payments WHERE invoice_id = v_invoice_id;
   ASSERT v_pay.payment_method = 'card', 'FAIL escenario B: payment_method debería seguir siendo card (legacy), fue ' || v_pay.payment_method;
 
   RAISE NOTICE 'OK: escenario B -- card (legacy) sigue aceptado, payment_method=card sin reclasificar';
 END $$;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', true);
+SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-0000000000f1','role','authenticated')::text, true);
 
 -- ══════════════════════════════════════════════════════════════════════════
 -- ESCENARIO C: debit_card aceptado (#3, #12). payment_method persistido
@@ -144,7 +188,6 @@ DO $$
 DECLARE
   v_biz     UUID := current_setting('test.biz_id')::uuid;
   v_invoice public.crm_invoices;
-  v_pay     public.crm_payments;
 BEGIN
   SELECT * INTO v_invoice FROM public.crm_create_pos_sale(
     v_biz, 'test-key-C-debit',
@@ -154,13 +197,26 @@ BEGIN
     NULL, 'CLP'
   );
   ASSERT v_invoice.status = 'pagada', 'FAIL escenario C: status debería ser pagada, fue ' || v_invoice.status;
+  PERFORM set_config('test.invoice_c', v_invoice.id::text, true);
+END $$;
 
-  SELECT * INTO v_pay FROM public.crm_payments WHERE invoice_id = v_invoice.id;
+RESET ROLE;
+
+DO $$
+DECLARE
+  v_invoice_id UUID := current_setting('test.invoice_c')::uuid;
+  v_pay        public.crm_payments;
+BEGIN
+  SELECT * INTO v_pay FROM public.crm_payments WHERE invoice_id = v_invoice_id;
   ASSERT v_pay.payment_method = 'debit_card',
     'FAIL escenario C: payment_method debería ser EXACTAMENTE debit_card (no card), fue ' || v_pay.payment_method;
 
   RAISE NOTICE 'OK: escenario C -- debit_card aceptado, venta 100%% pagada, payment_method=debit_card (nunca card)';
 END $$;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', true);
+SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-0000000000f1','role','authenticated')::text, true);
 
 -- ══════════════════════════════════════════════════════════════════════════
 -- ESCENARIO D: credit_card aceptado (#4, #13). payment_method persistido
@@ -170,7 +226,6 @@ DO $$
 DECLARE
   v_biz     UUID := current_setting('test.biz_id')::uuid;
   v_invoice public.crm_invoices;
-  v_pay     public.crm_payments;
 BEGIN
   SELECT * INTO v_invoice FROM public.crm_create_pos_sale(
     v_biz, 'test-key-D-credit-card',
@@ -180,13 +235,26 @@ BEGIN
     NULL, 'CLP'
   );
   ASSERT v_invoice.status = 'pagada', 'FAIL escenario D: status debería ser pagada, fue ' || v_invoice.status;
+  PERFORM set_config('test.invoice_d', v_invoice.id::text, true);
+END $$;
 
-  SELECT * INTO v_pay FROM public.crm_payments WHERE invoice_id = v_invoice.id;
+RESET ROLE;
+
+DO $$
+DECLARE
+  v_invoice_id UUID := current_setting('test.invoice_d')::uuid;
+  v_pay        public.crm_payments;
+BEGIN
+  SELECT * INTO v_pay FROM public.crm_payments WHERE invoice_id = v_invoice_id;
   ASSERT v_pay.payment_method = 'credit_card',
     'FAIL escenario D: payment_method debería ser EXACTAMENTE credit_card (no card), fue ' || v_pay.payment_method;
 
   RAISE NOTICE 'OK: escenario D -- credit_card aceptado, venta 100%% pagada, payment_method=credit_card (nunca card)';
 END $$;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', true);
+SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-0000000000f1','role','authenticated')::text, true);
 
 -- ══════════════════════════════════════════════════════════════════════════
 -- ESCENARIO E: mercado_pago aceptado (#6, #14). payment_method persistido
@@ -196,7 +264,6 @@ DO $$
 DECLARE
   v_biz     UUID := current_setting('test.biz_id')::uuid;
   v_invoice public.crm_invoices;
-  v_pay     public.crm_payments;
 BEGIN
   SELECT * INTO v_invoice FROM public.crm_create_pos_sale(
     v_biz, 'test-key-E-mp',
@@ -206,13 +273,26 @@ BEGIN
     NULL, 'CLP'
   );
   ASSERT v_invoice.status = 'pagada', 'FAIL escenario E: status debería ser pagada, fue ' || v_invoice.status;
+  PERFORM set_config('test.invoice_e', v_invoice.id::text, true);
+END $$;
 
-  SELECT * INTO v_pay FROM public.crm_payments WHERE invoice_id = v_invoice.id;
+RESET ROLE;
+
+DO $$
+DECLARE
+  v_invoice_id UUID := current_setting('test.invoice_e')::uuid;
+  v_pay        public.crm_payments;
+BEGIN
+  SELECT * INTO v_pay FROM public.crm_payments WHERE invoice_id = v_invoice_id;
   ASSERT v_pay.payment_method = 'mercado_pago',
     'FAIL escenario E: payment_method debería ser EXACTAMENTE mercado_pago (no other), fue ' || v_pay.payment_method;
 
   RAISE NOTICE 'OK: escenario E -- mercado_pago aceptado, venta 100%% pagada, payment_method=mercado_pago (nunca other)';
 END $$;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', true);
+SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-0000000000f1','role','authenticated')::text, true);
 
 -- ══════════════════════════════════════════════════════════════════════════
 -- ESCENARIO F: bank_transfer aceptado (#5).
@@ -372,11 +452,8 @@ END $$;
 -- ══════════════════════════════════════════════════════════════════════════
 DO $$
 DECLARE
-  v_biz       UUID := current_setting('test.biz_id')::uuid;
-  v_invoice   public.crm_invoices;
-  v_cash_pay  public.crm_payments;
-  v_debit_pay public.crm_payments;
-  v_pay_count INT;
+  v_biz     UUID := current_setting('test.biz_id')::uuid;
+  v_invoice public.crm_invoices;
 BEGIN
   SELECT * INTO v_invoice FROM public.crm_create_pos_sale(
     v_biz, 'test-key-L-mixed',
@@ -390,19 +467,34 @@ BEGIN
   );
   ASSERT v_invoice.total = 12000, 'FAIL escenario L: total debería ser 12000, fue ' || v_invoice.total;
   ASSERT v_invoice.status = 'pagada', 'FAIL escenario L: status debería ser pagada, fue ' || v_invoice.status;
+  PERFORM set_config('test.invoice_l', v_invoice.id::text, true);
+END $$;
 
-  SELECT count(*) INTO v_pay_count FROM public.crm_payments WHERE invoice_id = v_invoice.id;
+RESET ROLE;
+
+DO $$
+DECLARE
+  v_invoice_id UUID := current_setting('test.invoice_l')::uuid;
+  v_cash_pay   public.crm_payments;
+  v_debit_pay  public.crm_payments;
+  v_pay_count  INT;
+BEGIN
+  SELECT count(*) INTO v_pay_count FROM public.crm_payments WHERE invoice_id = v_invoice_id;
   ASSERT v_pay_count = 2, 'FAIL escenario L: deberían existir exactamente 2 filas de pago (debit_card + cash), hay ' || v_pay_count;
 
-  SELECT * INTO v_debit_pay FROM public.crm_payments WHERE invoice_id = v_invoice.id AND payment_method = 'debit_card';
+  SELECT * INTO v_debit_pay FROM public.crm_payments WHERE invoice_id = v_invoice_id AND payment_method = 'debit_card';
   ASSERT v_debit_pay.amount = 6000, 'FAIL escenario L: el pago debit_card debería guardarse por su monto exacto (6000), fue ' || v_debit_pay.amount;
 
-  SELECT * INTO v_cash_pay FROM public.crm_payments WHERE invoice_id = v_invoice.id AND payment_method = 'cash';
+  SELECT * INTO v_cash_pay FROM public.crm_payments WHERE invoice_id = v_invoice_id AND payment_method = 'cash';
   ASSERT v_cash_pay.amount = 6000,
     'FAIL escenario L: el cash aplicado debería quedar capado en lo que faltaba cubrir (6000), no en los 8000 tendidos -- fue ' || v_cash_pay.amount;
 
   RAISE NOTICE 'OK: escenario L -- venta mixta cash+debit_card ($12.000 total): debit_card guarda 6000 exacto, cash tendido en 8000 queda capado en 6000 (2000 de vuelto nunca se persisten)';
 END $$;
+
+SET LOCAL ROLE authenticated;
+SELECT set_config('request.jwt.claim.sub', '00000000-0000-0000-0000-0000000000f1', true);
+SELECT set_config('request.jwt.claims', json_build_object('sub','00000000-0000-0000-0000-0000000000f1','role','authenticated')::text, true);
 
 -- ══════════════════════════════════════════════════════════════════════════
 -- ESCENARIO M: STOCK_INSUFFICIENT:<product_id>:<requested>:<available>
