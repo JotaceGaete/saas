@@ -405,13 +405,32 @@ export async function deleteCrmCustomer(id) {
 // PRESUPUESTOS
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Adjunta { crm_invoices: { id, invoice_number } } a cada quote convertida.
+// No se usa un embed de PostgREST porque crm_quotes <-> crm_invoices tiene
+// DOS relaciones (converted_to_invoice_id y quote_id), lo que es ambiguo
+// para el auto-detect de PostgREST -- se resuelve con una query separada.
+async function attachInvoiceInfo(quotes) {
+  const ids = [...new Set(quotes.map(q => q.converted_to_invoice_id).filter(Boolean))];
+  if (ids.length === 0) return quotes;
+  const { data: invoices } = await supabase
+    .from('crm_invoices')
+    .select('id, invoice_number')
+    .in('id', ids);
+  const byId = new Map((invoices || []).map(inv => [inv.id, inv]));
+  quotes.forEach(q => {
+    q.crm_invoices = q.converted_to_invoice_id ? (byId.get(q.converted_to_invoice_id) || null) : null;
+  });
+  return quotes;
+}
+
 export async function getCrmQuotes(businessId) {
   const { data, error } = await supabase
     .from('crm_quotes')
     .select('*, wa_customers(id, name, company)')
     .eq('business_id', businessId)
     .order('created_at', { ascending: false });
-  return { data: data || [], error };
+  if (error) return { data: [], error };
+  return { data: await attachInvoiceInfo(data || []), error: null };
 }
 
 export async function getCrmQuote(id) {
@@ -423,6 +442,7 @@ export async function getCrmQuote(id) {
   if (data?.crm_quote_items) {
     data.crm_quote_items.sort((a, b) => a.sort_order - b.sort_order);
   }
+  if (data) await attachInvoiceInfo([data]);
   return { data, error };
 }
 
@@ -553,8 +573,35 @@ export async function getCrmInvoice(id) {
   return { data, error };
 }
 
+const QUOTE_ALREADY_CONVERTED_MESSAGE = 'Ya existe una nota de venta para este presupuesto.';
+
+// true si el mensaje/detalle de un error de Postgres corresponde a la
+// violación del índice único parcial crm_invoices_quote_id_uq (QUOTE-TO-SALE-1:
+// impide que un mismo presupuesto genere dos notas de venta).
+function isDuplicateQuoteConversion(err) {
+  if (!err) return false;
+  const text = `${err.message || ''} ${err.details || ''}`;
+  return err.code === '23505' && text.includes('crm_invoices_quote_id_uq');
+}
+
 export async function createCrmInvoice(businessId, { customerId, issueDate, dueDate, notes, paymentTerms, deliveryDays, deliveryMethod, commercialNotes, items = [], quoteId, _planSlug } = {}) {
   assertFeature(_planSlug ?? 'business', 'invoices');
+
+  // Pre-check optimista (UX): evita crear la NV si ya sabemos que el
+  // presupuesto está convertido. No es la garantía autoritativa -- esa la
+  // da el índice único parcial crm_invoices_quote_id_uq, que atrapa el
+  // caso de carrera (dos guardados concurrentes) más abajo.
+  if (quoteId) {
+    const { data: existingQuote } = await supabase
+      .from('crm_quotes')
+      .select('converted_to_invoice_id')
+      .eq('id', quoteId)
+      .single();
+    if (existingQuote?.converted_to_invoice_id) {
+      return { data: null, error: Object.assign(new Error(QUOTE_ALREADY_CONVERTED_MESSAGE), { code: 'QUOTE_ALREADY_CONVERTED' }) };
+    }
+  }
+
   const { data: nextNum, error: numErr } = await supabase
     .rpc('crm_next_invoice_number', { p_business_id: businessId });
   if (numErr) return { data: null, error: numErr };
@@ -585,7 +632,12 @@ export async function createCrmInvoice(businessId, { customerId, issueDate, dueD
     })
     .select()
     .single();
-  if (error) return { data: null, error };
+  if (error) {
+    if (isDuplicateQuoteConversion(error)) {
+      return { data: null, error: Object.assign(new Error(QUOTE_ALREADY_CONVERTED_MESSAGE), { code: 'QUOTE_ALREADY_CONVERTED' }) };
+    }
+    return { data: null, error };
+  }
 
   if (mappedItems.length > 0) {
     const { error: itemsErr } = await supabase
@@ -593,6 +645,20 @@ export async function createCrmInvoice(businessId, { customerId, issueDate, dueD
       .insert(mappedItems.map(it => ({ ...it, invoice_id: invoice.id })));
     if (itemsErr) return { data: null, error: itemsErr };
   }
+
+  // Vincular el presupuesto de origen SOLO después de crear la NV
+  // correctamente (QUOTE-TO-SALE-1, regla de negocio: el presupuesto
+  // aceptado no crea nada por sí solo; el link se hace acá, no al
+  // aceptar). No se toca el estado 'aceptado' del presupuesto ni ningún
+  // otro campo -- el presupuesto queda intacto como documento histórico.
+  if (quoteId) {
+    await supabase
+      .from('crm_quotes')
+      .update({ converted_to_invoice_id: invoice.id })
+      .eq('id', quoteId)
+      .is('converted_to_invoice_id', null);
+  }
+
   return { data: invoice, error: null };
 }
 

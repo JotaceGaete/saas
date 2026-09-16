@@ -12,6 +12,7 @@ import {
   getCrmCustomers,
   createCrmCustomer,
   formatQuoteNumber,
+  formatInvoiceNumber,
   getQuoteDocLabel,
 } from '../../services/crmService';
 import { getProducts } from '../../services/waBusinessService';
@@ -427,7 +428,44 @@ export default function CrmQuoteEditor() {
               <Icon name="AlertCircle" size={16} />{saveError}
             </div>
           )}
-          {!isNew && (
+          {/* QUOTE-TO-SALE-1: un presupuesto 'aceptado' nunca crea una nota
+              de venta por sí solo -- esto es solo un CTA que navega al
+              editor de una NV nueva (precargada), o el enlace a la NV ya
+              creada. Ningún otro estado (canEdit / locked genérico) cambia. */}
+          {!isNew && saved?.status === 'aceptado' ? (
+            saved.converted_to_invoice_id ? (
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg text-sm border bg-emerald-50 border-emerald-200 text-emerald-800">
+                <span className="flex items-center gap-2 font-medium">
+                  <Icon name="CheckCircle2" size={16} />
+                  Nota de venta creada
+                  {saved.crm_invoices?.invoice_number != null ? ` · ${formatInvoiceNumber(saved.crm_invoices.invoice_number)}` : ''}
+                </span>
+                <button
+                  onClick={() => navigate(`/crm/facturas/${saved.converted_to_invoice_id}`)}
+                  className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-white border border-emerald-300 text-emerald-700 hover:bg-emerald-100 text-xs font-semibold transition-colors"
+                >
+                  Ver nota de venta
+                  <Icon name="ArrowRight" size={13} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg text-sm border bg-blue-50 border-blue-200 text-blue-800">
+                <div>
+                  <p className="font-semibold">Presupuesto aceptado</p>
+                  <p className="mt-0.5 text-blue-700">
+                    El cliente aceptó esta propuesta. Cuando corresponda concretar la operación, crea una Nota de Venta.
+                  </p>
+                </div>
+                <button
+                  onClick={() => navigate(`/crm/facturas/nueva?quote=${id}`)}
+                  className="shrink-0 inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold transition-colors"
+                >
+                  <Icon name="ArrowRightCircle" size={15} />
+                  Crear nota de venta
+                </button>
+              </div>
+            )
+          ) : !isNew && (
             <div className={`flex items-center gap-2 p-3 rounded-lg text-sm border ${
               canEdit
                 ? 'bg-blue-50 border-blue-200 text-blue-700'
