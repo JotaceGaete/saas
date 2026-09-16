@@ -2328,9 +2328,39 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
       if (movRes.error) errors[`sessionMovements:${session.id}`] = movRes.error;
       const sessPayments = (payRes.data || []).filter(p => !p.voided_at);
       const sessMovements = (movRes.data || []).filter(m => !m.voided_at);
-      const received = sessPayments.reduce((s, p) => s + Number(p.amount || 0), 0);
-      const manualIn = sessMovements.filter(m => m.direction === 'in').reduce((s, m) => s + Number(m.amount || 0), 0);
-      const outflow = sessMovements.filter(m => m.direction === 'out').reduce((s, m) => s + Number(m.amount || 0), 0);
+
+      // Efectivo esperado: SOLO efectivo físico, misma semántica exacta que
+      // crm_close_cash_session (20260915180000, líneas 131-148) -- NUNCA se
+      // suman débito/crédito/MP/transferencia/cheque/otro al saldo físico de
+      // caja, esos medios no mueven billetes. sessPayments ya viene
+      // normalizado (getCashSessionPayments) y ya excluye 'credit' (cuenta
+      // corriente); sessMovements usa el mismo criterio de igualdad estricta
+      // contra 'cash' que la RPC (crm_cash_movements.payment_method es TEXT
+      // libre, default 'cash', sin CHECK -- se replica el chequeo tal cual,
+      // sin normalizar, igual que hace la RPC).
+      const cashReceived = sessPayments
+        .filter(p => p.payment_method === 'cash')
+        .reduce((s, p) => s + Number(p.amount || 0), 0);
+      const cashManualIn = sessMovements
+        .filter(m => m.direction === 'in' && m.payment_method === 'cash')
+        .reduce((s, m) => s + Number(m.amount || 0), 0);
+      const cashOutflow = sessMovements
+        .filter(m => m.direction === 'out' && m.payment_method === 'cash')
+        .reduce((s, m) => s + Number(m.amount || 0), 0);
+      const expectedCash = Number(session.initial_amount || 0) + cashReceived + cashManualIn - cashOutflow;
+
+      // Recibido por medio -- informativo únicamente, NO forma parte del
+      // efectivo físico esperado (débito/crédito/MP/transferencia/cheque no
+      // aumentan lo que hay en el cajón).
+      const receivedByMethod = emptyByMethod();
+      let totalReceivedAllMethods = 0;
+      for (const p of sessPayments) {
+        const method = DAILY_SUMMARY_METHOD_ORDER.includes(p.payment_method) ? p.payment_method : 'other';
+        receivedByMethod[method] += Number(p.amount || 0);
+        totalReceivedAllMethods += Number(p.amount || 0);
+      }
+      for (const key of DAILY_SUMMARY_METHOD_ORDER) receivedByMethod[key] = round2(receivedByMethod[key]);
+
       cashSessions.push({
         id: session.id,
         status: session.status,
@@ -2340,10 +2370,14 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
         reconciliation: null,
         isLiveEstimate: true,
         liveEstimate: {
-          received: round2(received),
-          manualIn: round2(manualIn),
-          outflow: round2(outflow),
-          expectedBalance: round2(Number(session.initial_amount || 0) + received + manualIn - outflow),
+          // Efectivo físico -- lo único que respalda "Saldo esperado en caja".
+          cashReceived: round2(cashReceived),
+          cashManualIn: round2(cashManualIn),
+          cashOutflow: round2(cashOutflow),
+          expectedCash: round2(expectedCash),
+          // Recibido por medio (informativo, no físico).
+          receivedByMethod,
+          totalReceivedAllMethods: round2(totalReceivedAllMethods),
         },
       });
     }
@@ -2374,9 +2408,14 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
     created_at: m.created_at,
   }));
 
-  // ── Resultado del día (estimado, sin COGS) ─────────────────────────────────
+  // ── Saldo antes de costo de mercadería (sin COGS) ──────────────────────────
+  // Nombre interno del campo (estimatedResult) se mantiene por compatibilidad
+  // -- pero NUNCA se presenta en la UI como "resultado", "ganancia" ni
+  // "margen": sin costo de mercadería vendida (COGS) no representa la
+  // ganancia real del día y llamarlo así induce a error al comerciante.
   const estimatedResult = round2(net - expensesTotal);
-  const profitabilityDisclaimer = 'Resultado estimado = Ventas netas − Gastos del día. No incluye el costo de la mercadería vendida (COGS): Walinka no registra costo unitario de producto en ningún lugar del esquema. Nunca lo presentes como margen real.';
+  const profitabilityLabel = 'Saldo antes de costo de mercadería';
+  const profitabilityDisclaimer = 'Ventas netas menos gastos registrados. No incluye el costo de los productos vendidos, por lo que no representa la ganancia del día. Walinka no registra costo unitario de producto en ningún lugar del esquema.';
 
   // ── Alertas (reglas deterministas, sin umbrales inventados) ────────────────
   const alerts = [];
@@ -2462,6 +2501,7 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
     profitability: {
       estimatedResult,
       formula: 'net_sales_minus_expenses',
+      label: profitabilityLabel,
       disclaimer: profitabilityDisclaimer,
     },
     alerts,

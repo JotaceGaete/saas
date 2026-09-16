@@ -294,9 +294,9 @@ export default function CrmResumenDia() {
                 tone="text-red-600"
               />
               <KpiCard
-                label="Resultado del día"
+                label="Saldo antes de costo de mercadería"
                 value={`${profitability.estimatedResult > 0 ? '+' : ''}${formatMoney(profitability.estimatedResult, currency)}`}
-                hint="Estimado — sin costo de mercadería"
+                hint="No es la ganancia del día — no incluye costo de mercadería"
                 tone={resultTone}
               />
               <KpiCard label="N° de ventas" value={sales.count} />
@@ -392,17 +392,21 @@ export default function CrmResumenDia() {
               </div>
             </Section>
 
-            {/* 5. Resultado del día ----------------------------------------------- */}
-            <Section title="Resultado del día (estimado)" icon="Calculator">
+            {/* 5. Saldo antes de costo de mercadería ------------------------------ */}
+            <Section title="Saldo antes de costo de mercadería" icon="Calculator">
               <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className={`tabular-nums text-3xl font-black ${resultTone}`}>
                     {profitability.estimatedResult > 0 ? '+' : ''}{formatMoney(profitability.estimatedResult, currency)}
                   </p>
-                  <p className="mt-1 text-xs text-gray-500">Ventas netas − Gastos del día</p>
+                  <p className="mt-1 text-xs text-gray-500">Ventas netas − Gastos registrados</p>
                 </div>
               </div>
-              <p className="mt-4 rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500">
+              <p className="mt-4 rounded-xl bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">
+                <Icon name="AlertTriangle" size={12} className="mr-1 inline align-text-bottom" />
+                Ventas netas menos gastos registrados. No incluye el costo de los productos vendidos, por lo que no representa la ganancia del día.
+              </p>
+              <p className="mt-2 rounded-xl bg-gray-50 p-3 text-xs leading-relaxed text-gray-500">
                 <Icon name="Info" size={12} className="mr-1 inline align-text-bottom" />
                 {profitability.disclaimer}
               </p>
@@ -447,12 +451,30 @@ export default function CrmResumenDia() {
                             <Icon name="Clock" size={12} />
                             Caja abierta — estimado en vivo, no es un arqueo definitivo
                           </p>
+                          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">Efectivo físico esperado</p>
                           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
                             <KpiCard label="Fondo inicial" value={formatMoney(session.initial_amount, currency)} />
-                            <KpiCard label="Cobros" value={formatMoney(session.liveEstimate.received, currency)} tone="text-emerald-700" />
-                            <KpiCard label="Salidas" value={formatMoney(session.liveEstimate.outflow, currency)} tone="text-red-600" />
-                            <KpiCard label="Saldo estimado" value={formatMoney(session.liveEstimate.expectedBalance, currency)} emphasize />
+                            <KpiCard label="Cobros en efectivo" value={formatMoney(session.liveEstimate.cashReceived, currency)} tone="text-emerald-700" />
+                            <KpiCard label="Salidas en efectivo" value={formatMoney(session.liveEstimate.cashOutflow, currency)} tone="text-red-600" />
+                            <KpiCard label="Efectivo esperado en caja" value={formatMoney(session.liveEstimate.expectedCash, currency)} emphasize />
                           </div>
+
+                          {METHOD_ORDER.filter(m => m !== 'cash' && session.liveEstimate.receivedByMethod[m] > 0).length > 0 && (
+                            <>
+                              <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                                Recibido por otros medios (no aumenta el efectivo físico)
+                              </p>
+                              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                                {METHOD_ORDER.filter(m => m !== 'cash' && session.liveEstimate.receivedByMethod[m] > 0).map(m => (
+                                  <KpiCard
+                                    key={m}
+                                    label={PAYMENT_METHOD_LABELS[m] || m}
+                                    value={formatMoney(session.liveEstimate.receivedByMethod[m], currency)}
+                                  />
+                                ))}
+                              </div>
+                            </>
+                          )}
                         </div>
                       )}
 

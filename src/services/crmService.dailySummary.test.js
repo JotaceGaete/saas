@@ -366,6 +366,118 @@ describe('getDailySummary — caja y conciliación', () => {
   });
 });
 
+describe('getDailySummary — caja abierta: efectivo esperado SOLO cuenta efectivo físico', () => {
+  const openSession = {
+    id: 'sess-open', status: 'open', opened_at: '2026-09-16T09:00:00-03:00', closed_at: null, initial_amount: 20000,
+  };
+
+  it('fondo inicial 20.000 + cash 10.000 + debit_card 50.000 => efectivo esperado = 30.000, NO 80.000', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      crm_invoices: { data: [], error: null },
+      crm_cash_sessions: { data: [openSession], error: null },
+      crm_payments: {
+        data: [
+          { id: 'p-cash', invoice_id: null, amount: 10000, currency: 'CLP', payment_method: 'cash', payment_status: 'received', payment_date: '2026-09-16', created_at: '2026-09-16T10:00:00-03:00', voided_at: null, cash_session_id: 'sess-open' },
+          { id: 'p-debit', invoice_id: null, amount: 50000, currency: 'CLP', payment_method: 'debit_card', payment_status: 'received', payment_date: '2026-09-16', created_at: '2026-09-16T11:00:00-03:00', voided_at: null, cash_session_id: 'sess-open' },
+        ],
+        error: null,
+      },
+      crm_cash_movements: { data: [], error: null },
+    });
+
+    const result = await getDailySummary('biz1', '2026-09-16');
+    const live = result.cash.sessions[0].liveEstimate;
+    expect(live.cashReceived).toBe(10000);
+    expect(live.expectedCash).toBe(30000);
+    expect(live.expectedCash).not.toBe(80000);
+    // Se informa por separado, pero NO altera el efectivo físico.
+    expect(live.receivedByMethod.debit_card).toBe(50000);
+    expect(live.totalReceivedAllMethods).toBe(60000);
+  });
+
+  it('un movimiento manual cash direction=in AUMENTA el efectivo esperado', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      crm_invoices: { data: [], error: null },
+      crm_cash_sessions: { data: [openSession], error: null },
+      crm_payments: { data: [], error: null },
+      crm_cash_movements: {
+        data: [{ id: 'm-in', session_id: 'sess-open', direction: 'in', amount: 5000, payment_method: 'cash', voided_at: null, movement_date: '2026-09-16' }],
+        error: null,
+      },
+    });
+
+    const result = await getDailySummary('biz1', '2026-09-16');
+    const live = result.cash.sessions[0].liveEstimate;
+    expect(live.cashManualIn).toBe(5000);
+    expect(live.expectedCash).toBe(25000); // 20000 inicial + 5000 in
+  });
+
+  it('un movimiento manual cash direction=out DISMINUYE el efectivo esperado', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      crm_invoices: { data: [], error: null },
+      crm_cash_sessions: { data: [openSession], error: null },
+      crm_payments: { data: [], error: null },
+      crm_cash_movements: {
+        data: [{ id: 'm-out', session_id: 'sess-open', direction: 'out', amount: 5000, payment_method: 'cash', voided_at: null, movement_date: '2026-09-16' }],
+        error: null,
+      },
+    });
+
+    const result = await getDailySummary('biz1', '2026-09-16');
+    const live = result.cash.sessions[0].liveEstimate;
+    expect(live.cashOutflow).toBe(5000);
+    expect(live.expectedCash).toBe(15000); // 20000 inicial - 5000 out
+  });
+
+  it('un movimiento manual NO-cash no altera el efectivo esperado', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      crm_invoices: { data: [], error: null },
+      crm_cash_sessions: { data: [openSession], error: null },
+      crm_payments: { data: [], error: null },
+      crm_cash_movements: {
+        data: [
+          { id: 'm-in-card', session_id: 'sess-open', direction: 'in', amount: 5000, payment_method: 'card', voided_at: null, movement_date: '2026-09-16' },
+          { id: 'm-out-card', session_id: 'sess-open', direction: 'out', amount: 3000, payment_method: 'bank_transfer', voided_at: null, movement_date: '2026-09-16' },
+        ],
+        error: null,
+      },
+    });
+
+    const result = await getDailySummary('biz1', '2026-09-16');
+    const live = result.cash.sessions[0].liveEstimate;
+    expect(live.cashManualIn).toBe(0);
+    expect(live.cashOutflow).toBe(0);
+    expect(live.expectedCash).toBe(20000); // sin cambios -- solo fondo inicial
+  });
+
+  it('débito/crédito/Mercado Pago se informan por separado (receivedByMethod) pero nunca alteran el efectivo físico', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      crm_invoices: { data: [], error: null },
+      crm_cash_sessions: { data: [openSession], error: null },
+      crm_payments: {
+        data: [
+          { id: 'p-credit-card', invoice_id: null, amount: 15000, payment_method: 'credit_card', payment_status: 'received', payment_date: '2026-09-16', created_at: '2026-09-16T10:00:00-03:00', voided_at: null, cash_session_id: 'sess-open' },
+          { id: 'p-mp', invoice_id: null, amount: 7000, payment_method: 'mercado_pago', payment_status: 'received', payment_date: '2026-09-16', created_at: '2026-09-16T10:05:00-03:00', voided_at: null, cash_session_id: 'sess-open' },
+        ],
+        error: null,
+      },
+      crm_cash_movements: { data: [], error: null },
+    });
+
+    const result = await getDailySummary('biz1', '2026-09-16');
+    const live = result.cash.sessions[0].liveEstimate;
+    expect(live.expectedCash).toBe(20000); // solo fondo inicial -- nada de esto es efectivo
+    expect(live.receivedByMethod.credit_card).toBe(15000);
+    expect(live.receivedByMethod.mercado_pago).toBe(7000);
+    expect(live.cashReceived).toBe(0);
+  });
+});
+
 describe('getDailySummary — inventario', () => {
   it('cuenta productos con stock_actual <= stock_minimo como stock bajo', async () => {
     mockTables({
