@@ -1010,11 +1010,33 @@ function CashMovementModal({ defaultDirection = 'out', businessId, currency, bus
 
   const categories      = direction === 'out' ? CASH_MOVEMENT_CATEGORIES_OUT : CASH_MOVEMENT_CATEGORIES_IN;
   const isOut            = direction === 'out';
+  const selectedCat      = categories.find(c => c.value === category);
+  // Categoría y propósito son cosas distintas (CAJA-COSTOS-1): la
+  // categoría nunca decide en silencio si la salida afecta el resultado.
+  // La única excepción, deliberada: categorías que por su naturaleza NUNCA
+  // son un gasto nuevo del negocio (isExpense:false -- retiro del dueño,
+  // depósito bancario, "Otro" genérico) no ofrecen "Gasto nuevo del día"
+  // como opción, para garantizar que esas salidas jamás generen un
+  // crm_cost_item por error. El resto de propósitos (pago de costo/factura
+  // ya registrada, compra de mercadería, retiro del dueño, otro
+  // movimiento) siguen disponibles para CUALQUIER categoría.
+  const availablePurposes = selectedCat && selectedCat.isExpense === false
+    ? CASH_MOVEMENT_PURPOSES.filter(p => p.value !== 'new_expense')
+    : CASH_MOVEMENT_PURPOSES;
   const selectedPurpose  = CASH_MOVEMENT_PURPOSES.find(p => p.value === purpose);
 
   // Resetear categoría/propósito al cambiar dirección -- el selector de
   // propósito (CAJA-COSTOS-1) solo aplica a salidas.
   useEffect(() => { setCategory(''); setPurpose(''); setRelatedCostItemId(''); setError(''); }, [direction]);
+
+  // Si el propósito elegido deja de estar disponible (p. ej. el usuario
+  // tenía "Gasto nuevo del día" y cambia la categoría a Retiro del dueño),
+  // se limpia en vez de dejar una combinación inválida seleccionada en
+  // silencio.
+  useEffect(() => {
+    if (purpose && !availablePurposes.some(p => p.value === purpose)) setPurpose('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category]);
 
   // "Pago de un costo registrado": cargar los costos fijos del mes actual
   // para el selector opcional de costo relacionado. Solo type='fixed' en
@@ -1157,7 +1179,7 @@ function CashMovementModal({ defaultDirection = 'out', businessId, currency, bus
                 className="w-full rounded-xl border border-red-200 px-3 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
               >
                 <option value="">— Selecciona —</option>
-                {CASH_MOVEMENT_PURPOSES.map(p => (
+                {availablePurposes.map(p => (
                   <option key={p.value} value={p.value}>{p.label}</option>
                 ))}
               </select>
