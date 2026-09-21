@@ -40,6 +40,7 @@ import CrmStock from './pages/crm/CrmStock';
 import CrmTerminal from './pages/crm/CrmTerminal';
 import CrmCash from './pages/crm/CrmCash';
 import CrmResumenDia from './pages/crm/CrmResumenDia';
+import CrmInformesPeriodo from './pages/crm/CrmInformesPeriodo';
 import CrmCostCenter from './pages/crm/CrmCostCenter';
 import CrmCostos from './pages/crm/CrmCostos';
 import CrmBarcodes from './pages/crm/CrmBarcodes';
@@ -145,6 +146,7 @@ const Routes = () => {
             <Route path="/crm/impresion"          element={<RequireCrm><FeatureGate feature="pos"><CrmPrintSettings /></FeatureGate></RequireCrm>} />
             <Route path="/crm/caja"               element={<RequireCrm><CrmCash /></RequireCrm>} />
             <Route path="/crm/resumen-dia"        element={<RequireCrm><CrmResumenDia /></RequireCrm>} />
+            <Route path="/crm/informes"           element={<RequireCrm><CrmInformesPeriodo /></RequireCrm>} />
             <Route path="/crm/cost-center"        element={<RequireCrm><CrmCostCenter /></RequireCrm>} />
             <Route path="/crm/facturas"           element={<RequireCrm><FeatureGate feature="invoices"><CrmInvoices /></FeatureGate></RequireCrm>} />
             <Route path="/crm/facturas/nueva"     element={<RequireCrm><FeatureGate feature="invoices"><CrmInvoiceEditor /></FeatureGate></RequireCrm>} />

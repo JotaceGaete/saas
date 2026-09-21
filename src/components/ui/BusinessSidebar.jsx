@@ -33,6 +33,7 @@ const NAV_ITEMS = [
     subItems: [
       { label: 'Resumen',          path: '/crm' },
       { label: 'Resumen del día',  path: '/crm/resumen-dia' },
+      { label: 'Informes',         path: '/crm/informes' },
       { label: 'Clientes',         path: '/crm/clientes' },
       { label: 'Presupuestos',     path: '/crm/presupuestos' },
       { label: 'Notas de venta',   path: '/crm/facturas' },

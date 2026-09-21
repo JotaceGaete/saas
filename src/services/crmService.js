@@ -2608,3 +2608,731 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
     },
   };
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// REPORTES-PERIODO-1 — informe del negocio por período (rango de fechas)
+//
+// AUDITORÍA (resumen -- ver reporte del PR para el detalle completo por
+// dato/fuente/regla): getDailySummary es la ÚNICA fuente de verdad de las
+// reglas financieras de Walinka (venta vs cobro, credit vs credit_card,
+// is_expense como discriminador de gasto, expectedCash solo efectivo físico,
+// snapshots de conciliación inmutables, sin reconstrucción de stock
+// histórico). getPeriodSummary NO reimplementa ninguna de esas reglas -- las
+// aplica sobre un RANGO de fechas en vez de un solo día. El test de
+// equivalencia (crmService.periodSummary.equivalence.test.js:
+// getPeriodSummary(biz, D, D) === getDailySummary(biz, D) campo a campo)
+// es la garantía de que ambos módulos nunca divergen.
+//
+// Arquitectura: UN agregador JS puro (Promise.all sobre SELECTs por RANGO,
+// `.gte()/.lte()` en vez de `.eq()`), no una RPC -- cada consulta ya está
+// cubierta por las mismas políticas RLS owner-based que getDailySummary, sin
+// necesidad de SECURITY DEFINER. Cero N+1 real:
+//   - Facturas, pagos, gastos, movimientos de caja, sesiones de caja,
+//     productos (stock actual) y movimientos de stock: UNA consulta cada
+//     una para TODO el rango (nunca una por día).
+//   - Conciliaciones de sesiones CERRADAS: UNA consulta batched
+//     `.in('session_id', [...])` para todas las sesiones cerradas del
+//     período (a diferencia de getDailySummary, que hace un query por
+//     sesión -- aceptable para 1-3 sesiones/día, NO para 30-90 días).
+//   - Sesión ABIERTA: a lo sumo UNA por negocio (crm_cash_sessions permite
+//     un único status='open' -- ver openCashSession) -- reutiliza TAL CUAL
+//     getCashSessionPayments/getCashSessionMovements, el mismo cálculo de
+//     "efectivo esperado" que ya usa getDailySummary, nunca un segundo motor.
+//   - "Vendido vs cobrado" y "cuentas por cobrar generadas": UNA consulta
+//     batched adicional por invoice_id cuando hace falta resolver la
+//     issue_date de facturas referenciadas por pagos del período pero
+//     emitidas fuera de él -- nunca N consultas.
+//
+// Zona horaria: mismo criterio que getDailySummary -- getLocalDateString()
+// (fecha local del navegador), sin configuración de timezone a nivel de
+// negocio. Los cálculos de rango (días entre fechas, período comparable)
+// usan aritmética anclada en UTC sobre los componentes Y-M-D de las fechas
+// (nunca sobre un Date con hora) -- son operaciones de calendario puras,
+// independientes de la zona horaria del negocio, así que anclar en UTC es
+// seguro y determinista en cualquier runtime.
+// ═════════════════════════════════════════════════════════════════════════════
+
+const PERIOD_TOP_PRODUCTS_LIMIT = 10;
+const PERIOD_PROFITABILITY_LABEL = 'Saldo antes de costo de mercadería';
+const PERIOD_PROFITABILITY_DISCLAIMER = 'Ventas netas menos gastos registrados. No incluye el costo de los productos vendidos, por lo que no representa la ganancia del período. Walinka no registra costo unitario de producto en ningún lugar del esquema.';
+
+// Aritmética de calendario pura -- ancla en UTC sobre los componentes Y-M-D
+// para nunca depender de la zona horaria del runtime (a diferencia de
+// localDayInstantRange, que SÍ necesita construir instantes locales reales
+// para acotar columnas timestamptz).
+function shiftDateStr(dateStr, deltaDays) {
+  const [y, m, d] = String(dateStr).split('-').map(Number);
+  const dt = new Date(Date.UTC(y, (m || 1) - 1, (d || 1) + deltaDays));
+  return dt.toISOString().slice(0, 10);
+}
+
+function daysBetweenInclusive(fromDate, toDate) {
+  const [fy, fm, fd] = String(fromDate).split('-').map(Number);
+  const [ty, tm, td] = String(toDate).split('-').map(Number);
+  const a = Date.UTC(fy, (fm || 1) - 1, fd || 1);
+  const b = Date.UTC(ty, (tm || 1) - 1, td || 1);
+  return Math.round((b - a) / 86400000) + 1;
+}
+
+function enumerateDateRange(fromDate, toDate) {
+  const dates = [];
+  let cur = fromDate;
+  let guard = 0;
+  while (cur <= toDate && guard < 5000) {
+    dates.push(cur);
+    cur = shiftDateStr(cur, 1);
+    guard += 1;
+  }
+  return dates;
+}
+
+/**
+ * Período comparable anterior (ticket §2): mismo número de días que
+ * [fromDate, toDate], terminando el día INMEDIATAMENTE anterior a fromDate,
+ * sin espacio entre ambos períodos. Regla ÚNICA para todos los presets
+ * (Hoy, Ayer, Esta semana, Semana anterior, Este mes -- incluyendo un mes
+ * parcial en curso --, Mes anterior, Últimos 7/30 días, Personalizado).
+ *
+ * Se descartó deliberadamente la alternativa de "alinear por día del mes"
+ * (p. ej. comparar 1-16 sep contra 1-16 ago) porque NO garantiza igual
+ * cantidad de días en todos los casos (meses de distinta duración, ej.
+ * comparar el 30 de un mes de 31 días contra un mes de 28/29 días) y el
+ * ticket pide explícitamente evitar "fabricar equivalencias engañosas".
+ * "N días inmediatamente anteriores, sin gap" es la regla más simple,
+ * siempre compara la misma cantidad de días, y coincide exactamente con el
+ * ejemplo que el propio ticket da para un rango personalizado de 15 días.
+ */
+export function computeComparisonPeriod(fromDate, toDate) {
+  if (!fromDate || !toDate || String(fromDate) > String(toDate)) return null;
+  const lengthDays = daysBetweenInclusive(fromDate, toDate);
+  const prevTo = shiftDateStr(fromDate, -1);
+  const prevFrom = shiftDateStr(prevTo, -(lengthDays - 1));
+  return { from: prevFrom, to: prevTo, lengthDays };
+}
+
+/**
+ * Comparación numérica PURA y determinista entre el valor actual y el del
+ * período anterior. Nunca produce Infinity/NaN/porcentajes absurdos.
+ *   - previous == null / current == null (sección no disponible) → 'unavailable'.
+ *   - previous === 0 && current === 0 → 'both_zero' (sin cambio real).
+ *   - previous === 0 && current !== 0 → 'no_base' (no hay porcentaje válido).
+ *   - resto → 'normal', deltaPct = (current-previous)/|previous|*100.
+ * Deliberadamente SIN semántica de "bueno/malo": un aumento de gastos no es
+ * automáticamente negativo -- esa interpretación la decide la UI por métrica,
+ * nunca este helper.
+ */
+export function computePeriodComparison(current, previous) {
+  if (current == null || previous == null) return { deltaPct: null, deltaAbs: null, state: 'unavailable' };
+  const cur = Number(current);
+  const prev = Number(previous);
+  if (!Number.isFinite(cur) || !Number.isFinite(prev)) return { deltaPct: null, deltaAbs: null, state: 'unavailable' };
+  if (prev === 0 && cur === 0) return { deltaPct: null, deltaAbs: 0, state: 'both_zero' };
+  if (prev === 0) return { deltaPct: null, deltaAbs: round2(cur - prev), state: 'no_base' };
+  return { deltaPct: round2(((cur - prev) / Math.abs(prev)) * 100), deltaAbs: round2(cur - prev), state: 'normal' };
+}
+
+function localRangeInstantRange(fromDate, toDate) {
+  return {
+    startInstant: localDayInstantRange(fromDate).startInstant,
+    endInstant: localDayInstantRange(toDate).endInstant,
+  };
+}
+
+function monthYearPairsInRange(fromDate, toDate) {
+  const pairs = [];
+  let [y, m] = String(fromDate).split('-').map(Number);
+  const [ty, tm] = String(toDate).split('-').map(Number);
+  let guard = 0;
+  while ((y < ty || (y === ty && m <= tm)) && guard < 240) {
+    pairs.push({ month: m, year: y });
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+    guard += 1;
+  }
+  return pairs;
+}
+
+/**
+ * Costos variables cuya economicDate cae en [fromDate, toDate]. A diferencia
+ * de getOperatingCostItemsForPeriod (acotada a UN mes/año), esta versión
+ * resuelve el conjunto de pares (mes, año) que cubre el rango y consulta
+ * crm_cost_items UNA sola vez por cada AÑO involucrado (normalmente 1, rara
+ * vez 2) -- nunca una consulta por mes. La resolución de economicDate
+ * (source_movement_id → crm_cash_movements.movement_date, o created_at para
+ * variables sin movimiento vinculado) es EXACTAMENTE la misma que usa
+ * getOperatingCostItemsForPeriod/Termómetro/Caja, batched en una sola
+ * consulta adicional (`.in('id', movementIds)`), nunca una por ítem.
+ */
+export async function getOperatingCostItemsForDateRange(businessId, fromDate, toDate) {
+  const pairs = monthYearPairsInRange(fromDate, toDate);
+  const years = [...new Set(pairs.map(p => p.year))];
+  const { data, error } = await supabase
+    .from('crm_cost_items')
+    .select('id, name, amount, type, category, source, source_movement_id, created_at, month, year')
+    .eq('business_id', businessId)
+    .eq('type', 'variable')
+    .in('year', years);
+  if (error) return { data: null, error };
+
+  const relevant = (data || []).filter(item => pairs.some(p => p.month === item.month && p.year === item.year));
+  const movementIds = relevant.map(item => item.source_movement_id).filter(Boolean);
+  let movementsById = {};
+  if (movementIds.length) {
+    const movementResult = await supabase
+      .from('crm_cash_movements')
+      .select('id, movement_date')
+      .in('id', movementIds);
+    if (movementResult.error) return { data: null, error: movementResult.error };
+    movementsById = Object.fromEntries((movementResult.data || []).map(row => [row.id, row]));
+  }
+
+  const withEconomicDate = relevant
+    .map(item => {
+      const movement = item.source_movement_id ? movementsById[item.source_movement_id] : null;
+      const economicDate = movement?.movement_date || item.created_at?.slice(0, 10) || null;
+      return { ...item, amount: Number(item.amount || 0), economicDate };
+    })
+    .filter(item => item.economicDate && item.economicDate >= fromDate && item.economicDate <= toDate);
+
+  return { data: withEconomicDate, error: null };
+}
+
+/** Pagos recibidos (crm_payments.payment_date en el rango) -- mismos filtros
+ * exactos que getCashDayPayments (payment_status='received', method != 'credit'),
+ * solo que por rango en vez de por día. */
+export async function getCashPaymentsForDateRange(businessId, fromDate, toDate) {
+  const { data, error } = await supabase
+    .from('crm_payments')
+    .select('id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at, voided_at, voided_by, void_reason, cash_session_id')
+    .eq('business_id', businessId)
+    .gte('payment_date', fromDate)
+    .lte('payment_date', toDate)
+    .eq('payment_status', 'received')
+    .neq('payment_method', 'credit')
+    .order('payment_date', { ascending: true });
+  return {
+    data: (data || []).map(payment => ({ ...payment, payment_method: normalizePaymentMethod(payment.payment_method || 'other') })),
+    error,
+  };
+}
+
+/** Movimientos de caja (crm_cash_movements.movement_date en el rango). */
+export async function getCashMovementsForDateRange(businessId, fromDate, toDate) {
+  const { data, error } = await supabase
+    .from('crm_cash_movements')
+    .select('*')
+    .eq('business_id', businessId)
+    .gte('movement_date', fromDate)
+    .lte('movement_date', toDate)
+    .order('created_at', { ascending: true });
+  return { data: data || [], error };
+}
+
+/** Sesiones de caja (crm_cash_sessions.date en el rango). */
+export async function getCashSessionsForDateRange(businessId, fromDate, toDate) {
+  const { data, error } = await supabase
+    .from('crm_cash_sessions')
+    .select('*')
+    .eq('business_id', businessId)
+    .gte('date', fromDate)
+    .lte('date', toDate)
+    .order('date', { ascending: true })
+    .order('opened_at', { ascending: true });
+  return { data: data || [], error };
+}
+
+/**
+ * Informe operativo por período (REPORTES-PERIODO-1). Mismas definiciones
+ * financieras que getDailySummary -- ver doc-comment de arriba. Contrato de
+ * retorno estable, campos aditivos.
+ */
+export async function getPeriodSummary(businessId, fromDate, toDate) {
+  const generatedAt = new Date().toISOString();
+
+  // Rango inválido (from > to, o fechas faltantes): estado de error explícito,
+  // SIN disparar ninguna consulta -- nunca se interpreta como "sin actividad".
+  if (!fromDate || !toDate || String(fromDate) > String(toDate)) {
+    const message = 'Rango de fechas inválido: la fecha "desde" debe ser anterior o igual a la fecha "hasta".';
+    return {
+      from: fromDate || null,
+      to: toDate || null,
+      lengthDays: null,
+      sales: {
+        available: false, gross: null, net: null, discount: null, count: null, avgTicket: null, unitsSold: null,
+        byChannel: null, voidedCount: null, topProducts: [], dailySeries: null, activityDays: null,
+        pendingGeneratedAvailable: false, pendingGenerated: null,
+      },
+      collections: { available: false, byMethod: null, total: null, vendidoVsCobrado: null },
+      expenses: { available: false, total: null, byCategory: null, cashOutflowsNonExpense: null },
+      cash: {
+        available: false, sessionsCount: null, closedCount: null, openCount: null,
+        sessionsWithDifference: null, totalDifference: null, totalDifferenceAvailable: false, sessions: [],
+      },
+      inventory: { available: false, movementsSummary: null, topOutflowProducts: [], notableMovements: [], lowStockCount: null, isLowStockForToday: false },
+      profitability: { available: false, estimatedResult: null, formula: 'net_sales_minus_expenses', label: PERIOD_PROFITABILITY_LABEL, disclaimer: PERIOD_PROFITABILITY_DISCLAIMER },
+      alerts: [{ type: 'invalid_range', severity: 'error', message }],
+      metadata: { business_id: businessId, generated_at: generatedAt, historical_limitations: [], invalid_range: true, errors: { range: message } },
+    };
+  }
+
+  const isSingleDay = fromDate === toDate;
+  const todayStr = getLocalDateString();
+  const includesToday = fromDate <= todayStr && todayStr <= toDate;
+  const { startInstant, endInstant } = localRangeInstantRange(fromDate, toDate);
+
+  const [
+    invoicesRes,
+    paymentsRes,
+    costItemsRes,
+    movementsRes,
+    sessionsRes,
+    stockProductsRes,
+    stockMovementsRes,
+  ] = await Promise.all([
+    supabase
+      .from('crm_invoices')
+      .select('id, status, total, subtotal, discount_amount, source, order_id, created_at, issue_date, crm_invoice_items(product_id, name, quantity, subtotal)')
+      .eq('business_id', businessId)
+      .gte('issue_date', fromDate)
+      .lte('issue_date', toDate),
+    getCashPaymentsForDateRange(businessId, fromDate, toDate),
+    getOperatingCostItemsForDateRange(businessId, fromDate, toDate),
+    getCashMovementsForDateRange(businessId, fromDate, toDate),
+    getCashSessionsForDateRange(businessId, fromDate, toDate),
+    getCrmStockProducts(businessId),
+    supabase
+      .from('crm_stock_movements')
+      .select('id, product_id, type, quantity, notes, created_at, wa_products(name)')
+      .eq('business_id', businessId)
+      .gte('created_at', startInstant)
+      .lt('created_at', endInstant)
+      .order('created_at', { ascending: false }),
+  ]);
+
+  const errors = {};
+  if (invoicesRes.error) errors.sales = invoicesRes.error;
+  if (paymentsRes.error) errors.collections = paymentsRes.error;
+  if (costItemsRes.error) errors.expenses = costItemsRes.error;
+  if (movementsRes.error) errors.cashMovements = movementsRes.error;
+  if (sessionsRes.error) errors.cashSessions = sessionsRes.error;
+  if (stockProductsRes.error) errors.inventoryProducts = stockProductsRes.error;
+  if (stockMovementsRes.error) errors.inventoryMovements = stockMovementsRes.error;
+
+  const salesAvailable = !invoicesRes.error;
+  const collectionsAvailable = !paymentsRes.error;
+  const expensesAvailable = !(costItemsRes.error || movementsRes.error);
+  const cashAvailable = !sessionsRes.error;
+  const inventoryAvailable = !(stockProductsRes.error || stockMovementsRes.error);
+
+  // ── Ventas (crm_invoices.issue_date entre fromDate y toDate) ──────────────
+  const allInvoices = invoicesRes.data || [];
+  const activeInvoices = allInvoices.filter(inv => inv.status !== 'anulada');
+  const voidedCount = allInvoices.length - activeInvoices.length;
+
+  const gross = activeInvoices.reduce((s, inv) => s + Number(inv.subtotal || 0), 0);
+  const discountTotal = activeInvoices.reduce((s, inv) => s + Number(inv.discount_amount || 0), 0);
+  const net = activeInvoices.reduce((s, inv) => s + Number(inv.total || 0), 0);
+  const salesCount = activeInvoices.length;
+  const avgTicket = salesCount > 0 ? net / salesCount : 0;
+
+  let pos = 0, crmManual = 0, online = 0, unitsSold = 0;
+  const productAgg = new Map();
+  const netByDate = {};
+  const invoicesById = new Map();
+
+  for (const inv of activeInvoices) {
+    const total = Number(inv.total || 0);
+    invoicesById.set(inv.id, inv);
+    netByDate[inv.issue_date] = (netByDate[inv.issue_date] || 0) + total;
+
+    // Mismo criterio de canal que getDailySummary: order_id => online,
+    // source==='pos' => TPV, resto => CRM/manual. No se inventan canales.
+    if (inv.order_id) online += total;
+    else if (inv.source === 'pos') pos += total;
+    else crmManual += total;
+
+    for (const item of inv.crm_invoice_items || []) {
+      const qty = Number(item.quantity || 0);
+      unitsSold += qty;
+      // §7 / decisión de auditoría: a diferencia de getDailySummary (que
+      // bucketiza líneas manuales sin product_id por nombre), "Top
+      // productos" a nivel PERÍODO excluye líneas sin product_id real --
+      // "no confundirlas con productos reales" (ticket §7).
+      // crm_invoice_items.product_id es nullable (20260530100000_crm_module.sql,
+      // sin NOT NULL) -- existen líneas manuales reales en el esquema.
+      // unitsSold arriba SÍ las sigue contando (cifra agregada de unidades,
+      // no una lista de "productos"), igual que getDailySummary.
+      if (!item.product_id) continue;
+      const existing = productAgg.get(item.product_id) || { productId: item.product_id, name: item.name, quantity: 0, subtotal: 0 };
+      existing.quantity += qty;
+      existing.subtotal += Number(item.subtotal || 0);
+      productAgg.set(item.product_id, existing);
+    }
+  }
+
+  // Serie diaria: TODOS los días del rango, incluyendo $0 -- nunca solo los
+  // días con actividad (ticket §5/§15: distinguir "día con $0" de "sin datos").
+  const dailySeries = enumerateDateRange(fromDate, toDate).map(date => ({ date, net: round2(netByDate[date] || 0) }));
+  const daysWithSales = dailySeries.filter(d => d.net > 0).length;
+  const daysWithoutSales = dailySeries.length - daysWithSales;
+  const maxDay = dailySeries.length ? dailySeries.reduce((a, b) => (b.net > a.net ? b : a)) : null;
+  const minDay = dailySeries.length ? dailySeries.reduce((a, b) => (b.net < a.net ? b : a)) : null;
+
+  const topProducts = [...productAgg.values()]
+    .sort((a, b) => b.subtotal - a.subtotal || b.quantity - a.quantity)
+    .slice(0, PERIOD_TOP_PRODUCTS_LIMIT)
+    .map(p => ({ ...p, subtotal: round2(p.subtotal) }));
+
+  // Cuentas por cobrar generadas: facturas del período pendientes/parciales,
+  // menos lo cobrado (cualquier fecha) -- mismo criterio que pendingToday de
+  // getDailySummary, extendido al rango. UNA consulta batched.
+  const pendingInvoices = activeInvoices.filter(inv => inv.status === 'pendiente' || inv.status === 'parcial');
+  let pendingGenerated = 0;
+  let pendingGeneratedAvailable = salesAvailable;
+  if (pendingInvoices.length) {
+    const ids = pendingInvoices.map(inv => inv.id);
+    const { data: pendingPayments, error: pendingErr } = await supabase
+      .from('crm_payments')
+      .select('invoice_id, amount, payment_method, payment_status, voided_at')
+      .in('invoice_id', ids);
+    if (pendingErr) {
+      errors.pendingCollection = pendingErr;
+      pendingGeneratedAvailable = false;
+    } else {
+      const paidByInvoice = {};
+      for (const p of pendingPayments || []) {
+        if (!isActiveReceivedPayment(p)) continue;
+        paidByInvoice[p.invoice_id] = (paidByInvoice[p.invoice_id] || 0) + Number(p.amount || 0);
+      }
+      for (const inv of pendingInvoices) {
+        const paid = paidByInvoice[inv.id] || 0;
+        pendingGenerated += Math.max(0, Number(inv.total || 0) - paid);
+      }
+    }
+  }
+
+  // ── Dinero recibido (crm_payments.payment_date entre fromDate y toDate) ───
+  const periodPayments = (paymentsRes.data || []).filter(p => !p.voided_at);
+  const collectionsByMethod = emptyByMethod();
+  let collectionsTotal = 0;
+  for (const p of periodPayments) {
+    const method = DAILY_SUMMARY_METHOD_ORDER.includes(p.payment_method) ? p.payment_method : 'other';
+    collectionsByMethod[method] += Number(p.amount || 0);
+    collectionsTotal += Number(p.amount || 0);
+  }
+  for (const key of DAILY_SUMMARY_METHOD_ORDER) collectionsByMethod[key] = round2(collectionsByMethod[key]);
+
+  // ── Vendido vs cobrado (§9) ────────────────────────────────────────────────
+  // Clasifica cada cobro del período según si la factura que paga fue
+  // EMITIDA en este mismo período, antes, o -- caso de dato temporalmente
+  // inconsistente -- DESPUÉS de él (issue_date > toDate). Requiere invoice_id
+  // + issue_date real -- NUNCA heurística de texto (`reference`). Pagos sin
+  // invoice_id, o cuya factura no puede resolverse (id no encontrado en el
+  // lookup batched), quedan en "collectedUnlinked": no se inventa a qué venta
+  // corresponden. "Fuera del período" NO equivale a "deuda anterior":
+  // issue_date > toDate es un dato temporalmente inconsistente/futuro
+  // respecto del período (ej. una factura corregida/reemitida después del
+  // cobro, o un desfase de reloj), nunca se clasifica como collectedForPriorDebt
+  // -- queda en collectedForFutureInvoices, explícito y separado.
+  let vendidoVsCobrado = {
+    available: false, sold: null, collected: null,
+    collectedForPeriodSales: null, collectedForPriorDebt: null, collectedForFutureInvoices: null, collectedUnlinked: null,
+  };
+  if (salesAvailable && collectionsAvailable) {
+    const missingIds = [...new Set(
+      periodPayments.filter(p => p.invoice_id && !invoicesById.has(p.invoice_id)).map(p => p.invoice_id)
+    )];
+    let lookupError = null;
+    let issueDateById = new Map();
+    if (missingIds.length) {
+      const { data: lookedUp, error: lookupErr } = await supabase
+        .from('crm_invoices')
+        .select('id, issue_date')
+        .in('id', missingIds);
+      if (lookupErr) {
+        lookupError = lookupErr;
+        errors.vendidoVsCobradoLookup = lookupErr;
+      } else {
+        issueDateById = new Map((lookedUp || []).map(row => [row.id, row.issue_date]));
+      }
+    }
+    if (!lookupError) {
+      let forPeriodSales = 0, forPriorDebt = 0, forFutureInvoices = 0, unlinked = 0;
+      for (const p of periodPayments) {
+        const amount = Number(p.amount || 0);
+        if (!p.invoice_id) { unlinked += amount; continue; }
+        const issueDate = invoicesById.has(p.invoice_id) ? invoicesById.get(p.invoice_id).issue_date : issueDateById.get(p.invoice_id);
+        if (issueDate == null) { unlinked += amount; continue; }
+        if (issueDate >= fromDate && issueDate <= toDate) forPeriodSales += amount;
+        else if (issueDate < fromDate) forPriorDebt += amount;
+        else forFutureInvoices += amount; // issueDate > toDate -- NUNCA deuda anterior
+      }
+      vendidoVsCobrado = {
+        available: true, sold: round2(net), collected: round2(collectionsTotal),
+        collectedForPeriodSales: round2(forPeriodSales), collectedForPriorDebt: round2(forPriorDebt),
+        collectedForFutureInvoices: round2(forFutureInvoices), collectedUnlinked: round2(unlinked),
+      };
+    } else {
+      vendidoVsCobrado = {
+        available: false, sold: round2(net), collected: round2(collectionsTotal),
+        collectedForPeriodSales: null, collectedForPriorDebt: null, collectedForFutureInvoices: null, collectedUnlinked: null,
+      };
+    }
+  }
+
+  // ── Gastos (crm_cost_items variables cuya economicDate cae en el rango) ───
+  const costItems = costItemsRes.data || [];
+  const expensesByCategory = {};
+  let expensesTotal = 0;
+  for (const item of costItems) {
+    const amount = Number(item.amount || 0);
+    expensesByCategory[item.category] = (expensesByCategory[item.category] || 0) + amount;
+    expensesTotal += amount;
+  }
+  for (const key of Object.keys(expensesByCategory)) expensesByCategory[key] = round2(expensesByCategory[key]);
+
+  // Egreso de caja que NO es gasto: is_expense=false, mismo discriminador
+  // autoritativo que getDailySummary (nunca movement_purpose legacy).
+  const periodMovements = (movementsRes.data || []).filter(m => !m.voided_at);
+  const cashOutflowsNonExpense = round2(
+    periodMovements.filter(m => m.direction === 'out' && !m.is_expense).reduce((s, m) => s + Number(m.amount || 0), 0)
+  );
+
+  // ── Caja y conciliación (multi-sesión, todo el período) ───────────────────
+  const periodSessions = sessionsRes.data || [];
+  const closedSessions = periodSessions.filter(s => s.status === 'closed');
+  const openSessions = periodSessions.filter(s => s.status !== 'closed');
+
+  let reconciliationsBySession = new Map();
+  let reconciliationBatchError = null;
+  if (closedSessions.length) {
+    const { data: reconRows, error: reconErr } = await supabase
+      .from('crm_cash_session_reconciliations')
+      .select('*')
+      .eq('business_id', businessId)
+      .in('session_id', closedSessions.map(s => s.id))
+      .order('payment_method', { ascending: true });
+    if (reconErr) {
+      reconciliationBatchError = reconErr;
+      errors.reconciliations = reconErr;
+    } else {
+      for (const row of reconRows || []) {
+        const list = reconciliationsBySession.get(row.session_id) || [];
+        list.push(row);
+        reconciliationsBySession.set(row.session_id, list);
+      }
+    }
+  }
+
+  const cashSessions = [];
+  for (const session of closedSessions) {
+    const rows = reconciliationsBySession.get(session.id) || null;
+    cashSessions.push({
+      id: session.id,
+      date: session.date,
+      status: session.status,
+      opened_at: session.opened_at,
+      closed_at: session.closed_at,
+      initial_amount: session.initial_amount,
+      reconciliation: !reconciliationBatchError && rows && rows.length ? rows : null,
+      reconciliationUnavailable: Boolean(reconciliationBatchError),
+      isLiveEstimate: false,
+    });
+  }
+
+  // A lo sumo UNA sesión abierta por negocio (constraint de openCashSession) --
+  // reutiliza EXACTAMENTE el mismo cálculo que getDailySummary, nunca un
+  // segundo motor de "efectivo esperado".
+  for (const session of openSessions) {
+    const [payRes, movRes] = await Promise.all([
+      getCashSessionPayments(businessId, session),
+      getCashSessionMovements(businessId, session.id),
+    ]);
+    if (payRes.error) errors[`sessionPayments:${session.id}`] = payRes.error;
+    if (movRes.error) errors[`sessionMovements:${session.id}`] = movRes.error;
+
+    if (payRes.error || movRes.error) {
+      cashSessions.push({
+        id: session.id, date: session.date, status: session.status,
+        opened_at: session.opened_at, closed_at: session.closed_at, initial_amount: session.initial_amount,
+        reconciliation: null, isLiveEstimate: true, liveEstimate: null, liveEstimateUnavailable: true,
+      });
+      continue;
+    }
+
+    const sessPayments = (payRes.data || []).filter(p => !p.voided_at);
+    const sessMovements = (movRes.data || []).filter(m => !m.voided_at);
+    const cashReceived = sessPayments.filter(p => p.payment_method === 'cash').reduce((s, p) => s + Number(p.amount || 0), 0);
+    const cashManualIn = sessMovements.filter(m => m.direction === 'in' && m.payment_method === 'cash').reduce((s, m) => s + Number(m.amount || 0), 0);
+    const cashOutflow = sessMovements.filter(m => m.direction === 'out' && m.payment_method === 'cash').reduce((s, m) => s + Number(m.amount || 0), 0);
+    const expectedCash = Number(session.initial_amount || 0) + cashReceived + cashManualIn - cashOutflow;
+
+    const receivedByMethod = emptyByMethod();
+    let totalReceivedAllMethods = 0;
+    for (const p of sessPayments) {
+      const method = DAILY_SUMMARY_METHOD_ORDER.includes(p.payment_method) ? p.payment_method : 'other';
+      receivedByMethod[method] += Number(p.amount || 0);
+      totalReceivedAllMethods += Number(p.amount || 0);
+    }
+    for (const key of DAILY_SUMMARY_METHOD_ORDER) receivedByMethod[key] = round2(receivedByMethod[key]);
+
+    cashSessions.push({
+      id: session.id, date: session.date, status: session.status,
+      opened_at: session.opened_at, closed_at: session.closed_at, initial_amount: session.initial_amount,
+      reconciliation: null, isLiveEstimate: true, liveEstimateUnavailable: false,
+      liveEstimate: {
+        cashReceived: round2(cashReceived), cashManualIn: round2(cashManualIn), cashOutflow: round2(cashOutflow),
+        expectedCash: round2(expectedCash), receivedByMethod, totalReceivedAllMethods: round2(totalReceivedAllMethods),
+      },
+    });
+  }
+  cashSessions.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : new Date(a.opened_at) - new Date(b.opened_at)));
+
+  const sessionsWithDifference = cashSessions.filter(s => {
+    if (!s.reconciliation) return false;
+    const diff = s.reconciliation.reduce((sum, r) => sum + Number(r.difference || 0), 0);
+    return Math.abs(diff) >= 0.01;
+  }).length;
+
+  // Diferencia acumulada: SOLO si TODAS las sesiones cerradas del período
+  // tienen un arqueo real conocido (ni legacy sin snapshot ni error de
+  // consulta) -- sumar sobre un subconjunto sería un número fabricado que
+  // aparenta estar completo sin estarlo.
+  const closedNonLive = cashSessions.filter(s => !s.isLiveEstimate);
+  const allClosedHaveKnownReconciliation = closedSessions.length > 0 && closedNonLive.every(s => !s.reconciliationUnavailable && s.reconciliation);
+  const totalDifference = allClosedHaveKnownReconciliation
+    ? round2(closedNonLive.reduce((sum, s) => sum + s.reconciliation.reduce((a, r) => a + Number(r.difference || 0), 0), 0))
+    : null;
+
+  // ── Inventario (ledger del período -- no reconstrucción histórica) ────────
+  const activeProducts = stockProductsRes.data || [];
+  const lowStockCount = activeProducts.filter(p => p.stock_actual != null && p.stock_minimo != null && p.stock_actual <= p.stock_minimo).length;
+
+  const periodStockMovements = stockMovementsRes.data || [];
+  const movementsSummary = { entrada: 0, salida: 0, ajuste: 0 };
+  const outflowByProduct = new Map();
+  for (const m of periodStockMovements) {
+    if (movementsSummary[m.type] == null) continue;
+    movementsSummary[m.type] += Math.abs(Number(m.quantity || 0));
+    if (m.type === 'salida') {
+      const existing = outflowByProduct.get(m.product_id) || { productId: m.product_id, name: m.wa_products?.name || 'Producto', quantity: 0 };
+      existing.quantity += Math.abs(Number(m.quantity || 0));
+      outflowByProduct.set(m.product_id, existing);
+    }
+  }
+  const topOutflowProducts = [...outflowByProduct.values()].sort((a, b) => b.quantity - a.quantity).slice(0, 5);
+  // Muestra reciente (no un ledger completo) -- igual criterio que
+  // getDailySummary (crm_stock_movements no guarda antes/después).
+  const notableMovements = periodStockMovements.slice(0, 10).map(m => ({
+    productId: m.product_id, productName: m.wa_products?.name || 'Producto', type: m.type, quantity: m.quantity,
+    notes: m.notes || null, created_at: m.created_at,
+  }));
+
+  // ── Saldo antes de costo de mercadería (sin COGS, mismo rótulo/fórmula) ───
+  const estimatedResult = round2(net - expensesTotal);
+  const profitabilityAvailable = salesAvailable && expensesAvailable;
+
+  // ── Alertas (deterministas, mismo criterio que getDailySummary) ───────────
+  const alerts = [];
+  if (lowStockCount > 0) {
+    alerts.push({ type: 'low_stock', severity: 'warning', message: `${lowStockCount} producto${lowStockCount === 1 ? '' : 's'} actualmente bajo el stock mínimo` });
+  }
+  if (sessionsWithDifference > 0) {
+    alerts.push({ type: 'cash_difference', severity: 'warning', message: `${sessionsWithDifference} sesión${sessionsWithDifference === 1 ? '' : 'es'} de caja tuvo${sessionsWithDifference === 1 ? '' : 'ieron'} diferencias en este período` });
+  }
+  if (pendingGeneratedAvailable && pendingGenerated > 0) {
+    alerts.push({ type: 'pending_collection', severity: 'info', message: `${pendingGenerated.toLocaleString('es-CL')} de ventas del período quedaron pendientes de cobro` });
+  }
+  if (voidedCount > 0) {
+    alerts.push({ type: 'voided_sales', severity: 'info', message: `${voidedCount} venta${voidedCount === 1 ? '' : 's'} anulada${voidedCount === 1 ? '' : 's'} en este período` });
+  }
+  if (salesAvailable && daysWithoutSales > 0) {
+    alerts.push({ type: 'days_without_sales', severity: 'info', message: `${daysWithoutSales} día${daysWithoutSales === 1 ? '' : 's'} del período no registraron ventas` });
+  }
+  if (!salesAvailable) alerts.push({ type: 'data_unavailable', severity: 'error', message: 'No pudimos obtener las ventas de este período.', section: 'sales' });
+  if (!collectionsAvailable) alerts.push({ type: 'data_unavailable', severity: 'error', message: 'No pudimos obtener el dinero recibido de este período.', section: 'collections' });
+  if (!expensesAvailable) alerts.push({ type: 'data_unavailable', severity: 'error', message: 'No pudimos obtener los gastos de este período.', section: 'expenses' });
+  if (!cashAvailable) alerts.push({ type: 'data_unavailable', severity: 'error', message: 'No pudimos obtener el estado de caja de este período.', section: 'cash' });
+  if (reconciliationBatchError) alerts.push({ type: 'data_unavailable', severity: 'error', message: 'No pudimos obtener las conciliaciones de caja de este período.', section: 'cash' });
+  for (const session of cashSessions) {
+    if (session.liveEstimateUnavailable) {
+      alerts.push({ type: 'data_unavailable', severity: 'error', message: 'No pudimos obtener el estado de la caja abierta.', section: 'cash', sessionId: session.id });
+    }
+  }
+  if (!inventoryAvailable) alerts.push({ type: 'data_unavailable', severity: 'warning', message: 'No pudimos obtener la información de inventario de este período.', section: 'inventory' });
+
+  const historicalLimitations = [
+    'inventory.lowStockCount refleja el stock ACTUAL, no el histórico del período -- Walinka no reconstruye stock retroactivo.',
+    'profitability.estimatedResult no incluye costo de mercadería vendida (COGS) -- no existe costo unitario de producto en el esquema.',
+    'Los rangos de fecha usan el criterio de "fecha local del navegador" (getLocalDateString), igual que Resumen del día -- no hay configuración de timezone a nivel de negocio.',
+    'Top productos excluye líneas de venta sin producto asociado (líneas manuales) -- a diferencia de Resumen del día, que las agrupa por nombre.',
+  ];
+  if (!allClosedHaveKnownReconciliation && closedSessions.length > 0) {
+    historicalLimitations.push('cash.totalDifference no se calcula porque al menos una sesión cerrada del período no tiene arqueo conocido (legacy sin snapshot o error de consulta).');
+  }
+
+  return {
+    from: fromDate,
+    to: toDate,
+    lengthDays: dailySeries.length,
+    sales: salesAvailable ? {
+      available: true,
+      gross: round2(gross), net: round2(net), discount: round2(discountTotal),
+      count: salesCount, avgTicket: round2(avgTicket), unitsSold,
+      byChannel: { pos: round2(pos), crmManual: round2(crmManual), online: round2(online) },
+      voidedCount,
+      topProducts,
+      dailySeries,
+      activityDays: { daysWithSales, daysWithoutSales, maxDay, minDay },
+      pendingGeneratedAvailable, pendingGenerated: pendingGeneratedAvailable ? round2(pendingGenerated) : null,
+    } : {
+      available: false, gross: null, net: null, discount: null, count: null, avgTicket: null, unitsSold: null,
+      byChannel: null, voidedCount: null, topProducts: [], dailySeries: null, activityDays: null,
+      pendingGeneratedAvailable: false, pendingGenerated: null,
+    },
+    collections: {
+      available: collectionsAvailable,
+      byMethod: collectionsAvailable ? collectionsByMethod : null,
+      total: collectionsAvailable ? round2(collectionsTotal) : null,
+      vendidoVsCobrado,
+    },
+    expenses: expensesAvailable ? {
+      available: true, total: round2(expensesTotal), byCategory: expensesByCategory, cashOutflowsNonExpense,
+    } : {
+      available: false, total: null, byCategory: null, cashOutflowsNonExpense: null,
+    },
+    cash: {
+      available: cashAvailable,
+      sessionsCount: cashAvailable ? periodSessions.length : null,
+      closedCount: cashAvailable ? closedSessions.length : null,
+      openCount: cashAvailable ? openSessions.length : null,
+      sessionsWithDifference: cashAvailable ? sessionsWithDifference : null,
+      totalDifference,
+      totalDifferenceAvailable: cashAvailable && allClosedHaveKnownReconciliation,
+      sessions: cashAvailable ? cashSessions : [],
+    },
+    inventory: inventoryAvailable ? {
+      available: true, movementsSummary, topOutflowProducts, notableMovements,
+      lowStockCount, isLowStockForToday: includesToday,
+    } : {
+      available: false, movementsSummary: null, topOutflowProducts: [], notableMovements: [],
+      lowStockCount: null, isLowStockForToday: includesToday,
+    },
+    profitability: {
+      available: profitabilityAvailable,
+      estimatedResult: profitabilityAvailable ? estimatedResult : null,
+      formula: 'net_sales_minus_expenses',
+      label: PERIOD_PROFITABILITY_LABEL,
+      disclaimer: PERIOD_PROFITABILITY_DISCLAIMER,
+    },
+    alerts,
+    metadata: {
+      business_id: businessId,
+      generated_at: generatedAt,
+      includes_today: includesToday,
+      is_single_day: isSingleDay,
+      historical_limitations: historicalLimitations,
+      errors,
+    },
+  };
+}
