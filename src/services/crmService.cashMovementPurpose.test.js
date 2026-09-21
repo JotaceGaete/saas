@@ -10,11 +10,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const rpcMock = vi.fn();
 const fromMock = vi.fn();
+const getUserMock = vi.fn();
 
 vi.mock('../lib/supabase', () => ({
   supabase: {
     rpc: (...args) => rpcMock(...args),
     from: (...args) => fromMock(...args),
+    auth: { getUser: (...args) => getUserMock(...args) },
   },
 }));
 
@@ -33,8 +35,10 @@ function insertResult(result) {
 beforeEach(() => {
   rpcMock.mockReset();
   fromMock.mockReset();
+  getUserMock.mockReset();
   rpcMock.mockResolvedValue({ data: { movement_id: 'mv1', cost_item_id: null }, error: null });
   fromMock.mockImplementation(() => insertResult({ data: { id: 'mv1' }, error: null }));
+  getUserMock.mockResolvedValue({ data: { user: { id: 'user-real-1' } }, error: null });
 });
 
 const base = {

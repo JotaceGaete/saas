@@ -1970,13 +1970,24 @@ export async function createCashMovement(businessId, {
   category          = 'other',
   paymentMethod     = 'cash',
   notes             = null,
-  createdBy         = null,
   isExpense         = false,
   movementPurpose   = null,
   relatedCostItemId = null,
   month             = null,
   year              = null,
 } = {}) {
+  // SEGURIDAD-WALINKA-1F: created_by ya NO es un parámetro del caller --
+  // antes createdBy venía tal cual del código que invoca esta función
+  // (nunca lo hacía en la práctica: el único caller real, CrmCash.jsx,
+  // jamás lo pasaba), pero create_cash_movement_with_expense/_with_purpose
+  // insertaban p_created_by sin validar que coincidiera con auth.uid() --
+  // cualquiera con acceso al negocio podía falsificar la autoría de un
+  // movimiento. Se resuelve acá, del mismo modo que ya hacían otras
+  // funciones de este archivo (recordCashPayment, adjustStock, etc.):
+  // auth.getUser() sobre la sesión real, nunca un valor recibido.
+  const { data: { user } } = await supabase.auth.getUser();
+  const createdBy = user?.id || null;
+
   // CAJA-COSTOS-1 — flujo nuevo con propósito explícito: RPC atómica
   // separada de la legacy de abajo. Decide por sí misma (server-side) si
   // corresponde crear un crm_cost_item -- solo movementPurpose='new_expense'
@@ -1994,7 +2005,9 @@ export async function createCashMovement(businessId, {
       p_category:             category,
       p_payment_method:       paymentMethod,
       p_notes:                notes || null,
-      p_created_by:           createdBy || null,
+      // Ignorado por la RPC desde SEGURIDAD-WALINKA-1F (usa auth.uid()
+      // internamente) -- se sigue enviando solo por compatibilidad de firma.
+      p_created_by:           createdBy,
       p_movement_date:        getLocalDateString(),
       p_month:                month ?? (now.getMonth() + 1),
       p_year:                 year ?? now.getFullYear(),
@@ -2016,7 +2029,9 @@ export async function createCashMovement(businessId, {
       p_category:       category,
       p_payment_method: paymentMethod,
       p_notes:          notes         || null,
-      p_created_by:     createdBy     || null,
+      // Ignorado por la RPC desde SEGURIDAD-WALINKA-1F (usa auth.uid()
+      // internamente) -- se sigue enviando solo por compatibilidad de firma.
+      p_created_by:     createdBy,
       p_movement_date:  getLocalDateString(),
       p_month:          month         ?? (now.getMonth() + 1),
       p_year:           year          ?? now.getFullYear(),
@@ -2024,7 +2039,8 @@ export async function createCashMovement(businessId, {
     return { data, error };
   }
 
-  // Movimiento sin gasto: insert directo
+  // Movimiento sin gasto: insert directo. created_by = auth.uid() es
+  // exigido por la policy crm_cash_movements_insert (SEGURIDAD-WALINKA-1F).
   const { data, error } = await supabase
     .from('crm_cash_movements')
     .insert({
@@ -2036,7 +2052,7 @@ export async function createCashMovement(businessId, {
       category,
       payment_method: paymentMethod,
       notes:          notes      || null,
-      created_by:     createdBy  || null,
+      created_by:     createdBy,
       movement_date:  getLocalDateString(),
       is_expense:     false,
     })
