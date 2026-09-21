@@ -648,10 +648,37 @@ export const getBusinessByIdForAdmin = async (businessId) => {
   return { data: data ? mapBusinessFromDb(data) : null, error: null };
 };
 
+/**
+ * Whitelist explícita de columnas públicas de wa_businesses (SEGURIDAD-WALINKA-1D).
+ * wa_businesses tiene RLS con una policy pública (wa_businesses_public_read,
+ * USING (true)) para que el catálogo/perfil de un negocio sea visible sin
+ * sesión -- RLS filtra FILAS, no columnas, así que un `select('*')` acá
+ * expondría en el payload cualquier columna reservada que exista en la
+ * tabla (histórico: bank_name/bank_account_type/bank_account_number/
+ * bank_account_holder/bank_rut/bank_email, movidas a wa_business_bank_accounts
+ * en 20260921130000_secure_wa_businesses_bank_fields.sql), aunque la UI
+ * pública nunca las renderice. Esta lista es exactamente lo que
+ * mapBusinessFromDb() lee (sin user_id: no lo usa ningún consumidor
+ * público verificado) -- no agregar columnas nuevas sin antes confirmar
+ * que son seguras para un visitante anónimo.
+ */
+const PUBLIC_BUSINESS_COLUMNS = [
+  'id', 'name', 'description', 'whatsapp', 'email', 'address',
+  'city', 'region', 'country', 'country_code', 'currency',
+  'logo_url', 'cover_image_url', 'design_settings', 'lat', 'lng', 'og_image_url',
+  'slug', 'is_active', 'rubro_id',
+  'seo_family_key', 'seo_content_override', 'seo_content_ai',
+  'instagram_url', 'tiktok_url', 'facebook_url', 'print_legend',
+  'operating_days', 'order_message_template',
+  'plan_slug', 'plan_expires_at', 'trial_expires_at', 'scheduled_plan_slug', 'scheduled_change_at',
+  'business_mode', 'document_title_type',
+  'created_at', 'updated_at',
+].join(', ');
+
 export const getBusinessBySlug = async (slug) => {
   const { data, error } = await supabase
     ?.from('wa_businesses')
-    ?.select('*, wa_rubros(name, slug)')
+    ?.select(`${PUBLIC_BUSINESS_COLUMNS}, wa_rubros(name, slug)`)
     ?.eq('slug', slug)
     ?.eq('is_active', true)
     ?.maybeSingle();
