@@ -201,6 +201,7 @@ function buildCollectionsViewModel(collections, sales, currency) {
       collected: money(vvc.collected, available, currency),
       collectedForPeriodSales: vvc.available ? money(vvc.collectedForPeriodSales, true, currency) : null,
       collectedForPriorDebt: vvc.available ? money(vvc.collectedForPriorDebt, true, currency) : null,
+      collectedForFutureInvoices: vvc.available ? money(vvc.collectedForFutureInvoices, true, currency) : null,
       collectedUnlinked: vvc.available ? money(vvc.collectedUnlinked, true, currency) : null,
     } : null,
   };

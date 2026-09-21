@@ -3024,10 +3024,20 @@ export async function getPeriodSummary(businessId, fromDate, toDate) {
 
   // ── Vendido vs cobrado (§9) ────────────────────────────────────────────────
   // Clasifica cada cobro del período según si la factura que paga fue
-  // EMITIDA en este mismo período o antes. Requiere invoice_id + issue_date
-  // real -- NUNCA heurística de texto (`reference`). Pagos sin invoice_id
-  // quedan en "collectedUnlinked": no se inventa a qué venta corresponden.
-  let vendidoVsCobrado = { available: false, sold: null, collected: null, collectedForPeriodSales: null, collectedForPriorDebt: null, collectedUnlinked: null };
+  // EMITIDA en este mismo período, antes, o -- caso de dato temporalmente
+  // inconsistente -- DESPUÉS de él (issue_date > toDate). Requiere invoice_id
+  // + issue_date real -- NUNCA heurística de texto (`reference`). Pagos sin
+  // invoice_id, o cuya factura no puede resolverse (id no encontrado en el
+  // lookup batched), quedan en "collectedUnlinked": no se inventa a qué venta
+  // corresponden. "Fuera del período" NO equivale a "deuda anterior":
+  // issue_date > toDate es un dato temporalmente inconsistente/futuro
+  // respecto del período (ej. una factura corregida/reemitida después del
+  // cobro, o un desfase de reloj), nunca se clasifica como collectedForPriorDebt
+  // -- queda en collectedForFutureInvoices, explícito y separado.
+  let vendidoVsCobrado = {
+    available: false, sold: null, collected: null,
+    collectedForPeriodSales: null, collectedForPriorDebt: null, collectedForFutureInvoices: null, collectedUnlinked: null,
+  };
   if (salesAvailable && collectionsAvailable) {
     const missingIds = [...new Set(
       periodPayments.filter(p => p.invoice_id && !invoicesById.has(p.invoice_id)).map(p => p.invoice_id)
@@ -3047,21 +3057,26 @@ export async function getPeriodSummary(businessId, fromDate, toDate) {
       }
     }
     if (!lookupError) {
-      let forPeriodSales = 0, forPriorDebt = 0, unlinked = 0;
+      let forPeriodSales = 0, forPriorDebt = 0, forFutureInvoices = 0, unlinked = 0;
       for (const p of periodPayments) {
         const amount = Number(p.amount || 0);
         if (!p.invoice_id) { unlinked += amount; continue; }
         const issueDate = invoicesById.has(p.invoice_id) ? invoicesById.get(p.invoice_id).issue_date : issueDateById.get(p.invoice_id);
         if (issueDate == null) { unlinked += amount; continue; }
         if (issueDate >= fromDate && issueDate <= toDate) forPeriodSales += amount;
-        else forPriorDebt += amount;
+        else if (issueDate < fromDate) forPriorDebt += amount;
+        else forFutureInvoices += amount; // issueDate > toDate -- NUNCA deuda anterior
       }
       vendidoVsCobrado = {
         available: true, sold: round2(net), collected: round2(collectionsTotal),
-        collectedForPeriodSales: round2(forPeriodSales), collectedForPriorDebt: round2(forPriorDebt), collectedUnlinked: round2(unlinked),
+        collectedForPeriodSales: round2(forPeriodSales), collectedForPriorDebt: round2(forPriorDebt),
+        collectedForFutureInvoices: round2(forFutureInvoices), collectedUnlinked: round2(unlinked),
       };
     } else {
-      vendidoVsCobrado = { available: false, sold: round2(net), collected: round2(collectionsTotal), collectedForPeriodSales: null, collectedForPriorDebt: null, collectedUnlinked: null };
+      vendidoVsCobrado = {
+        available: false, sold: round2(net), collected: round2(collectionsTotal),
+        collectedForPeriodSales: null, collectedForPriorDebt: null, collectedForFutureInvoices: null, collectedUnlinked: null,
+      };
     }
   }
 

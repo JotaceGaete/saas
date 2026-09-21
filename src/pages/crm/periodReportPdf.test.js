@@ -18,7 +18,7 @@ function baseSummary(overrides = {}) {
     collections: {
       available: true, total: 800,
       byMethod: { cash: 500, card: 0, debit_card: 300, credit_card: 0, bank_transfer: 0, mercado_pago: 0, check: 0, other: 0 },
-      vendidoVsCobrado: { available: true, sold: 900, collected: 800, collectedForPeriodSales: 800, collectedForPriorDebt: 0, collectedUnlinked: 0 },
+      vendidoVsCobrado: { available: true, sold: 900, collected: 800, collectedForPeriodSales: 800, collectedForPriorDebt: 0, collectedForFutureInvoices: 0, collectedUnlinked: 0 },
     },
     expenses: { available: true, total: 300, byCategory: { supplies: 200, services: 100 }, cashOutflowsNonExpense: 50 },
     profitability: { available: true, estimatedResult: 600, formula: 'net_sales_minus_expenses', label: 'Saldo antes de costo de mercadería', disclaimer: 'texto disclaimer' },
@@ -104,6 +104,19 @@ describe('buildPeriodReportViewModel — contrato general', () => {
     const vm = buildPeriodReportViewModel(baseSummary(), null, {}, '2026-09-01', '2026-09-30');
     expect(vm.collections.vendidoVsCobrado.available).toBe(true);
     expect(vm.collections.vendidoVsCobrado.collectedForPriorDebt.value).toBe(0);
+    expect(vm.collections.vendidoVsCobrado.collectedForFutureInvoices.value).toBe(0);
+  });
+
+  it('collectedForFutureInvoices (facturas con fecha posterior al período) se propaga al view-model', () => {
+    const summary = baseSummary({
+      collections: {
+        available: true, total: 800,
+        byMethod: { cash: 500, card: 0, debit_card: 300, credit_card: 0, bank_transfer: 0, mercado_pago: 0, check: 0, other: 0 },
+        vendidoVsCobrado: { available: true, sold: 900, collected: 800, collectedForPeriodSales: 500, collectedForPriorDebt: 100, collectedForFutureInvoices: 200, collectedUnlinked: 0 },
+      },
+    });
+    const vm = buildPeriodReportViewModel(summary, null, {}, '2026-09-01', '2026-09-30');
+    expect(vm.collections.vendidoVsCobrado.collectedForFutureInvoices.value).toBe(200);
   });
 
   it('serie diaria conserva todos los días, incluyendo $0', () => {

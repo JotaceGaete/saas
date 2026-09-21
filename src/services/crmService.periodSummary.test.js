@@ -301,6 +301,207 @@ describe('getPeriodSummary — dinero recibido (medios de pago)', () => {
   });
 });
 
+// ═════════════════════════════════════════════════════════════════════════════
+// REPORTES-PERIODO-1B — vendidoVsCobrado: pagos parciales cruzando períodos.
+//
+// Regla financiera bajo prueba (ver bug corregido): "fuera del período" NO
+// equivale a "deuda anterior". issue_date < fromDate -> collectedForPriorDebt;
+// issue_date > toDate -> collectedForFutureInvoices (dato temporalmente
+// inconsistente, NUNCA se cuenta como deuda anterior); sin invoice_id, o con
+// invoice_id que no puede resolverse -> collectedUnlinked.
+//
+// Todas las facturas usadas como status 'pagada' en la consulta principal de
+// crm_invoices, deliberadamente, para no disparar la consulta adicional de
+// pendingGenerated (`.in('invoice_id', ids)` sobre crm_payments para facturas
+// pendientes/parciales) -- esa rama ya tiene su propia cobertura en otros
+// tests de este archivo y no es el objetivo de este bloque.
+// ═════════════════════════════════════════════════════════════════════════════
+describe('getPeriodSummary — vendidoVsCobrado: pagos parciales cruzando períodos (REPORTES-PERIODO-1B)', () => {
+  it('Caso A — factura emitida ANTES del período, pagos parciales en agosto/septiembre/octubre: informe de septiembre solo ve los pagos de septiembre, todos como deuda anterior', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      // Factura emitida 2026-08-20 ($300.000) -- NO aparece en la consulta
+      // principal de ventas de septiembre (issue_date fuera de rango).
+      crm_invoices: [
+        { data: [], error: null }, // 1ª llamada: ventas del rango (sin ventas en septiembre)
+        { data: [{ id: 'inv-a', issue_date: '2026-08-20' }], error: null }, // 2ª llamada: lookup vendidoVsCobrado
+      ],
+      // Solo los pagos de SEPTIEMBRE (una consulta real por rango ya excluiría
+      // los de agosto/octubre) -- $100.000 (25-ago) y $50.000 (5-oct) NUNCA
+      // llegan a este mock, tal como no llegarían a la consulta real.
+      crm_payments: {
+        data: [
+          { id: 'pay-ago-no-entra', amount: 100000, payment_method: 'cash', payment_status: 'received', payment_date: '2026-08-25', voided_at: null, invoice_id: 'inv-a' },
+          { id: 'pay-sep-10', amount: 80000, payment_method: 'cash', payment_status: 'received', payment_date: '2026-09-10', voided_at: null, invoice_id: 'inv-a' },
+          { id: 'pay-sep-28', amount: 70000, payment_method: 'cash', payment_status: 'received', payment_date: '2026-09-28', voided_at: null, invoice_id: 'inv-a' },
+        ].filter(p => p.payment_date >= '2026-09-01' && p.payment_date <= '2026-09-30'), // simula el filtro real .gte/.lte
+        error: null,
+      },
+    });
+    const result = await getPeriodSummary('biz1', '2026-09-01', '2026-09-30');
+
+    expect(result.sales.net).toBe(0); // la factura de agosto no cuenta como venta de septiembre
+    expect(result.collections.total).toBe(150000); // 80.000 + 70.000 (el de octubre no entra al filtro de payment_date)
+    const vvc = result.collections.vendidoVsCobrado;
+    expect(vvc.available).toBe(true);
+    expect(vvc.collected).toBe(150000);
+    expect(vvc.collectedForPriorDebt).toBe(150000);
+    expect(vvc.collectedForPeriodSales).toBe(0);
+    expect(vvc.collectedForFutureInvoices).toBe(0);
+    expect(vvc.collectedUnlinked).toBe(0);
+  });
+
+  it('Caso B — factura emitida DENTRO del período, pagos parciales en septiembre/octubre: septiembre solo ve los pagos de septiembre, como ventas del período', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      crm_invoices: {
+        data: [{
+          id: 'inv-b', status: 'pagada', total: 300000, subtotal: 300000, discount_amount: 0, source: 'crm', order_id: null,
+          created_at: '2026-09-05T10:00:00Z', issue_date: '2026-09-05', crm_invoice_items: [],
+        }],
+        error: null,
+      },
+      crm_payments: {
+        data: [
+          { id: 'pay-sep-05', amount: 50000, payment_method: 'cash', payment_status: 'received', payment_date: '2026-09-05', voided_at: null, invoice_id: 'inv-b' },
+          { id: 'pay-sep-15', amount: 100000, payment_method: 'cash', payment_status: 'received', payment_date: '2026-09-15', voided_at: null, invoice_id: 'inv-b' },
+          { id: 'pay-oct-05-no-entra', amount: 150000, payment_method: 'cash', payment_status: 'received', payment_date: '2026-10-05', voided_at: null, invoice_id: 'inv-b' },
+        ].filter(p => p.payment_date >= '2026-09-01' && p.payment_date <= '2026-09-30'), // simula el filtro real .gte/.lte
+        error: null,
+      },
+    });
+    const result = await getPeriodSummary('biz1', '2026-09-01', '2026-09-30');
+
+    expect(result.sales.net).toBe(300000);
+    expect(result.collections.total).toBe(150000); // 50.000 + 100.000; el de octubre no entra
+    const vvc = result.collections.vendidoVsCobrado;
+    expect(vvc.available).toBe(true);
+    expect(vvc.collected).toBe(150000);
+    expect(vvc.collectedForPeriodSales).toBe(150000);
+    expect(vvc.collectedForPriorDebt).toBe(0);
+    expect(vvc.collectedForFutureInvoices).toBe(0);
+    expect(vvc.collectedUnlinked).toBe(0);
+  });
+
+  it('Caso C — mezcla en el mismo período: venta del período, deuda anterior, pagos parciales, pago sin invoice_id y pago anulado; las categorías suman collections.total', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      crm_invoices: [
+        {
+          // 1ª llamada: ventas del rango -- solo inv-c1 fue EMITIDA en septiembre.
+          data: [{
+            id: 'inv-c1', status: 'pagada', total: 200000, subtotal: 200000, discount_amount: 0, source: 'crm', order_id: null,
+            created_at: '2026-09-10T10:00:00Z', issue_date: '2026-09-10', crm_invoice_items: [],
+          }],
+          error: null,
+        },
+        {
+          // 2ª llamada: lookup batched de inv-c2 (deuda anterior) e inv-c3 (fecha posterior al período).
+          data: [
+            { id: 'inv-c2', issue_date: '2026-07-01' },
+            { id: 'inv-c3', issue_date: '2026-10-15' },
+          ],
+          error: null,
+        },
+      ],
+      crm_payments: {
+        data: [
+          // Dos pagos parciales sobre la MISMA factura del período (inv-c1).
+          { id: 'p1', amount: 50000, payment_method: 'cash', payment_status: 'received', payment_date: '2026-09-11', voided_at: null, invoice_id: 'inv-c1' },
+          { id: 'p2', amount: 30000, payment_method: 'card', payment_status: 'received', payment_date: '2026-09-12', voided_at: null, invoice_id: 'inv-c1' },
+          // Cobro de deuda anterior (inv-c2, emitida en julio).
+          { id: 'p3', amount: 40000, payment_method: 'cash', payment_status: 'received', payment_date: '2026-09-13', voided_at: null, invoice_id: 'inv-c2' },
+          // Cobro asociado a factura con fecha POSTERIOR al período (inv-c3, emitida en octubre) -- dato inconsistente.
+          { id: 'p4', amount: 20000, payment_method: 'cash', payment_status: 'received', payment_date: '2026-09-14', voided_at: null, invoice_id: 'inv-c3' },
+          // Pago sin invoice_id -- no se inventa a qué venta corresponde.
+          { id: 'p5', amount: 15000, payment_method: 'cash', payment_status: 'received', payment_date: '2026-09-15', voided_at: null, invoice_id: null },
+          // Pago anulado -- NUNCA debe sumar a ninguna categoría ni al total.
+          { id: 'p6', amount: 99999, payment_method: 'cash', payment_status: 'received', payment_date: '2026-09-16', voided_at: '2026-09-16T12:00:00Z', invoice_id: null },
+        ],
+        error: null,
+      },
+    });
+    const result = await getPeriodSummary('biz1', '2026-09-01', '2026-09-30');
+
+    expect(result.collections.total).toBe(155000); // 50k+30k+40k+20k+15k (el anulado NUNCA cuenta)
+    const vvc = result.collections.vendidoVsCobrado;
+    expect(vvc.available).toBe(true);
+    expect(vvc.collected).toBe(155000);
+    expect(vvc.collectedForPeriodSales).toBe(80000); // p1 + p2 (inv-c1, emitida en septiembre)
+    expect(vvc.collectedForPriorDebt).toBe(40000); // p3 (inv-c2, emitida en julio)
+    expect(vvc.collectedForFutureInvoices).toBe(20000); // p4 (inv-c3, emitida en octubre)
+    expect(vvc.collectedUnlinked).toBe(15000); // p5 (sin invoice_id)
+    // Invariante: la suma de TODAS las categorías clasificadas -- incluyendo
+    // los no clasificados -- es exactamente collections.total. Sin redondeos
+    // arbitrarios que escondan diferencias.
+    expect(vvc.collectedForPeriodSales + vvc.collectedForPriorDebt + vvc.collectedForFutureInvoices + vvc.collectedUnlinked).toBe(vvc.collected);
+    expect(vvc.collected).toBe(result.collections.total);
+  });
+
+  it('Caso D — pago de septiembre asociado a una factura con issue_date de octubre: NUNCA debe clasificarse como deuda anterior (regresión del bug corregido)', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      crm_invoices: [
+        { data: [], error: null }, // 1ª llamada: ventas del rango (la factura no fue emitida en septiembre)
+        { data: [{ id: 'inv-future', issue_date: '2026-10-05' }], error: null }, // 2ª llamada: lookup
+      ],
+      crm_payments: {
+        data: [{ id: 'pD', amount: 60000, payment_method: 'cash', payment_status: 'received', payment_date: '2026-09-20', voided_at: null, invoice_id: 'inv-future' }],
+        error: null,
+      },
+    });
+    const result = await getPeriodSummary('biz1', '2026-09-01', '2026-09-30');
+
+    const vvc = result.collections.vendidoVsCobrado;
+    expect(vvc.available).toBe(true);
+    expect(vvc.collected).toBe(60000);
+    // Este es el bug corregido: issue_date (2026-10-05) > toDate (2026-09-30)
+    // NUNCA debe caer en collectedForPriorDebt -- "fuera del período" no
+    // equivale a "deuda anterior".
+    expect(vvc.collectedForPriorDebt).toBe(0);
+    expect(vvc.collectedForFutureInvoices).toBe(60000);
+    expect(vvc.collectedForPeriodSales).toBe(0);
+    expect(vvc.collectedUnlinked).toBe(0);
+  });
+
+  it('invariante general: collectedForPeriodSales + collectedForPriorDebt + collectedForFutureInvoices + collectedUnlinked === collected, siempre que vendidoVsCobrado.available sea true', async () => {
+    mockTables({
+      ...EMPTY_TABLES,
+      crm_invoices: [
+        {
+          data: [{
+            id: 'inv-x1', status: 'pagada', total: 123456, subtotal: 123456, discount_amount: 0, source: 'pos', order_id: null,
+            created_at: '2026-09-02T10:00:00Z', issue_date: '2026-09-02', crm_invoice_items: [],
+          }],
+          error: null,
+        },
+        {
+          data: [
+            { id: 'inv-x2', issue_date: '2026-06-15' },
+            { id: 'inv-x3', issue_date: '2026-11-01' },
+          ],
+          error: null,
+        },
+      ],
+      crm_payments: {
+        data: [
+          { id: 'q1', amount: 111111, payment_method: 'cash', payment_status: 'received', payment_date: '2026-09-03', voided_at: null, invoice_id: 'inv-x1' },
+          { id: 'q2', amount: 22222, payment_method: 'bank_transfer', payment_status: 'received', payment_date: '2026-09-04', voided_at: null, invoice_id: 'inv-x2' },
+          { id: 'q3', amount: 3333, payment_method: 'mercado_pago', payment_status: 'received', payment_date: '2026-09-05', voided_at: null, invoice_id: 'inv-x3' },
+          { id: 'q4', amount: 444, payment_method: 'other', payment_status: 'received', payment_date: '2026-09-06', voided_at: null, invoice_id: null },
+        ],
+        error: null,
+      },
+    });
+    const result = await getPeriodSummary('biz1', '2026-09-01', '2026-09-30');
+    const vvc = result.collections.vendidoVsCobrado;
+    expect(vvc.available).toBe(true);
+    const categorizedSum = vvc.collectedForPeriodSales + vvc.collectedForPriorDebt + vvc.collectedForFutureInvoices + vvc.collectedUnlinked;
+    expect(categorizedSum).toBe(vvc.collected);
+    expect(vvc.collected).toBe(result.collections.total);
+  });
+});
+
 describe('getPeriodSummary — gastos vs egresos de caja', () => {
   it('gasto (crm_cost_item variable) y egreso no-gasto NUNCA se suman dos veces', async () => {
     mockTables({

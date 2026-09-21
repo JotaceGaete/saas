@@ -204,6 +204,7 @@ function CollectionsSection({ vm }) {
             <View style={S.noteBox}>
               <Text style={S.noteText}>
                 Vendido: {vm.vendidoVsCobrado.sold.formatted} · Cobrado: {vm.vendidoVsCobrado.collected.formatted} · De ventas del período: {vm.vendidoVsCobrado.collectedForPeriodSales.formatted} · De deudas anteriores: {vm.vendidoVsCobrado.collectedForPriorDebt.formatted}
+                {vm.vendidoVsCobrado.collectedForFutureInvoices?.value > 0 && ` · De facturas con fecha posterior al período (dato inconsistente): ${vm.vendidoVsCobrado.collectedForFutureInvoices.formatted}`}
               </Text>
             </View>
           )}

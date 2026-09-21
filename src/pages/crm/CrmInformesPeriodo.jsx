@@ -539,6 +539,9 @@ export default function CrmInformesPeriodo() {
                       <p className="text-gray-500">Cobrado en el período: <strong className="text-gray-800">{collections.vendidoVsCobrado.collected.formatted}</strong></p>
                       <p className="text-gray-500">De ventas del período: <strong className="text-gray-800">{collections.vendidoVsCobrado.collectedForPeriodSales.formatted}</strong></p>
                       <p className="text-gray-500">De deudas anteriores: <strong className="text-gray-800">{collections.vendidoVsCobrado.collectedForPriorDebt.formatted}</strong></p>
+                      {collections.vendidoVsCobrado.collectedForFutureInvoices?.value > 0 && (
+                        <p className="text-gray-500 sm:col-span-2">De facturas con fecha posterior al período (dato inconsistente): <strong className="text-gray-800">{collections.vendidoVsCobrado.collectedForFutureInvoices.formatted}</strong></p>
+                      )}
                     </div>
                   )}
                 </>

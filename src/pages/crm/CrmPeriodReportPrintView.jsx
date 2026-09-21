@@ -146,6 +146,7 @@ function CollectionsSection({ vm }) {
           {vm.vendidoVsCobrado?.available && (
             <p className="print-avoid-break mt-1.5 rounded bg-gray-50 px-2 py-1.5 text-[7.5pt] leading-tight text-gray-600">
               Vendido: {vm.vendidoVsCobrado.sold.formatted} · Cobrado: {vm.vendidoVsCobrado.collected.formatted} · De ventas del período: {vm.vendidoVsCobrado.collectedForPeriodSales.formatted} · De deudas anteriores: {vm.vendidoVsCobrado.collectedForPriorDebt.formatted}
+              {vm.vendidoVsCobrado.collectedForFutureInvoices?.value > 0 && ` · De facturas con fecha posterior al período (dato inconsistente): ${vm.vendidoVsCobrado.collectedForFutureInvoices.formatted}`}
             </p>
           )}
         </>
