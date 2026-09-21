@@ -1478,28 +1478,39 @@ export const createOrder = async (businessId, orderData, items) => {
   }
   // ─────────────────────────────────────────────────────────────────────────
 
-  // Generar UUID client-side para evitar problemas de RLS con usuarios anónimos.
-  const orderId = (typeof crypto !== 'undefined' && crypto?.randomUUID)
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`;
+  // SEGURIDAD-WALINKA-1E: wa_orders + wa_order_items se crean atómicamente
+  // vía RPC SECURITY DEFINER (wa_create_order_with_items), no con 2 INSERT
+  // independientes desde el cliente. wa_order_items ya no tiene ninguna
+  // policy de INSERT para anon/authenticated (wa_order_items_anon_insert
+  // WITH CHECK(true) permitía insertar items en el pedido de CUALQUIER
+  // negocio, no solo el propio -- ver 20260921140000_secure_order_items_and_storage_policies.sql).
+  // El id del pedido lo genera la propia RPC (DEFAULT gen_random_uuid() de
+  // wa_orders.id) -- ya no hace falta generarlo client-side.
+  const itemsPayload = (items?.length > 0)
+    ? items.map(item => ({
+      product_id: item?.productId || null,
+      product_name: item?.productName || '',
+      product_price: Number(item?.productPrice) || 0,
+      quantity: Math.max(1, parseInt(item?.quantity, 10) || 1),
+      subtotal: Number(item?.subtotal) || 0,
+      selected_options: item?.selectedOptions ?? [],
+    }))
+    : [];
 
-  // customer_id lo rellena automáticamente el trigger wa_orders_link_customer (SECURITY DEFINER).
-  const { error: orderError } = await supabase?.from('wa_orders')?.insert({
-      id: orderId,
-      business_id: businessId,
-      customer_name: (orderData?.customerName || '').trim() || null,
-      customer_phone: orderData?.customerPhone?.trim() || null,
-      customer_email: orderData?.customerEmail?.trim() || null,
-      service_type: orderData?.serviceType || null,
-      table_reference: orderData?.tableReference?.trim() || null,
-      delivery_address: orderData?.deliveryAddress?.trim() || null,
-      total_amount: totalAmount,
-      subtotal: orderData?.subtotal != null ? Number(orderData.subtotal) : totalAmount,
-      currency: orderData?.currency || 'USD',
-      order_status: 'pedido',
-      payment_status: 'pendiente',
-      notes: orderData?.notes?.trim() || null,
-    });
+  const { data: orderId, error: orderError } = await supabase?.rpc('wa_create_order_with_items', {
+    p_business_id: businessId,
+    p_customer_name: (orderData?.customerName || '').trim() || null,
+    p_customer_phone: orderData?.customerPhone?.trim() || null,
+    p_customer_email: orderData?.customerEmail?.trim() || null,
+    p_service_type: orderData?.serviceType || null,
+    p_table_reference: orderData?.tableReference?.trim() || null,
+    p_delivery_address: orderData?.deliveryAddress?.trim() || null,
+    p_total_amount: totalAmount,
+    p_subtotal: orderData?.subtotal != null ? Number(orderData.subtotal) : totalAmount,
+    p_currency: orderData?.currency || 'USD',
+    p_notes: orderData?.notes?.trim() || null,
+    p_items: itemsPayload,
+  });
   if (orderError) {
     const isPlanLimit = (orderError?.message || '').includes('PLAN_LIMIT_EXCEEDED');
     return {
@@ -1508,20 +1519,6 @@ export const createOrder = async (businessId, orderData, items) => {
         ? { message: 'Este catálogo alcanzó el límite de pedidos del mes del plan gratuito. Actualiza a Pro para recibir pedidos ilimitados.', code: 'PLAN_LIMIT_EXCEEDED' }
         : orderError,
     };
-  }
-
-  if (items?.length > 0) {
-    const itemRows = items?.map(item => ({
-      order_id: orderId,
-      product_id: item?.productId || null,
-      product_name: item?.productName || '',
-      product_price: Number(item?.productPrice) || 0,
-      quantity: Math.max(1, parseInt(item?.quantity, 10) || 1),
-      subtotal: Number(item?.subtotal) || 0,
-      selected_options: item?.selectedOptions ?? [],
-    }));
-    const { error: itemsError } = await supabase?.from('wa_order_items')?.insert(itemRows);
-    if (itemsError) return { data: null, error: itemsError };
   }
 
   return {
