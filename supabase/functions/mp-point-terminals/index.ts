@@ -113,19 +113,19 @@ Deno.serve(async (req) => {
 
   // 4. Token OAuth DEL COMERCIO, descifrado únicamente dentro de la RPC
   //    service_role existente. Nunca usar MP_ACCESS_TOKEN_CL/AR.
-  const { data: rows, error: connError } = await admin.rpc('wa_get_mp_connection_for_checkout', {
+  const { data: rows, error: connError } = await admin.rpc('wa_get_mp_point_connection', {
     p_business_id: businessId,
   });
   if (connError) {
-    console.error('[mp-point-terminals] mp connection lookup failed:', connError.message, { businessId });
+    console.error('[mp-point-terminals] Point connection lookup failed:', connError.message, { businessId });
     return jsonResponse({ error: 'Server configuration error' }, 500);
   }
   const connection = Array.isArray(rows) ? rows[0] : null;
   if (!connection || typeof connection.access_token !== 'string' || !connection.access_token) {
-    return jsonResponse({ error: 'Mercado Pago not connected', reason: 'MP_NOT_CONNECTED' }, 409);
+    return jsonResponse({ error: 'Mercado Pago not connected', reason: 'MP_POINT_NOT_CONNECTED' }, 409);
   }
   if (isExpired(connection.token_expires_at)) {
-    return jsonResponse({ error: 'Mercado Pago connection expired', reason: 'MP_CONNECTION_EXPIRED' }, 409);
+    return jsonResponse({ error: 'Mercado Pago connection expired', reason: 'MP_POINT_CONNECTION_EXPIRED' }, 409);
   }
 
   // 5. Orders API actual: GET /terminals/v1/list. Sin filtros en 2-4A:
@@ -169,7 +169,7 @@ Deno.serve(async (req) => {
       businessId,
     });
     if (mpRes.status === 401) {
-      return jsonResponse({ error: 'Mercado Pago connection unauthorized', reason: 'MP_CONNECTION_UNAUTHORIZED' }, 409);
+      return jsonResponse({ error: 'Mercado Pago connection unauthorized', reason: 'MP_POINT_CONNECTION_UNAUTHORIZED' }, 409);
     }
     return jsonResponse({ error: 'Could not list Point terminals', reason: 'MP_TERMINALS_FAILED' }, 502);
   }
