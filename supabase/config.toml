@@ -25,6 +25,14 @@ verify_jwt = false
 # Valida el JWT dentro del handler (auth.getUser), resuelve business_id por
 # auth.uid() y usa el token OAuth cifrado únicamente server-side. Se deja
 # verify_jwt=false solo para que el CORS preflight OPTIONS llegue al handler.
+# POINT-OAUTH-1: OAuth separado para la aplicación MercadoPago Point.
+# start valida JWT internamente; callback es redirección pública de MP.
+[functions.mp-point-oauth-start]
+verify_jwt = false
+
+[functions.mp-point-oauth-callback]
+verify_jwt = false
+
 [functions.mp-point-terminals]
 verify_jwt = false
 
