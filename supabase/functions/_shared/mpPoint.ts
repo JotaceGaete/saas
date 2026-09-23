@@ -65,11 +65,11 @@ export async function resolvePointContext(authHeader: string) {
   const currency = pointCurrency(business.country_code);
   if (!currency) return { ok: false as const, response: pointJson({ error: 'Mercado Pago Point not supported for country', reason: 'MP_COUNTRY_NOT_SUPPORTED' }, 422) };
 
-  const { data: rows, error: connError } = await admin.rpc('wa_get_mp_connection_for_checkout', { p_business_id: business.id });
+  const { data: rows, error: connError } = await admin.rpc('wa_get_mp_point_connection', { p_business_id: business.id });
   if (connError) return { ok: false as const, response: pointJson({ error: 'Server configuration error' }, 500) };
   const connection = Array.isArray(rows) ? rows[0] : null;
-  if (!connection?.access_token) return { ok: false as const, response: pointJson({ error: 'Mercado Pago not connected', reason: 'MP_NOT_CONNECTED' }, 409) };
-  if (isMpTokenExpired(connection.token_expires_at)) return { ok: false as const, response: pointJson({ error: 'Mercado Pago connection expired', reason: 'MP_CONNECTION_EXPIRED' }, 409) };
+  if (!connection?.access_token) return { ok: false as const, response: pointJson({ error: 'Mercado Pago not connected', reason: 'MP_POINT_NOT_CONNECTED' }, 409) };
+  if (isMpTokenExpired(connection.token_expires_at)) return { ok: false as const, response: pointJson({ error: 'Mercado Pago connection expired', reason: 'MP_POINT_CONNECTION_EXPIRED' }, 409) };
 
   return {
     ok: true as const,
