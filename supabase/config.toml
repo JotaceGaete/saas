@@ -47,6 +47,12 @@ verify_jwt = false
 [functions.mp-point-cancel-order]
 verify_jwt = false
 
+# POINT-SMART-2-6: webhook público de Orders/Point. Mercado Pago no envía
+# JWT de Walinka; el handler usa el order id solo como hint y reconsulta
+# siempre /v1/orders/{id} con el OAuth del comercio antes de actuar.
+[functions.mp-point-webhook]
+verify_jwt = false
+
 # mp-oauth-callback: público, igual que mp-webhook — Mercado Pago redirige
 # el browser acá directamente, sin JWT de Walinka.
 [functions.mp-oauth-callback]
