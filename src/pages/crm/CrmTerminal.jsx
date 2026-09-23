@@ -836,7 +836,7 @@ function CrmTerminalUI() {
     if (draftKey) removePosTerminalDraft(draftKey);
     if (pointStorageKey) localStorage.removeItem(pointStorageKey);
     setPointOperation(null);
-    setTicketData({ sale: { id: data.invoice_id }, ...saleSnapshot });
+    setTicketData({ sale: data.sale || { id: data.invoice_id }, ...saleSnapshot });
     refreshProducts();
   }, [cart, selectedCustomer, total, discountAmount, subtotal, notes, draftKey, pointStorageKey]);
 
