@@ -21,6 +21,13 @@ verify_jwt = false
 [functions.mp-oauth-disconnect]
 verify_jwt = false
 
+# POINT-SMART-2-4A: listado read-only de terminales Point del comercio.
+# Valida el JWT dentro del handler (auth.getUser), resuelve business_id por
+# auth.uid() y usa el token OAuth cifrado únicamente server-side. Se deja
+# verify_jwt=false solo para que el CORS preflight OPTIONS llegue al handler.
+[functions.mp-point-terminals]
+verify_jwt = false
+
 # mp-oauth-callback: público, igual que mp-webhook — Mercado Pago redirige
 # el browser acá directamente, sin JWT de Walinka.
 [functions.mp-oauth-callback]
