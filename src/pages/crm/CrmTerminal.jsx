@@ -822,8 +822,8 @@ function CrmTerminalUI() {
   }, []);
 
   useEffect(() => {
-    if (checkoutStep === 'payment' && pointTerminals.length === 0 && !pointLoading) loadPointTerminals();
-  }, [checkoutStep, pointTerminals.length, pointLoading, loadPointTerminals]);
+    if (checkoutStep === 'payment' && pointTerminals.length === 0 && !pointLoading && !pointError) loadPointTerminals();
+  }, [checkoutStep, pointTerminals.length, pointLoading, pointError, loadPointTerminals]);
 
   // Recuperación después de refresh/cierre de pestaña: solo guardamos el
   // operationId. El estado authoritative se vuelve a pedir al backend.
