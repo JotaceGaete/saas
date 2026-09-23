@@ -42,6 +42,9 @@ CREATE TABLE public.crm_pos_point_operations (
   -- Idempotencia EXCLUSIVA de creación de la order Point. Es distinta de
   -- crm_invoices.pos_idempotency_key, que protege la creación de la venta.
   create_idempotency_key UUID NOT NULL,
+  -- Clave estable separada para POST /v1/orders/{id}/cancel. Se genera
+  -- server-side y permite reintentar una cancelación sin duplicar efectos.
+  cancel_idempotency_key UUID NOT NULL DEFAULT gen_random_uuid(),
 
   -- Se reserva desde el inicio la clave de venta para que una recuperación
   -- tras corte de red finalice SIEMPRE el mismo intento de crm_create_pos_sale.
@@ -164,3 +167,6 @@ COMMENT ON COLUMN public.crm_pos_point_operations.crm_invoice_id IS
 
 COMMENT ON COLUMN public.crm_pos_point_operations.sale_snapshot IS
   'Snapshot validado de items/descuento/cliente/notas/fecha usado para crear y posteriormente finalizar la venta Point. El monto cobrado se calcula server-side desde este snapshot; nunca se acepta un total del browser.';
+
+COMMENT ON COLUMN public.crm_pos_point_operations.cancel_idempotency_key IS
+  'X-Idempotency-Key estable y server-side para cancelar la order Point. Distinta de la key usada al crear el cobro.';
