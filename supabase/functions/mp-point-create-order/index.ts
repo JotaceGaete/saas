@@ -182,6 +182,24 @@ Deno.serve(async (req) => {
     }
   }
 
+  // Reservar stock ANTES de enviar el cobro. La RPC es idempotente y
+  // serializa por producto; si falla, el cliente todavía no fue cobrado.
+  const { error: reserveError } = await ctx.admin.rpc('crm_point_reserve_stock', {
+    p_operation_id: operation.id,
+  });
+  if (reserveError) {
+    const raw = String(reserveError.message ?? '');
+    const stock = /^STOCK_INSUFFICIENT:([0-9a-f-]{36}):(\d+):(\d+)/i.exec(raw);
+    if (stock) {
+      return pointJson({
+        error: 'Insufficient stock', reason: 'STOCK_INSUFFICIENT',
+        product_id: stock[1], requested: Number(stock[2]), available: Number(stock[3]),
+      }, 409);
+    }
+    console.error('[mp-point-create-order] stock reservation failed:', reserveError.message, { businessId: ctx.businessId, operationId: operation.id });
+    return pointJson({ error: 'Could not reserve stock', reason: 'STOCK_RESERVATION_FAILED' }, 409);
+  }
+
   if (operation.mp_order_id) {
     return pointJson({
       ok: true, operation_id: operation.id, order_id: operation.mp_order_id,
