@@ -516,19 +516,29 @@ END $$;
 RESET ROLE;
 
 -- ══════════════════════════════════════════════════════════════════════════
--- ESCENARIO 10: doble intento de cierre de la MISMA sesión no debe producir
--- dos filas de conciliación ni dejar la sesión en un estado inconsistente.
+-- ESCENARIO 10: doble intento de cierre de la MISMA sesión con el MISMO
+-- payload no debe producir dos filas de conciliación ni dejar la sesión en
+-- un estado inconsistente.
+--
+-- ACTUALIZADO por CAJA-CIERRE-IDEMPOTENTE-1
+-- (20260923150000_crm_close_cash_session_idempotent_reopen_guard.sql): un
+-- reintento con el MISMO payload exacto sobre una caja ya cerrada por esta
+-- RPC ya NO lanza una excepción -- es idempotente, devuelve el snapshot
+-- existente con already_closed=true y no escribe nada. El caso "payload
+-- exacto igual, dos veces" es justo el escenario real reportado (doble
+-- submit / reintento de red / dos pestañas) que motivó ese cambio. El caso
+-- "cerrada + payload DISTINTO -> error de dominio, nunca 23505" tiene su
+-- propia cobertura en verify_crm_cash_session_close_reopen_idempotent.sql.
 --
 -- NOTA sobre el sustituto de concurrencia: este script corre secuencial
 -- con psql -f en una sola conexión/transacción, lo que hace impráctico
 -- simular dos conexiones concurrentes reales dentro de este mismo archivo.
--- Como permite explícitamente la auditoría, se sustituye por una prueba de
--- IDEMPOTENCIA SECUENCIAL: se cierra la sesión una vez (éxito), y se
--- reintenta cerrarla una segunda vez inmediatamente después (debe fallar
--- con "La caja ya está cerrada" y no debe alterar nada). El lock real
--- (`FOR UPDATE OF s`) que haría bloquear/serializar dos conexiones
--- concurrentes genuinas ya está verificado a nivel de código fuente en
--- 20260915180000_crm_cash_session_reconciliations.test.ts
+-- Se sustituye por una prueba de IDEMPOTENCIA SECUENCIAL: se cierra la
+-- sesión una vez (éxito), y se reintenta cerrarla una segunda vez
+-- inmediatamente después con el mismo payload (debe tener éxito idempotente
+-- sin alterar nada). El lock real (`FOR UPDATE OF s`) que serializa dos
+-- conexiones concurrentes genuinas ya está verificado a nivel de código
+-- fuente en 20260915180000_crm_cash_session_reconciliations.test.ts
 -- ("toma un lock de fila (FOR UPDATE) sobre la sesión antes de leer/
 -- escribir nada") -- ambas pruebas juntas cubren el escenario.
 -- ══════════════════════════════════════════════════════════════════════════
@@ -571,39 +581,22 @@ END $$;
 DO $$
 DECLARE
   v_session   UUID := current_setting('test.session10')::uuid;
-  v_caught    BOOLEAN := false;
-  v_msg       TEXT;
-  v_sqlstate  TEXT;
+  v_result    JSONB;
 BEGIN
-  -- Segundo intento de cierre de la MISMA sesión (ya cerrada) -- debe fallar.
-  BEGIN
-    PERFORM public.crm_close_cash_session(
-      v_session,
-      jsonb_build_array(jsonb_build_object('payment_method', 'cash', 'reconciled_amount', 10000, 'notes', NULL)),
-      NULL
-    );
-  EXCEPTION WHEN OTHERS THEN
-    v_caught := true;
-    v_msg := SQLERRM;
-    v_sqlstate := SQLSTATE;
-  END;
+  -- Segundo intento de cierre de la MISMA sesión, MISMO payload exacto --
+  -- desde CAJA-CIERRE-IDEMPOTENTE-1 ya NO lanza excepción: es idempotente.
+  v_result := public.crm_close_cash_session(
+    v_session,
+    jsonb_build_array(jsonb_build_object('payment_method', 'cash', 'reconciled_amount', 10000, 'notes', NULL)),
+    NULL
+  );
 
-  ASSERT v_caught, 'FAIL escenario 10: el segundo intento de cierre debería haber lanzado una excepción';
-  -- Verificación semántica ASCII-safe: comparar el mensaje EXACTO contra
-  -- 'La caja ya está cerrada' es frágil frente a clientes psql/Windows con
-  -- client_encoding distinto de UTF-8 (mojibake real observado en la 'á'
-  -- durante una corrida local -- el rechazo era correcto, solo la
-  -- comparación de bytes fallaba). Se verifica el SQLSTATE exacto (23514,
-  -- el mismo que usa RAISE EXCEPTION 'La caja ya está cerrada' en la RPC)
-  -- más un LIKE anclado en el prefijo/sufijo 100% ASCII del mensaje, sin
-  -- tocar el carácter acentuado -- no debilita lo que se verifica, solo
-  -- deja de depender de un byte sensible al encoding del cliente.
-  ASSERT v_sqlstate = '23514',
-    'FAIL escenario 10: el segundo intento debería fallar con SQLSTATE 23514, fue ' || COALESCE(v_sqlstate, 'NULL');
-  ASSERT v_msg LIKE 'La caja ya%cerrada',
-    'FAIL escenario 10: el mensaje del segundo intento debería empezar con ''La caja ya'' y terminar en ''cerrada'', fue: ' || v_msg;
+  ASSERT (v_result->>'already_closed')::boolean = true,
+    'FAIL escenario 10: el segundo intento (mismo payload) debería devolver already_closed=true';
+  ASSERT (v_result->'session'->>'status') = 'closed',
+    'FAIL escenario 10: el segundo intento debería devolver la sesión con status=closed';
 
-  RAISE NOTICE 'OK: escenario 10 (parte 2/2) — el segundo intento de cierre de la misma sesión fue rechazado con: %', v_msg;
+  RAISE NOTICE 'OK: escenario 10 (parte 2/2) — el segundo intento con el mismo payload fue idempotente (already_closed=true), sin lanzar excepción';
 END $$;
 
 RESET ROLE;
@@ -618,14 +611,14 @@ DECLARE
 BEGIN
   SELECT count(*) INTO v_recon_count FROM public.crm_cash_session_reconciliations WHERE session_id = v_session;
   ASSERT v_recon_count = 1,
-    'FAIL escenario 10: debería existir EXACTAMENTE 1 fila de conciliación (la del primer cierre), hay ' || v_recon_count;
+    'FAIL escenario 10: debería existir EXACTAMENTE 1 fila de conciliación (la del primer cierre; el reintento idempotente NO debe insertar una segunda), hay ' || v_recon_count;
 
   SELECT status, closed_at INTO v_status, v_closed_at_2 FROM public.crm_cash_sessions WHERE id = v_session;
-  ASSERT v_status = 'closed', 'FAIL escenario 10: la sesión debería seguir closed tras el intento fallido';
+  ASSERT v_status = 'closed', 'FAIL escenario 10: la sesión debería seguir closed tras el reintento idempotente';
   ASSERT v_closed_at_2 = v_closed_at_1,
-    'FAIL escenario 10: closed_at no debería haber cambiado tras el segundo intento (fallido) -- el estado quedó inconsistente';
+    'FAIL escenario 10: closed_at no debería haber cambiado tras el reintento idempotente -- el estado quedó inconsistente';
 
-  RAISE NOTICE 'OK: escenario 10 — el doble intento de cierre NO produjo dos filas de conciliación (hay exactamente 1) ni dejó la sesión en un estado inconsistente (status=closed, closed_at sin cambios)';
+  RAISE NOTICE 'OK: escenario 10 — el reintento idempotente NO produjo una segunda fila de conciliación (hay exactamente 1) ni cambió closed_at (status=closed, closed_at sin cambios)';
 END $$;
 
 -- ══════════════════════════════════════════════════════════════════════════
