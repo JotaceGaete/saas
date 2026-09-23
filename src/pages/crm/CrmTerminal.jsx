@@ -1818,19 +1818,57 @@ function CrmTerminalUI() {
                           {!pointOperation?.operation_id ? (
                             <>
                               {pointTerminals.length > 0 ? (
-                                <div className="flex gap-2">
-                                  <select value={pointTerminalId} onChange={e => setPointTerminalId(e.target.value)}
-                                    className="min-w-0 flex-1 rounded-xl border border-yellow-300 bg-white px-2.5 py-2 text-xs">
-                                    {pointTerminals.map(t => (
-                                      <option key={t.id} value={t.id}>
-                                        {t.id}{t.operating_mode === 'PDV' ? ' · PDV' : ` · ${t.operating_mode || 'sin configurar'}`}
-                                      </option>
-                                    ))}
-                                  </select>
+                                <div className="space-y-2">
+                                  {pointTerminals.length > 1 && (
+                                    <p className="text-[10px] font-semibold text-gray-600">
+                                      Encontramos {pointTerminals.length} terminales. Selecciona la Point física que usarás en esta caja.
+                                    </p>
+                                  )}
+                                  <div className="space-y-1.5">
+                                    {pointTerminals.map((terminal) => {
+                                      const selected = terminal.id === pointTerminalId;
+                                      const mode = terminal.operating_mode || 'UNDEFINED';
+                                      return (
+                                        <button
+                                          key={terminal.id}
+                                          type="button"
+                                          onClick={() => setPointTerminalId(terminal.id)}
+                                          disabled={pointLoading}
+                                          className={`w-full rounded-xl border px-3 py-2.5 text-left transition-colors disabled:opacity-50 ${
+                                            selected
+                                              ? 'border-gray-900 bg-white ring-2 ring-gray-900/10'
+                                              : 'border-yellow-200 bg-white/70 hover:bg-white'
+                                          }`}
+                                        >
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0">
+                                              <p className="break-all text-[11px] font-black text-gray-900">{terminal.id}</p>
+                                              <p className="mt-1 text-[10px] text-gray-600">
+                                                Serial/ID completo · POS {terminal.pos_id || 'sin asignar'} · Tienda {terminal.store_id || 'sin asignar'}
+                                              </p>
+                                              {terminal.external_pos_id && (
+                                                <p className="text-[10px] text-gray-500">Caja externa: {terminal.external_pos_id}</p>
+                                              )}
+                                            </div>
+                                            <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-black ${
+                                              mode === 'PDV'
+                                                ? 'bg-emerald-100 text-emerald-700'
+                                                : 'bg-amber-100 text-amber-700'
+                                            }`}>
+                                              {mode}
+                                            </span>
+                                          </div>
+                                          <p className="mt-1.5 text-[10px] font-bold text-gray-700">
+                                            {selected ? '✓ Point seleccionada' : 'Usar esta Point'}
+                                          </p>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
                                   {pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode !== 'PDV' && (
-                                    <button type="button" onClick={handleSetupPoint} disabled={pointLoading}
-                                      className="rounded-xl bg-gray-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
-                                      Activar PDV
+                                    <button type="button" onClick={handleSetupPoint} disabled={pointLoading || !pointTerminalId}
+                                      className="w-full rounded-xl bg-gray-900 px-3 py-2.5 text-xs font-bold text-white disabled:opacity-50">
+                                      Activar PDV en la Point seleccionada
                                     </button>
                                   )}
                                 </div>
