@@ -127,7 +127,7 @@ CREATE OR REPLACE FUNCTION public.crm_point_assert_stock_available(
 LANGUAGE plpgsql
 SECURITY DEFINER
 SET search_path=public
-AS $
+AS $tag$
 DECLARE v_stock INTEGER; v_reserved INTEGER;
 BEGIN
   SELECT stock_actual INTO v_stock FROM public.wa_products
@@ -147,7 +147,7 @@ BEGIN
       USING ERRCODE='P0001';
   END IF;
 END;
-$;
+$tag$;
 REVOKE ALL ON FUNCTION public.crm_point_assert_stock_available(UUID,UUID,INTEGER) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.crm_point_assert_stock_available(UUID,UUID,INTEGER) TO authenticated,service_role;
 
