@@ -29,6 +29,12 @@ CREATE TABLE public.crm_pos_point_operations (
   created_by UUID NOT NULL
     REFERENCES auth.users(id) ON DELETE RESTRICT,
 
+  -- Caja abierta capturada al INICIAR el cobro. La venta procesada debe
+  -- finalizar contra ESTA caja; nunca contra "la caja que esté abierta"
+  -- después de un corte/reapertura.
+  cash_session_id UUID NOT NULL
+    REFERENCES public.crm_cash_sessions(id) ON DELETE RESTRICT,
+
   terminal_id TEXT NOT NULL,
 
   -- Identificadores devueltos por Mercado Pago. mp_order_id nace NULL
@@ -139,6 +145,10 @@ CREATE INDEX crm_pos_point_operations_pending_idx
 CREATE INDEX crm_pos_point_operations_terminal_idx
   ON public.crm_pos_point_operations (business_id, terminal_id, created_at DESC);
 
+CREATE INDEX crm_pos_point_operations_cash_session_idx
+  ON public.crm_pos_point_operations (cash_session_id, created_at DESC)
+  WHERE crm_invoice_id IS NULL;
+
 CREATE TRIGGER crm_pos_point_operations_updated_at
   BEFORE UPDATE ON public.crm_pos_point_operations
   FOR EACH ROW EXECUTE FUNCTION public.wa_set_updated_at();
@@ -170,3 +180,6 @@ COMMENT ON COLUMN public.crm_pos_point_operations.sale_snapshot IS
 
 COMMENT ON COLUMN public.crm_pos_point_operations.cancel_idempotency_key IS
   'X-Idempotency-Key estable y server-side para cancelar la order Point. Distinta de la key usada al crear el cobro.';
+
+COMMENT ON COLUMN public.crm_pos_point_operations.cash_session_id IS
+  'Caja abierta capturada al crear el cobro Point. Evita atribuir un pago aprobado a otra caja después de un cierre/reapertura y permite bloquear el cierre mientras exista una operación Point pendiente.';
