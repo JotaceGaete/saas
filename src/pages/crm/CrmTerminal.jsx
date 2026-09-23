@@ -1589,7 +1589,8 @@ function CrmTerminalUI() {
                       {cart.length > 0 && (
                         <button
                           onClick={resetForm}
-                          className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1"
+                          disabled={!!pointOperation?.operation_id}
+                          className="text-xs text-red-400 disabled:text-gray-300 disabled:cursor-not-allowed hover:text-red-600 flex items-center gap-1"
                         >
                           <Icon name="Trash2" size={11} />Vaciar
                         </button>
@@ -2023,7 +2024,8 @@ function CrmTerminalUI() {
                         <button
                           type="button"
                           onClick={handleBackToSale}
-                          className="hidden lg:flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white py-3 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors min-h-[44px]"
+                          disabled={!!pointOperation?.operation_id}
+                          className="hidden lg:flex disabled:opacity-40 disabled:cursor-not-allowed w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white py-3 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors min-h-[44px]"
                         >
                           <Icon name="ArrowLeft" size={16} />
                           Volver a la venta
@@ -2053,7 +2055,8 @@ function CrmTerminalUI() {
                 <button
                   type="button"
                   onClick={handleBackToSale}
-                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 border-b border-gray-800 text-xs font-bold text-gray-300 hover:text-white transition-colors min-h-[44px]"
+                  disabled={!!pointOperation?.operation_id}
+                  className="w-full flex disabled:opacity-40 disabled:cursor-not-allowed items-center justify-center gap-1.5 px-3 py-2.5 border-b border-gray-800 text-xs font-bold text-gray-300 hover:text-white transition-colors min-h-[44px]"
                 >
                   <Icon name="ArrowLeft" size={13} color="currentColor" />
                   Volver a la venta
