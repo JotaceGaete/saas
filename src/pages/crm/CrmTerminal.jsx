@@ -903,11 +903,18 @@ function CrmTerminalUI() {
       const { data: openSession } = await getOpenCashSession(business.id);
       if (!openSession) { setPointError('Debes abrir caja antes de cobrar con Point.'); return; }
       if (!pointCreateKeyRef.current) pointCreateKeyRef.current = crypto.randomUUID();
+      // Una operación Point nueva necesita su propia clave de venta. El
+      // carrito puede venir de un intento Point terminal anterior restaurado
+      // desde draft/localStorage, cuya sale key ya existe en la BD. La
+      // idempotencia de los reintentos ambiguos de ESTA operación sigue
+      // protegida por pointCreateKeyRef: mientras esa key exista, conservamos
+      // también la sale key. Solo generamos el par al nacer la operación.
+      if (!saleIdempotencyKeyRef.current) getOrCreateSaleIdempotencyKey();
       const { data, error } = await createPointOrder({
         terminalId: pointTerminalId, items: cart, customerId: customerId || null,
         discount: discountAmount, notes: notes || null,
         createIdempotencyKey: pointCreateKeyRef.current,
-        saleIdempotencyKey: getOrCreateSaleIdempotencyKey(),
+        saleIdempotencyKey: saleIdempotencyKeyRef.current,
       });
       if (data?.operation_id) {
         setPointOperation(data);
