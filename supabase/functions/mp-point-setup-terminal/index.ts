@@ -87,7 +87,7 @@ async function listMpTerminals(accessToken: string): Promise<
     return {
       ok: false,
       status: response.status === 401 ? 409 : 502,
-      reason: response.status === 401 ? 'MP_CONNECTION_UNAUTHORIZED' : 'MP_TERMINALS_FAILED',
+      reason: response.status === 401 ? 'MP_POINT_CONNECTION_UNAUTHORIZED' : 'MP_TERMINALS_FAILED',
     };
   }
 
@@ -172,20 +172,20 @@ Deno.serve(async (req) => {
   const businessId = businesses[0].id as string;
 
   // 3. Recuperar token OAuth del comercio únicamente server-side.
-  const { data: rows, error: connError } = await admin.rpc('wa_get_mp_connection_for_checkout', {
+  const { data: rows, error: connError } = await admin.rpc('wa_get_mp_point_connection', {
     p_business_id: businessId,
   });
   if (connError) {
-    console.error('[mp-point-setup-terminal] mp connection lookup failed:', connError.message, { businessId });
+    console.error('[mp-point-setup-terminal] Point connection lookup failed:', connError.message, { businessId });
     return jsonResponse({ error: 'Server configuration error' }, 500);
   }
 
   const connection = Array.isArray(rows) ? rows[0] : null;
   if (!connection || typeof connection.access_token !== 'string' || !connection.access_token) {
-    return jsonResponse({ error: 'Mercado Pago not connected', reason: 'MP_NOT_CONNECTED' }, 409);
+    return jsonResponse({ error: 'Mercado Pago not connected', reason: 'MP_POINT_NOT_CONNECTED' }, 409);
   }
   if (isExpired(connection.token_expires_at)) {
-    return jsonResponse({ error: 'Mercado Pago connection expired', reason: 'MP_CONNECTION_EXPIRED' }, 409);
+    return jsonResponse({ error: 'Mercado Pago connection expired', reason: 'MP_POINT_CONNECTION_EXPIRED' }, 409);
   }
   const accessToken = connection.access_token as string;
 
@@ -253,7 +253,7 @@ Deno.serve(async (req) => {
       setupResponse.status === 400 ? 'MP_SETUP_INVALID_OR_STORE_POS_REQUIRED' :
       setupResponse.status === 404 ? 'TERMINAL_NOT_FOUND' :
       setupResponse.status === 412 ? 'TERMINAL_POS_ALREADY_IN_USE' :
-      setupResponse.status === 401 ? 'MP_CONNECTION_UNAUTHORIZED' :
+      setupResponse.status === 401 ? 'MP_POINT_CONNECTION_UNAUTHORIZED' :
       'MP_SETUP_FAILED';
     const status = setupResponse.status === 401 ? 409 :
       [400, 404, 412].includes(setupResponse.status) ? setupResponse.status : 502;
