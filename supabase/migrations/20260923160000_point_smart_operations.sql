@@ -47,6 +47,11 @@ CREATE TABLE public.crm_pos_point_operations (
   -- tras corte de red finalice SIEMPRE el mismo intento de crm_create_pos_sale.
   sale_idempotency_key TEXT NOT NULL,
 
+  -- Snapshot inmutable de la intención de venta validada por el backend.
+  -- Permite recuperar/finalizar exactamente la venta que originó el cobro
+  -- incluso si el navegador se cierra. No contiene secretos de MP.
+  sale_snapshot JSONB NOT NULL,
+
   amount NUMERIC(12,2) NOT NULL,
   currency TEXT NOT NULL,
 
@@ -71,6 +76,8 @@ CREATE TABLE public.crm_pos_point_operations (
     CHECK (btrim(external_reference) <> ''),
   CONSTRAINT crm_pos_point_operations_sale_key_not_blank
     CHECK (btrim(sale_idempotency_key) <> '' AND length(sale_idempotency_key) <= 200),
+  CONSTRAINT crm_pos_point_operations_sale_snapshot_object
+    CHECK (jsonb_typeof(sale_snapshot) = 'object'),
   CONSTRAINT crm_pos_point_operations_amount_positive
     CHECK (amount > 0),
   CONSTRAINT crm_pos_point_operations_currency_format
@@ -154,3 +161,6 @@ COMMENT ON COLUMN public.crm_pos_point_operations.sale_idempotency_key IS
 
 COMMENT ON COLUMN public.crm_pos_point_operations.crm_invoice_id IS
   'NULL mientras el cobro Point no haya sido finalizado como venta CRM. Se enlaza una sola vez después de confirmar status=processed y ejecutar la finalización idempotente.';
+
+COMMENT ON COLUMN public.crm_pos_point_operations.sale_snapshot IS
+  'Snapshot validado de items/descuento/cliente/notas/fecha usado para crear y posteriormente finalizar la venta Point. El monto cobrado se calcula server-side desde este snapshot; nunca se acepta un total del browser.';
