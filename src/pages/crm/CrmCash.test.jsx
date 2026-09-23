@@ -8,7 +8,7 @@
  */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { formatMoney } from 'utils/formatMoney';
 
 const navigateMock = vi.fn();
@@ -66,6 +66,7 @@ const getCashSessionPaymentsMock = vi.fn();
 const getCashSessionMovementsMock = vi.fn();
 const getCashSessionReconciliationMock = vi.fn();
 const closeCashSessionReconciledMock = vi.fn();
+const getCashSessionStatusMock = vi.fn();
 const createCashMovementMock = vi.fn();
 const getCostItemsMock = vi.fn();
 const reopenCashSessionMock = vi.fn();
@@ -87,6 +88,9 @@ vi.mock('services/crmService', () => ({
   getCashSessionMovements: (...a) => getCashSessionMovementsMock(...a),
   getCashSessionPayments: (...a) => getCashSessionPaymentsMock(...a),
   getCashSessionReconciliation: (...a) => getCashSessionReconciliationMock(...a),
+  getCashSessionStatus: (...a) => getCashSessionStatusMock(...a),
+  isCashSessionAlreadyClosedError: (error) => error?.hint === 'CASH_SESSION_ALREADY_CLOSED'
+    || error?.hint === 'CASH_SESSION_ALREADY_CLOSED_DIFFERENT',
   getCashRecentSessions: (...a) => getCashRecentSessionsMock(...a),
   getCashSessionsForDate: (...a) => getCashSessionsForDateMock(...a),
   getCrmInvoice: (...a) => getCrmInvoiceMock(...a),
@@ -149,7 +153,7 @@ beforeEach(() => {
   [
     getOpenCashSessionMock, getCashSessionsForDateMock, getCashDayPaymentsMock, getCashDayMovementsMock,
     getCashRecentSessionsMock, getCashSessionPaymentsMock, getCashSessionMovementsMock,
-    getCashSessionReconciliationMock, closeCashSessionReconciledMock,
+    getCashSessionReconciliationMock, closeCashSessionReconciledMock, getCashSessionStatusMock,
     createCashMovementMock, getCostItemsMock, reopenCashSessionMock, updateCashSessionMock,
     getCrmInvoiceMock, getInvoicePaymentSummaryMock, printReceiptMock, buildSaleReceiptMock, readPrinterConfigMock,
   ].forEach(m => m.mockReset());
@@ -162,7 +166,8 @@ beforeEach(() => {
   getCashSessionPaymentsMock.mockResolvedValue({ data: [], error: null });
   getCashSessionMovementsMock.mockResolvedValue({ data: [], error: null });
   getCashSessionReconciliationMock.mockResolvedValue({ data: [], error: null });
-  closeCashSessionReconciledMock.mockResolvedValue({ data: { session: {}, reconciliations: [] }, error: null });
+  closeCashSessionReconciledMock.mockResolvedValue({ data: { session: {}, reconciliations: [], already_closed: false }, error: null, networkError: false });
+  getCashSessionStatusMock.mockResolvedValue({ data: { id: 'sess1', status: 'open', closed_at: null }, error: null });
   createCashMovementMock.mockResolvedValue({ data: { movement_id: 'mv1', cost_item_id: null }, error: null });
   getCostItemsMock.mockResolvedValue(FIXED_COST_ITEMS);
   reopenCashSessionMock.mockResolvedValue({ data: { ...closedSession, status: 'open' }, error: null });
@@ -993,6 +998,194 @@ describe('CAJA-CIERRE-CONCILIACION-1 — CloseCashSessionWizard', () => {
     fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
     fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
     expect(await within(modal).findByText('Falta conciliar debit_card: tuvo actividad de 50000 en este turno')).toBeInTheDocument();
+  });
+});
+
+/**
+ * CAJA-CIERRE-IDEMPOTENTE-1 — defensa en profundidad del frontend contra
+ * doble submit y respuestas perdidas. La RPC ya es idempotente
+ * (20260923100000), pero el cliente nunca debe disparar dos cierres para
+ * el mismo click, ni sugerir reintentar a ciegas si el cierre pudo haberse
+ * confirmado en el servidor.
+ */
+describe('CAJA-CIERRE-IDEMPOTENTE-1 — cierre de caja sin doble submit', () => {
+  async function openCloseWizardWithAmount() {
+    render(<CrmCash />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Cerrar caja' }));
+    const heading = await screen.findByText('Cerrar caja — conciliación');
+    const modal = heading.closest('.fixed');
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
+    return { modal, form: modal.querySelector('form') };
+  }
+
+  function deferred() {
+    let resolve;
+    const promise = new Promise((r) => { resolve = r; });
+    return { promise, resolve };
+  }
+
+  it('dos submits seguidos (antes del re-render) disparan UNA sola llamada al RPC', async () => {
+    const pending = deferred();
+    closeCashSessionReconciledMock.mockReturnValue(pending.promise);
+    const { form } = await openCloseWizardWithAmount();
+
+    // Un único act(): React no re-renderiza entre los submits, así que
+    // `busy` (estado) sigue en false para el 2º y 3º -- solo la guardia
+    // sincrónica con useRef puede frenarlos.
+    act(() => {
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+      fireEvent.submit(form);
+    });
+
+    expect(closeCashSessionReconciledMock).toHaveBeenCalledTimes(1);
+    pending.resolve({ data: { session: {}, reconciliations: [], already_closed: false }, error: null, networkError: false });
+    await waitFor(() => expect(screen.queryByText('Cerrar caja — conciliación')).not.toBeInTheDocument());
+    expect(closeCashSessionReconciledMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('mientras el cierre está en curso deshabilita "Cerrar caja", Cancelar, la X y los inputs, con indicador de carga', async () => {
+    const pending = deferred();
+    closeCashSessionReconciledMock.mockReturnValue(pending.promise);
+    const { modal } = await openCloseWizardWithAmount();
+
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+
+    const submit = await within(modal).findByRole('button', { name: /Cerrando/ });
+    expect(submit).toBeDisabled();
+    expect(submit).toHaveAttribute('aria-busy', 'true');
+    // Hay dos "Cancelar": la X del encabezado (aria-label) y el botón de texto.
+    const cancelButtons = within(modal).getAllByRole('button', { name: 'Cancelar' });
+    expect(cancelButtons).toHaveLength(2);
+    cancelButtons.forEach(button => expect(button).toBeDisabled());
+    expect(within(modal).getByPlaceholderText('0')).toBeDisabled();
+    expect(within(modal).getByPlaceholderText('Opcional')).toBeDisabled();
+
+    // Cancelar deshabilitado: el asistente no se puede cerrar con la petición en vuelo.
+    fireEvent.click(within(modal).getAllByRole('button', { name: 'Cancelar' })[0]);
+    expect(screen.getByText('Cerrar caja — conciliación')).toBeInTheDocument();
+
+    pending.resolve({ data: { session: {}, reconciliations: [], already_closed: false }, error: null, networkError: false });
+    await waitFor(() => expect(screen.queryByText('Cerrar caja — conciliación')).not.toBeInTheDocument());
+  });
+
+  it('already_closed=true se trata como éxito: cierra el asistente, recarga y avisa sin mostrar error', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({
+      data: { session: { id: 'sess1', status: 'closed' }, reconciliations: [], already_closed: true },
+      error: null,
+      networkError: false,
+    });
+    const { form } = await openCloseWizardWithAmount();
+    const loadsBefore = getOpenCashSessionMock.mock.calls.length;
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(screen.queryByText('Cerrar caja — conciliación')).not.toBeInTheDocument());
+    expect(await screen.findByText(/ya estaba cerrada con este mismo arqueo/)).toBeInTheDocument();
+    expect(getOpenCashSessionMock.mock.calls.length).toBeGreaterThan(loadsBefore);
+    expect(screen.queryByRole('button', { name: 'Cerrar error' })).not.toBeInTheDocument();
+  });
+
+  it('caja ya cerrada con otros montos (error de dominio): cierra el asistente, recarga y muestra el mensaje del servidor', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({
+      data: null,
+      error: {
+        message: 'Esta caja ya fue cerrada con otros montos u observaciones. El cierre registrado no se modificó.',
+        hint: 'CASH_SESSION_ALREADY_CLOSED_DIFFERENT',
+        code: 'P0001',
+      },
+      networkError: false,
+    });
+    const { form } = await openCloseWizardWithAmount();
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(screen.queryByText('Cerrar caja — conciliación')).not.toBeInTheDocument());
+    expect(await screen.findByText(/El cierre registrado no se modificó/)).toBeInTheDocument();
+    expect(closeCashSessionReconciledMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('caja reabierta con arqueo previo: mantiene el asistente abierto con el error de dominio (sin reintentos automáticos)', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({
+      data: null,
+      error: {
+        message: 'Esta caja fue reabierta después de un cierre conciliado y conserva ese arqueo.',
+        hint: 'CASH_SESSION_REOPENED_WITH_RECONCILIATION',
+        code: 'P0001',
+      },
+      networkError: false,
+    });
+    const { modal, form } = await openCloseWizardWithAmount();
+    fireEvent.submit(form);
+
+    expect(await within(modal).findByText(/fue reabierta después de un cierre conciliado/)).toBeInTheDocument();
+    expect(closeCashSessionReconciledMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('error de red + la caja SÍ quedó cerrada en el servidor: relee el estado y lo trata como éxito, sin reintentar', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '' },
+      networkError: true,
+    });
+    getCashSessionStatusMock.mockResolvedValue({ data: { id: 'sess1', status: 'closed', closed_at: '2026-09-13T20:00:00Z' }, error: null });
+    const { form } = await openCloseWizardWithAmount();
+    fireEvent.submit(form);
+
+    await waitFor(() => expect(getCashSessionStatusMock).toHaveBeenCalledWith('sess1'));
+    await waitFor(() => expect(screen.queryByText('Cerrar caja — conciliación')).not.toBeInTheDocument());
+    expect(await screen.findByText(/la caja quedó cerrada correctamente/)).toBeInTheDocument();
+    expect(closeCashSessionReconciledMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('error de red + la caja sigue abierta: relee el estado y recién ahí sugiere reintentar', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '' },
+      networkError: true,
+    });
+    getCashSessionStatusMock.mockResolvedValue({ data: { id: 'sess1', status: 'open', closed_at: null }, error: null });
+    const { modal, form } = await openCloseWizardWithAmount();
+    fireEvent.submit(form);
+
+    expect(await within(modal).findByText(/La caja sigue abierta: puedes volver a intentarlo/)).toBeInTheDocument();
+    expect(getCashSessionStatusMock).toHaveBeenCalledWith('sess1');
+    expect(closeCashSessionReconciledMock).toHaveBeenCalledTimes(1);
+    // Tras el error, el botón vuelve a estar disponible para un reintento manual.
+    expect(within(modal).getByRole('button', { name: 'Cerrar caja' })).not.toBeDisabled();
+  });
+
+  it('reabrir una caja con arqueo conciliado muestra el rechazo del servidor (trigger) y no reintenta', async () => {
+    getOpenCashSessionMock.mockResolvedValue({ data: null, error: null });
+    getCashRecentSessionsMock.mockResolvedValue({ data: [openSession, closedSession], error: null });
+    reopenCashSessionMock.mockResolvedValue({
+      data: null,
+      error: {
+        message: 'No se puede reabrir esta caja: ya tiene un arqueo conciliado registrado y ese cierre es histórico.',
+        hint: 'CASH_SESSION_RECONCILED_REOPEN_BLOCKED',
+        code: 'P0001',
+      },
+    });
+    render(<CrmCash />);
+    fireEvent.click(await screen.findByRole('button', { name: /Historial de cajas/ }));
+    await screen.findByText(/12 de septiembre de 2026/i);
+    fireEvent.click(screen.getAllByRole('button', { name: 'Más acciones' })[1]);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Reabrir' }));
+
+    expect(await screen.findByText(/ya tiene un arqueo conciliado registrado/)).toBeInTheDocument();
+    expect(reopenCashSessionMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('error de red + no se pudo releer el estado: no afirma nada, pide recargar antes de reintentar', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({
+      data: null,
+      error: { message: 'TypeError: Failed to fetch', code: '' },
+      networkError: true,
+    });
+    getCashSessionStatusMock.mockResolvedValue({ data: null, error: { message: 'offline' } });
+    const { modal, form } = await openCloseWizardWithAmount();
+    fireEvent.submit(form);
+
+    expect(await within(modal).findByText(/Recarga la página para ver el estado real de la caja/)).toBeInTheDocument();
+    expect(closeCashSessionReconciledMock).toHaveBeenCalledTimes(1);
   });
 });
 

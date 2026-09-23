@@ -1635,14 +1635,54 @@ export async function closeCashSession(sessionId) {
 // server-side, exige conciliar cada medio con actividad real y persiste un
 // snapshot inmutable en crm_cash_session_reconciliations. Este wrapper solo
 // desempaqueta el JSONB de retorno.
+//
+// CAJA-CIERRE-IDEMPOTENTE-1 (20260923100000): repetir el MISMO cierre sobre
+// una caja ya cerrada devuelve el snapshot existente con
+// data.already_closed=true (éxito, nada se reescribe). networkError=true
+// cuando la petición no obtuvo respuesta del servidor (status 0 de
+// postgrest-js o excepción de fetch): el cierre PUDO haberse confirmado en
+// el servidor, el caller debe releer el estado antes de sugerir reintentar.
 export async function closeCashSessionReconciled(sessionId, { reconciliations, closingNotes } = {}) {
-  const { data, error } = await supabase.rpc('crm_close_cash_session', {
-    p_session_id: sessionId,
-    p_reconciliations: reconciliations || [],
-    p_closing_notes: closingNotes || null,
-  });
-  if (error) return { data: null, error };
-  return { data, error: null };
+  let res;
+  try {
+    res = await supabase.rpc('crm_close_cash_session', {
+      p_session_id: sessionId,
+      p_reconciliations: reconciliations || [],
+      p_closing_notes: closingNotes || null,
+    });
+  } catch (err) {
+    return { data: null, error: err instanceof Error ? err : new Error(String(err)), networkError: true };
+  }
+  const { data, error, status } = res;
+  if (error) return { data: null, error, networkError: status === 0 };
+  return { data, error: null, networkError: false };
+}
+
+// HINTs de dominio que devuelve crm_close_cash_session (P0001) -- ver
+// 20260923100000_crm_cash_close_idempotent.sql.
+export const CASH_CLOSE_ERROR_HINTS = {
+  ALREADY_CLOSED: 'CASH_SESSION_ALREADY_CLOSED',
+  ALREADY_CLOSED_DIFFERENT: 'CASH_SESSION_ALREADY_CLOSED_DIFFERENT',
+  REOPENED_WITH_RECONCILIATION: 'CASH_SESSION_REOPENED_WITH_RECONCILIATION',
+  RECONCILED_REOPEN_BLOCKED: 'CASH_SESSION_RECONCILED_REOPEN_BLOCKED',
+};
+
+// La caja ya estaba cerrada (sin snapshot, o con un cierre distinto al que
+// se intentó enviar): el cierre registrado no se modificó.
+export function isCashSessionAlreadyClosedError(error) {
+  return error?.hint === CASH_CLOSE_ERROR_HINTS.ALREADY_CLOSED
+    || error?.hint === CASH_CLOSE_ERROR_HINTS.ALREADY_CLOSED_DIFFERENT;
+}
+
+// Estado real de una sesión en el servidor -- usado tras un error de red
+// en el cierre para saber si el cierre alcanzó a confirmarse.
+export async function getCashSessionStatus(sessionId) {
+  const { data, error } = await supabase
+    .from('crm_cash_sessions')
+    .select('id, status, closed_at')
+    .eq('id', sessionId)
+    .maybeSingle();
+  return { data: data || null, error };
 }
 
 // Snapshot de conciliación ya persistido para una caja cerrada por el

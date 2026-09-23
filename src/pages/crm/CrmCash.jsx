@@ -23,12 +23,14 @@ import {
   getCashSessionMovements,
   getCashSessionPayments,
   getCashSessionReconciliation,
+  getCashSessionStatus,
   getCashRecentSessions,
   getCashSessionsForDate,
   getCrmInvoice,
   getInvoicePaymentSummary,
   getLocalDateString,
   getOpenCashSession,
+  isCashSessionAlreadyClosedError,
   openCashSession,
   reopenCashSession,
   updateCrmPayment,
@@ -1293,6 +1295,9 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
 
   const handleSubmit = (event) => {
     event.preventDefault();
+    // Mientras el cierre está en curso no se acepta otro envío (Enter en un
+    // input, doble click) -- la guardia sincrónica real vive en el padre.
+    if (busy) return;
     setError('');
     for (const method of methods) {
       const raw = amounts[method];
@@ -1318,7 +1323,7 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
       <form onSubmit={handleSubmit} className="flex max-h-full w-full max-w-xl flex-col rounded-2xl border border-gray-100 bg-white shadow-xl">
         <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
           <h3 className="text-sm font-bold text-gray-900">Cerrar caja — conciliación</h3>
-          <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600" aria-label="Cancelar">
+          <button type="button" onClick={onCancel} disabled={busy} className="text-gray-400 hover:text-gray-600 disabled:opacity-50" aria-label="Cancelar">
             <Icon name="X" size={17} />
           </button>
         </div>
@@ -1348,7 +1353,8 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
                       <button
                         type="button"
                         onClick={() => handleRemoveMethod(method)}
-                        className="text-xs font-semibold text-gray-400 hover:text-red-500"
+                        disabled={busy}
+                        className="text-xs font-semibold text-gray-400 hover:text-red-500 disabled:opacity-50"
                       >
                         Quitar
                       </button>
@@ -1368,6 +1374,7 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
                       inputMode="numeric"
                       value={fmtMoneyInput(raw)}
                       onChange={e => { setAmounts(prev => ({ ...prev, [method]: e.target.value.replace(/\D/g, '') })); setError(''); }}
+                      disabled={busy}
                       placeholder="0"
                       className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-7 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
                     />
@@ -1387,6 +1394,7 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
               <select
                 value={addMethodValue}
                 onChange={e => setAddMethodValue(e.target.value)}
+                disabled={busy}
                 className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
               >
                 <option value="">+ Agregar medio</option>
@@ -1397,7 +1405,7 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
               <button
                 type="button"
                 onClick={handleAddMethod}
-                disabled={!addMethodValue}
+                disabled={!addMethodValue || busy}
                 className="rounded-xl border border-gray-200 px-3 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
                 Agregar
@@ -1412,6 +1420,7 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
             <textarea
               value={observation}
               onChange={e => { setObservation(e.target.value); setError(''); }}
+              disabled={busy}
               rows={3}
               placeholder={anyDiff ? 'Explica la diferencia encontrada…' : 'Opcional'}
               className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
@@ -1423,17 +1432,19 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50"
+            disabled={busy}
+            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancelar
           </button>
           <button
             type="submit"
             disabled={busy}
+            aria-busy={busy}
             className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
           >
             {busy && <Icon name="Loader2" size={15} className="animate-spin" />}
-            Cerrar caja
+            {busy ? 'Cerrando…' : 'Cerrar caja'}
           </button>
         </div>
       </form>
@@ -1547,6 +1558,12 @@ export default function CrmCash() {
   // histórico -- [] real (sin filas) se distingue de "todavía no se pidió".
   const [closingSessionId, setClosingSessionId] = useState(null);
   const [closeError, setCloseError] = useState('');
+  // CAJA-CIERRE-IDEMPOTENTE-1 — guardia SINCRÓNICA contra doble submit del
+  // cierre: `busy` es estado de React y no alcanza a bloquear dos envíos
+  // que ocurran antes del siguiente render. closeNotice es el aviso
+  // informativo (no error) cuando el cierre ya estaba registrado.
+  const closeInFlightRef = useRef(false);
+  const [closeNotice, setCloseNotice] = useState('');
   const [reconciliationBySession, setReconciliationBySession] = useState({});
 
   const planSlug = getEffectivePlanSlug(
@@ -1698,23 +1715,66 @@ export default function CrmCash() {
   // (CloseCashSessionWizard). El cierre real ocurre en handleSubmitClose,
   // vía la RPC crm_close_cash_session.
   const handleOpenCloseWizard = (sessionId = openSession?.id) => {
-    if (!sessionId) return;
+    if (!sessionId || busy || closeInFlightRef.current) return;
     setCloseError('');
     setClosingSessionId(sessionId);
   };
 
-  const handleSubmitClose = async ({ reconciliations, closingNotes }) => {
-    if (!closingSessionId) return;
-    setBusy(true);
-    setCloseError('');
-    const { error } = await closeCashSessionReconciled(closingSessionId, { reconciliations, closingNotes });
-    setBusy(false);
-    if (error) {
-      setCloseError(error.message || 'No se pudo cerrar la caja.');
-      return;
-    }
+  // Cierra el asistente y recarga; el mensaje se fija DESPUÉS de load()
+  // porque load() limpia errorMsg al empezar.
+  const finishClose = async ({ notice = '', error = '' } = {}) => {
     setClosingSessionId(null);
     await load();
+    if (notice) setCloseNotice(notice);
+    if (error) setErrorMsg(error);
+  };
+
+  const handleSubmitClose = async ({ reconciliations, closingNotes }) => {
+    if (!closingSessionId || closeInFlightRef.current) return;
+    closeInFlightRef.current = true;
+    const sessionId = closingSessionId;
+    setBusy(true);
+    setCloseError('');
+    setCloseNotice('');
+    try {
+      const { data, error, networkError } = await closeCashSessionReconciled(sessionId, { reconciliations, closingNotes });
+
+      if (!error) {
+        // already_closed: el mismo cierre ya estaba registrado (doble submit
+        // o reintento tras perder la respuesta) -- es éxito, el servidor
+        // devolvió el snapshot original sin reescribirlo.
+        await finishClose({
+          notice: data?.already_closed ? 'Esta caja ya estaba cerrada con este mismo arqueo. Se muestra el cierre registrado.' : '',
+        });
+        return;
+      }
+
+      if (isCashSessionAlreadyClosedError(error)) {
+        // Cerrada antes (otra pestaña/dispositivo, o con otros montos): el
+        // cierre registrado no se tocó -- se muestra el estado real.
+        await finishClose({ error: error.message || 'La caja ya está cerrada.' });
+        return;
+      }
+
+      if (networkError) {
+        // Sin respuesta del servidor: el cierre pudo haberse confirmado
+        // igual. Se relee el estado real antes de sugerir reintentar.
+        const { data: current, error: statusError } = await getCashSessionStatus(sessionId);
+        if (!statusError && current?.status === 'closed') {
+          await finishClose({ notice: 'Se perdió la conexión, pero la caja quedó cerrada correctamente. Revisa el cierre registrado en el historial.' });
+          return;
+        }
+        setCloseError(!statusError && current?.status === 'open'
+          ? 'No se pudo confirmar el cierre por un problema de conexión. La caja sigue abierta: puedes volver a intentarlo.'
+          : 'No se pudo confirmar el cierre por un problema de conexión. Recarga la página para ver el estado real de la caja antes de volver a intentarlo.');
+        return;
+      }
+
+      setCloseError(error.message || 'No se pudo cerrar la caja.');
+    } finally {
+      closeInFlightRef.current = false;
+      setBusy(false);
+    }
   };
 
   const handleReopen = async (sessionId) => {
@@ -1919,6 +1979,16 @@ export default function CrmCash() {
 
       <DashboardLayoutContent>
         <div className="mx-auto w-full max-w-5xl min-w-0 space-y-4">
+          {closeNotice && (
+            <div role="status" className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+              <Icon name="CheckCircle2" size={16} className="mt-0.5 shrink-0" />
+              <span>{closeNotice}</span>
+              <button onClick={() => setCloseNotice('')} className="ml-auto text-emerald-500 hover:text-emerald-700" aria-label="Cerrar aviso">
+                <Icon name="X" size={14} />
+              </button>
+            </div>
+          )}
+
           {errorMsg && (
             <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               <Icon name="AlertCircle" size={16} className="mt-0.5 shrink-0" />
@@ -2151,7 +2221,7 @@ export default function CrmCash() {
                   busy={busy}
                   serverError={closeError}
                   onSubmit={handleSubmitClose}
-                  onCancel={() => { setClosingSessionId(null); setCloseError(''); }}
+                  onCancel={() => { if (busy) return; setClosingSessionId(null); setCloseError(''); }}
                 />
               )}
 
