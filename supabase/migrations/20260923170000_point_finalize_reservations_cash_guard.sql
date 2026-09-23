@@ -177,7 +177,6 @@ DECLARE
   v_number INTEGER;
   v_sort INTEGER := 0;
   v_stock INTEGER;
-  v_reserved_other INTEGER;
   v_reserved_self INTEGER;
   v_snapshot JSONB;
 BEGIN
