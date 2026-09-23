@@ -78,6 +78,11 @@ Deno.serve(async (req) => {
 
   let invoiceId = operation.crm_invoice_id ?? null;
   let finalized = !!invoiceId;
+  let finalizedSale: Record<string, unknown> | null = null;
+  if (invoiceId) {
+    const { data: existingInvoice } = await ctx.admin.from('crm_invoices').select('*').eq('id', invoiceId).maybeSingle();
+    finalizedSale = existingInvoice ?? null;
+  }
 
   // Polling y webhook comparten el mismo finalizador idempotente. Así una
   // pestaña activa puede completar inmediatamente la venta sin depender de
@@ -96,6 +101,7 @@ Deno.serve(async (req) => {
     }
     const invoice = Array.isArray(invoices) ? invoices[0] : invoices;
     invoiceId = invoice?.id ?? null;
+    finalizedSale = invoice ?? null;
     finalized = !!invoiceId;
   } else if (['failed', 'expired', 'canceled', 'refunded'].includes(order.status)) {
     const { error: releaseError } = await ctx.admin.rpc('crm_point_release_stock', { p_operation_id: operation.id });
@@ -114,5 +120,6 @@ Deno.serve(async (req) => {
     amount: order.amount,
     finalized,
     invoice_id: invoiceId,
+    sale: finalizedSale,
   }, 200);
 });
