@@ -28,6 +28,13 @@ verify_jwt = false
 [functions.mp-point-terminals]
 verify_jwt = false
 
+# POINT-SMART-2-4B: activa de forma controlada el modo PDV de una terminal
+# previamente verificada como perteneciente a la cuenta MP del comercio.
+# JWT y tenant se validan dentro del handler; el token OAuth nunca sale del
+# backend. verify_jwt=false solo permite que OPTIONS llegue al handler.
+[functions.mp-point-setup-terminal]
+verify_jwt = false
+
 # mp-oauth-callback: público, igual que mp-webhook — Mercado Pago redirige
 # el browser acá directamente, sin JWT de Walinka.
 [functions.mp-oauth-callback]
