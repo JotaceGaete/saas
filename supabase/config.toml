@@ -21,6 +21,46 @@ verify_jwt = false
 [functions.mp-oauth-disconnect]
 verify_jwt = false
 
+# POINT-SMART-2-4A: listado read-only de terminales Point del comercio.
+# Valida el JWT dentro del handler (auth.getUser), resuelve business_id por
+# auth.uid() y usa el token OAuth cifrado únicamente server-side. Se deja
+# verify_jwt=false solo para que el CORS preflight OPTIONS llegue al handler.
+# POINT-OAUTH-1: OAuth separado para la aplicación MercadoPago Point.
+# start valida JWT internamente; callback es redirección pública de MP.
+[functions.mp-point-oauth-start]
+verify_jwt = false
+
+[functions.mp-point-oauth-callback]
+verify_jwt = false
+
+[functions.mp-point-terminals]
+verify_jwt = false
+
+# POINT-SMART-2-4B: activa de forma controlada el modo PDV de una terminal
+# previamente verificada como perteneciente a la cuenta MP del comercio.
+# JWT y tenant se validan dentro del handler; el token OAuth nunca sale del
+# backend. verify_jwt=false solo permite que OPTIONS llegue al handler.
+[functions.mp-point-setup-terminal]
+verify_jwt = false
+
+# POINT-SMART-2-5: Orders API. Las tres funciones validan JWT/tenant dentro
+# del handler y mantienen el OAuth del comercio exclusivamente server-side.
+# verify_jwt=false es solo para permitir CORS preflight OPTIONS.
+[functions.mp-point-create-order]
+verify_jwt = false
+
+[functions.mp-point-get-order]
+verify_jwt = false
+
+[functions.mp-point-cancel-order]
+verify_jwt = false
+
+# POINT-SMART-2-6: webhook público de Orders/Point. Mercado Pago no envía
+# JWT de Walinka; el handler usa el order id solo como hint y reconsulta
+# siempre /v1/orders/{id} con el OAuth del comercio antes de actuar.
+[functions.mp-point-webhook]
+verify_jwt = false
+
 # mp-oauth-callback: público, igual que mp-webhook — Mercado Pago redirige
 # el browser acá directamente, sin JWT de Walinka.
 [functions.mp-oauth-callback]

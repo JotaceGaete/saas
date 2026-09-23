@@ -963,6 +963,74 @@ export async function createPosInvoice(businessId, {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// POINT-SMART-2-7 — cliente delgado para Edge Functions Point.
+// Toda autoridad (tenant, token OAuth, monto, estado y finalización) vive
+// server-side. Estos wrappers nunca consultan tablas privadas Point.
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function invokePointFunction(name, body = {}) {
+  const { data, error } = await supabase.functions.invoke(name, { body });
+  if (!error) return { data, error: null };
+
+  // functions.invoke puede traer el JSON del handler dentro de context.
+  let payload = null;
+  try {
+    if (error?.context && typeof error.context.json === 'function') payload = await error.context.json();
+  } catch { /* fallback estable abajo */ }
+
+  return {
+    data: payload,
+    error: {
+      message: payload?.error || error?.message || 'No se pudo comunicar con Mercado Pago Point.',
+      reason: payload?.reason || null,
+      status: error?.context?.status || null,
+    },
+  };
+}
+
+export async function startPointOauth() {
+  return invokePointFunction('mp-point-oauth-start', {});
+}
+
+export async function getPointTerminals() {
+  return invokePointFunction('mp-point-terminals', {});
+}
+
+export async function setupPointTerminal(terminalId) {
+  return invokePointFunction('mp-point-setup-terminal', { terminalId });
+}
+
+export async function createPointOrder({
+  terminalId, items, customerId = null, discount = 0, notes = null,
+  createIdempotencyKey, saleIdempotencyKey, issueDate = getLocalDateString(),
+}) {
+  return invokePointFunction('mp-point-create-order', {
+    terminalId,
+    items: (items || []).map((it) => ({
+      product_id: it.product_id || null,
+      name: it.name,
+      unit_price: it.unit_price,
+      quantity: it.quantity,
+      note: it.note || null,
+    })),
+    customerId,
+    discount,
+    notes,
+    createIdempotencyKey,
+    saleIdempotencyKey,
+    issueDate,
+  });
+}
+
+export async function getPointOrder(operationId) {
+  return invokePointFunction('mp-point-get-order', { operationId });
+}
+
+export async function cancelPointOrder(operationId) {
+  return invokePointFunction('mp-point-cancel-order', { operationId });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // PUENTE CATÁLOGO → CRM
 // Requiere migración en Supabase Dashboard:
 //

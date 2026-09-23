@@ -5,7 +5,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer } from '../../services/crmService';
+import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, getPointTerminals, startPointOauth, setupPointTerminal, createPointOrder, getPointOrder, cancelPointOrder } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { canUseFeature } from '../../config/planFeatures';
 import CrmThermalTicket from './components/CrmThermalTicket';
@@ -36,7 +36,7 @@ const PAYMENT_METHODS = [
   { value: 'cash',          label: 'Efectivo',       icon: 'Banknote' },
   { value: 'debit_card',    label: 'Débito',         icon: 'CreditCard' },
   { value: 'credit_card',   label: 'Crédito',        icon: 'CreditCard' },
-  { value: 'mercado_pago',  label: 'Mercado Pago',   icon: 'Wallet' },
+  { value: 'mercado_pago',  label: 'Mercado Pago manual', icon: 'Wallet' },
   { value: 'bank_transfer', label: 'Transferencia',  icon: 'ArrowLeftRight' },
   { value: 'check',         label: 'Cheque',         icon: 'BadgeCheck' },
   { value: 'other',         label: 'Otro',           icon: 'MoreHorizontal' },
@@ -241,6 +241,20 @@ function CrmTerminalUI() {
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+
+  // POINT-SMART-2-7: el flujo integrado es deliberadamente separado del
+  // medio "Mercado Pago manual". Fase 1 cobra el TOTAL completo por Point;
+  // pagos mixtos con Point quedan fuera hasta modelarlos explícitamente.
+  const [pointTerminals, setPointTerminals] = useState([]);
+  const [pointTerminalId, setPointTerminalId] = useState('');
+  const [pointLoading, setPointLoading] = useState(false);
+  const [pointError, setPointError] = useState(null);
+  const [pointErrorReason, setPointErrorReason] = useState(null);
+  const [pointOperation, setPointOperation] = useState(null);
+  const pointPollRef = useRef(null);
+  const pointCreateKeyRef = useRef(null);
+  const pointStorageKey = useMemo(() => business?.id ? `walinka:point-active:${business.id}` : null, [business?.id]);
+
   // TPV-CORE-3: paso del flujo de checkout -- puramente de interfaz, nunca
   // representa una venta registrada ni se persiste en el draft (ver
   // efecto de restauración más abajo: tras refresh siempre vuelve a
@@ -615,6 +629,10 @@ function CrmTerminalUI() {
     // generar una idempotency key nueva, nunca reutilizar la del intento
     // anterior (ya completado o descartado).
     saleIdempotencyKeyRef.current = null;
+    pointCreateKeyRef.current = null;
+    setPointOperation(null);
+    setPointError(null);
+    if (pointStorageKey) localStorage.removeItem(pointStorageKey);
     draftDebouncerRef.current.cancel();
     if (draftKey) removePosTerminalDraft(draftKey);
     setDraftNotice(null);
@@ -778,6 +796,155 @@ function CrmTerminalUI() {
     // este flush por un cancel() o se pierde el último cambio sin guardar.
     draftDebouncerRef.current.flush(() => persistDraftNowRef.current());
   }, []);
+
+  const loadPointTerminals = useCallback(async () => {
+    setPointLoading(true); setPointError(null); setPointErrorReason(null);
+    const { data, error } = await getPointTerminals();
+    setPointLoading(false);
+    if (error) { setPointError(error.message); setPointErrorReason(error.reason || null); return; }
+    const terminals = Array.isArray(data?.terminals) ? data.terminals : [];
+    setPointTerminals(terminals);
+    setPointTerminalId(prev => {
+      if (prev && terminals.some(t => t.id === prev)) return prev;
+      return terminals.find(t => t.operating_mode === 'PDV')?.id || terminals[0]?.id || '';
+    });
+  }, []);
+
+  const handleConnectPoint = useCallback(async () => {
+    setPointLoading(true); setPointError(null); setPointErrorReason(null);
+    const { data, error } = await startPointOauth();
+    setPointLoading(false);
+    if (error || !data?.authorizationUrl) {
+      setPointError(error?.message || 'No pudimos iniciar la conexión con Mercado Pago Point.');
+      return;
+    }
+    window.location.assign(data.authorizationUrl);
+  }, []);
+
+  useEffect(() => {
+    if (checkoutStep === 'payment' && pointTerminals.length === 0 && !pointLoading && !pointError) loadPointTerminals();
+  }, [checkoutStep, pointTerminals.length, pointLoading, pointError, loadPointTerminals]);
+
+  // Recuperación después de refresh/cierre de pestaña: solo guardamos el
+  // operationId. El estado authoritative se vuelve a pedir al backend.
+  useEffect(() => {
+    if (!pointStorageKey || pointOperation) return;
+    try {
+      const operationId = localStorage.getItem(pointStorageKey);
+      if (operationId) setPointOperation({ operation_id: operationId, status: 'recovering' });
+    } catch { /* localStorage no es autoridad */ }
+  }, [pointStorageKey, pointOperation]);
+
+  const finishPointUi = useCallback((data) => {
+    if (!data?.invoice_id) return;
+    const saleSnapshot = {
+      items: [...cart], customer: selectedCustomer, paymentMethod: 'mercado_pago',
+      payments: [{ method: 'mercado_pago', amount: total }],
+      discountAmount, subtotal, total, amountReceived: null, change: null,
+      initialPaymentAmount: null, initialPaymentMethod: null, pendingBalance: 0,
+      paymentStatus: 'Pagada', notes: notes || null, createdAt: new Date().toISOString(),
+    };
+    draftDebouncerRef.current.cancel();
+    if (draftKey) removePosTerminalDraft(draftKey);
+    if (pointStorageKey) localStorage.removeItem(pointStorageKey);
+    setPointOperation(null);
+    setTicketData({ sale: data.sale || { id: data.invoice_id }, ...saleSnapshot });
+    refreshProducts();
+  }, [cart, selectedCustomer, total, discountAmount, subtotal, notes, draftKey, pointStorageKey]);
+
+  const pollPointOnce = useCallback(async () => {
+    const operationId = pointOperation?.operation_id;
+    if (!operationId) return;
+    const { data, error } = await getPointOrder(operationId);
+    if (error && !data) { setPointError(error.message); return; }
+    const next = data || {};
+    setPointOperation(prev => ({ ...prev, ...next }));
+    if (next.invoice_id) { finishPointUi(next); return; }
+    if (['failed','expired','canceled','refunded'].includes(next.status)) {
+      if (pointStorageKey) localStorage.removeItem(pointStorageKey);
+      // Un estado terminal significa que este intento de cobro ya no puede
+      // convertirse en venta. Liberamos la operación de la UI y renovamos
+      // AMBAS claves para que un nuevo intento sea una operación/venta nueva.
+      // Mientras el estado sea ambiguo (created/at_terminal/action_required)
+      // jamás hacemos esto: allí se conserva la idempotencia original.
+      setPointOperation(null);
+      pointCreateKeyRef.current = null;
+      saleIdempotencyKeyRef.current = null;
+      setPointError(next.status === 'expired' ? 'El cobro Point venció. Puedes intentar nuevamente.' : `El cobro Point terminó como ${next.status}. Puedes intentar nuevamente.`);
+      refreshProducts();
+    }
+  }, [pointOperation?.operation_id, pointStorageKey, finishPointUi]);
+
+  useEffect(() => {
+    if (!pointOperation?.operation_id || pointOperation?.invoice_id) return;
+    pollPointOnce();
+    pointPollRef.current = window.setInterval(pollPointOnce, 2000);
+    return () => { if (pointPollRef.current) window.clearInterval(pointPollRef.current); };
+  }, [pointOperation?.operation_id, pointOperation?.invoice_id, pollPointOnce]);
+
+  const handleSetupPoint = async () => {
+    if (!pointTerminalId) return;
+    setPointLoading(true); setPointError(null);
+    const { data, error } = await setupPointTerminal(pointTerminalId);
+    setPointLoading(false);
+    if (error) { setPointError(error.message); return; }
+    await loadPointTerminals();
+    if (data?.restart_required) setPointError('Modo PDV activado. Reinicia físicamente la Point antes de cobrar.');
+  };
+
+  const handlePointCharge = async () => {
+    if (submitLockRef.current || pointOperation?.operation_id) return;
+    if (!pointTerminalId || cart.length === 0 || total <= 0) return;
+    const terminal = pointTerminals.find(t => t.id === pointTerminalId);
+    if (terminal?.operating_mode !== 'PDV') { setPointError('Activa el modo PDV antes de cobrar.'); return; }
+
+    submitLockRef.current = true; setPointLoading(true); setPointError(null);
+    try {
+      const { data: openSession } = await getOpenCashSession(business.id);
+      if (!openSession) { setPointError('Debes abrir caja antes de cobrar con Point.'); return; }
+      // El nacimiento de una operación Point define un par inseparable de
+      // claves. Si no existe createKey NO estamos reintentando una llamada
+      // ambigua: es un cobro Point nuevo. En ese momento reemplazamos también
+      // la sale key aunque el borrador del TPV haya restaurado una antigua.
+      // Una vez creada pointCreateKeyRef, los reintentos de red conservan
+      // ambas claves exactamente iguales.
+      if (!pointCreateKeyRef.current) {
+        pointCreateKeyRef.current = crypto.randomUUID();
+        saleIdempotencyKeyRef.current = crypto.randomUUID();
+      }
+      const { data, error } = await createPointOrder({
+        terminalId: pointTerminalId, items: cart, customerId: customerId || null,
+        discount: discountAmount, notes: notes || null,
+        createIdempotencyKey: pointCreateKeyRef.current,
+        saleIdempotencyKey: saleIdempotencyKeyRef.current,
+      });
+      if (data?.operation_id) {
+        setPointOperation(data);
+        if (pointStorageKey) localStorage.setItem(pointStorageKey, data.operation_id);
+      }
+      if (error) setPointError(error.message);
+    } finally {
+      submitLockRef.current = false; setPointLoading(false);
+    }
+  };
+
+  const handleCancelPoint = async () => {
+    if (!pointOperation?.operation_id) return;
+    setPointLoading(true); setPointError(null);
+    const { data, error } = await cancelPointOrder(pointOperation.operation_id);
+    setPointLoading(false);
+    if (error) { setPointError(error.reason === 'CANCEL_ON_TERMINAL_REQUIRED' ? 'Cancela el cobro directamente en la Point.' : error.message); return; }
+    if (data?.status === 'canceled') {
+      if (pointStorageKey) localStorage.removeItem(pointStorageKey);
+      setPointOperation(null);
+      // La operación cancelada nunca puede finalizar una venta. Un nuevo
+      // cobro debe tener nuevas create/sale idempotency keys; reutilizar la
+      // sale key chocaría correctamente con el UNIQUE de operaciones Point.
+      pointCreateKeyRef.current = null;
+      saleIdempotencyKeyRef.current = null;
+      refreshProducts();
+    }
+  };
 
   const handleRegister = async () => {
     // Lock síncrono -- ver comentario junto a la declaración de
@@ -1457,7 +1624,8 @@ function CrmTerminalUI() {
                       {cart.length > 0 && (
                         <button
                           onClick={resetForm}
-                          className="text-xs text-red-400 hover:text-red-600 flex items-center gap-1"
+                          disabled={!!pointOperation?.operation_id}
+                          className="text-xs text-red-400 disabled:text-gray-300 disabled:cursor-not-allowed hover:text-red-600 flex items-center gap-1"
                         >
                           <Icon name="Trash2" size={11} />Vaciar
                         </button>
@@ -1649,6 +1817,127 @@ function CrmTerminalUI() {
 
                     {checkoutStep === 'payment' && (
                       <>
+                        {/* POINT-SMART-2-7 — Point integrado. Separado de
+                            "Mercado Pago manual": en esta fase cobra el total
+                            completo y el backend crea la venta solo al recibir
+                            processed desde Mercado Pago. */}
+                        <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-3 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-yellow-300">
+                                <Icon name="Smartphone" size={16} className="text-gray-900" />
+                              </span>
+                              <div>
+                                <p className="text-xs font-black text-gray-900">Mercado Pago Point</p>
+                                <p className="text-[10px] text-gray-600">Cobro integrado · total {fmt(total, business?.currency)}</p>
+                              </div>
+                            </div>
+                            <button type="button" onClick={loadPointTerminals} disabled={pointLoading || !!pointOperation?.operation_id}
+                              className="rounded-lg px-2 py-1 text-[10px] font-bold text-gray-700 hover:bg-yellow-100 disabled:opacity-40">
+                              Actualizar
+                            </button>
+                          </div>
+
+                          {!pointOperation?.operation_id ? (
+                            <>
+                              {pointTerminals.length > 0 ? (
+                                <div className="space-y-2">
+                                  {pointTerminals.length > 1 && (
+                                    <p className="text-[10px] font-semibold text-gray-600">
+                                      Encontramos {pointTerminals.length} terminales. Selecciona la Point física que usarás en esta caja.
+                                    </p>
+                                  )}
+                                  <div className="space-y-1.5">
+                                    {pointTerminals.map((terminal) => {
+                                      const selected = terminal.id === pointTerminalId;
+                                      const mode = terminal.operating_mode || 'UNDEFINED';
+                                      return (
+                                        <button
+                                          key={terminal.id}
+                                          type="button"
+                                          onClick={() => setPointTerminalId(terminal.id)}
+                                          disabled={pointLoading}
+                                          className={`w-full rounded-xl border px-3 py-2.5 text-left transition-colors disabled:opacity-50 ${
+                                            selected
+                                              ? 'border-gray-900 bg-white ring-2 ring-gray-900/10'
+                                              : 'border-yellow-200 bg-white/70 hover:bg-white'
+                                          }`}
+                                        >
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0">
+                                              <p className="break-all text-[11px] font-black text-gray-900">{terminal.id}</p>
+                                              <p className="mt-1 text-[10px] text-gray-600">
+                                                Serial/ID completo · POS {terminal.pos_id || 'sin asignar'} · Tienda {terminal.store_id || 'sin asignar'}
+                                              </p>
+                                              {terminal.external_pos_id && (
+                                                <p className="text-[10px] text-gray-500">Caja externa: {terminal.external_pos_id}</p>
+                                              )}
+                                            </div>
+                                            <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-black ${
+                                              mode === 'PDV'
+                                                ? 'bg-emerald-100 text-emerald-700'
+                                                : 'bg-amber-100 text-amber-700'
+                                            }`}>
+                                              {mode}
+                                            </span>
+                                          </div>
+                                          <p className="mt-1.5 text-[10px] font-bold text-gray-700">
+                                            {selected ? '✓ Point seleccionada' : 'Usar esta Point'}
+                                          </p>
+                                        </button>
+                                      );
+                                    })}
+                                  </div>
+                                  {pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode !== 'PDV' && (
+                                    <button type="button" onClick={handleSetupPoint} disabled={pointLoading || !pointTerminalId}
+                                      className="w-full rounded-xl bg-gray-900 px-3 py-2.5 text-xs font-bold text-white disabled:opacity-50">
+                                      Activar PDV en la Point seleccionada
+                                    </button>
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-gray-600">
+                                  {pointLoading ? 'Buscando terminales Point…' : 'No encontramos una terminal Point en la cuenta conectada.'}
+                                </p>
+                              )}
+                              <button type="button" onClick={handlePointCharge}
+                                disabled={pointLoading || !pointTerminalId || pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode !== 'PDV' || total <= 0}
+                                className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-300 px-3 py-2.5 text-sm font-black text-gray-950 hover:bg-yellow-200 disabled:bg-yellow-100 disabled:text-gray-400">
+                                {pointLoading ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Zap" size={15} />}
+                                Enviar {fmt(total, business?.currency)} a la Point
+                              </button>
+                            </>
+                          ) : (
+                            <div className="rounded-xl bg-white border border-yellow-200 p-3 space-y-2">
+                              <div className="flex items-center gap-2">
+                                <Icon name={pointOperation.status === 'processed' ? 'BadgeCheck' : 'Loader2'} size={16}
+                                  className={pointOperation.status === 'processed' ? 'text-emerald-600' : 'animate-spin text-yellow-600'} />
+                                <div>
+                                  <p className="text-xs font-black text-gray-900">
+                                    {pointOperation.status === 'recovering' ? 'Recuperando cobro…'
+                                      : pointOperation.status === 'at_terminal' ? 'Esperando al cliente en la Point…'
+                                      : pointOperation.status === 'action_required' ? 'Revisa la pantalla de la Point'
+                                      : pointOperation.status === 'processed' ? 'Pago aprobado · registrando venta…'
+                                      : 'Enviando cobro a la Point…'}
+                                  </p>
+                                  <p className="text-[10px] text-gray-500">Estado: {pointOperation.status || 'consultando'}</p>
+                                </div>
+                              </div>
+                              <button type="button" onClick={handleCancelPoint} disabled={pointLoading || pointOperation.status === 'processed'}
+                                className="w-full rounded-lg border border-gray-200 px-2 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+                                Cancelar cobro
+                              </button>
+                            </div>
+                          )}
+                          {pointErrorReason === 'MP_POINT_NOT_CONNECTED' && !pointOperation?.operation_id && (
+                            <button type="button" onClick={handleConnectPoint} disabled={pointLoading}
+                              className="w-full rounded-xl bg-gray-900 px-3 py-2.5 text-xs font-black text-white hover:bg-gray-800 disabled:opacity-50">
+                              Conectar Mercado Pago Point
+                            </button>
+                          )}
+                          {pointError && <p className="rounded-lg bg-white/70 px-2.5 py-2 text-[11px] font-semibold text-red-600">{pointError}</p>}
+                        </div>
+
                         {/* Payment method — reutiliza exactamente el mismo
                             estado/lógica de payments/cuenta corriente que
                             existía antes de TPV-CORE-3; solo cambió CUÁNDO
@@ -1814,7 +2103,8 @@ function CrmTerminalUI() {
                         <button
                           type="button"
                           onClick={handleBackToSale}
-                          className="hidden lg:flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white py-3 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors min-h-[44px]"
+                          disabled={!!pointOperation?.operation_id}
+                          className="hidden lg:flex disabled:opacity-40 disabled:cursor-not-allowed w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white py-3 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors min-h-[44px]"
                         >
                           <Icon name="ArrowLeft" size={16} />
                           Volver a la venta
@@ -1844,7 +2134,8 @@ function CrmTerminalUI() {
                 <button
                   type="button"
                   onClick={handleBackToSale}
-                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2.5 border-b border-gray-800 text-xs font-bold text-gray-300 hover:text-white transition-colors min-h-[44px]"
+                  disabled={!!pointOperation?.operation_id}
+                  className="w-full flex disabled:opacity-40 disabled:cursor-not-allowed items-center justify-center gap-1.5 px-3 py-2.5 border-b border-gray-800 text-xs font-bold text-gray-300 hover:text-white transition-colors min-h-[44px]"
                 >
                   <Icon name="ArrowLeft" size={13} color="currentColor" />
                   Volver a la venta
