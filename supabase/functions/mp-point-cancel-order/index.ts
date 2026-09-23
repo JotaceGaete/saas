@@ -120,6 +120,11 @@ Deno.serve(async (req) => {
     mp_payment_id: after.order.payment_id,
   }).eq('id', operation.id);
 
+  const { error: releaseError } = await ctx.admin.rpc('crm_point_release_stock', { p_operation_id: operation.id });
+  if (releaseError) {
+    console.error('[mp-point-cancel-order] stock release failed:', releaseError.message, { businessId: ctx.businessId, operationId });
+  }
+
   return pointJson({
     ok: true, changed: true, operation_id: operation.id,
     order_id: operation.mp_order_id, status: 'canceled',
