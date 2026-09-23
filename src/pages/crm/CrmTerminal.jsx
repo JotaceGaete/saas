@@ -862,7 +862,16 @@ function CrmTerminalUI() {
     if (next.invoice_id) { finishPointUi(next); return; }
     if (['failed','expired','canceled','refunded'].includes(next.status)) {
       if (pointStorageKey) localStorage.removeItem(pointStorageKey);
-      setPointError(next.status === 'expired' ? 'El cobro Point venció.' : `El cobro Point terminó como ${next.status}.`);
+      // Un estado terminal significa que este intento de cobro ya no puede
+      // convertirse en venta. Liberamos la operación de la UI y renovamos
+      // AMBAS claves para que un nuevo intento sea una operación/venta nueva.
+      // Mientras el estado sea ambiguo (created/at_terminal/action_required)
+      // jamás hacemos esto: allí se conserva la idempotencia original.
+      setPointOperation(null);
+      pointCreateKeyRef.current = null;
+      saleIdempotencyKeyRef.current = null;
+      setPointError(next.status === 'expired' ? 'El cobro Point venció. Puedes intentar nuevamente.' : `El cobro Point terminó como ${next.status}. Puedes intentar nuevamente.`);
+      refreshProducts();
     }
   }, [pointOperation?.operation_id, pointStorageKey, finishPointUi]);
 
@@ -918,7 +927,12 @@ function CrmTerminalUI() {
     if (error) { setPointError(error.reason === 'CANCEL_ON_TERMINAL_REQUIRED' ? 'Cancela el cobro directamente en la Point.' : error.message); return; }
     if (data?.status === 'canceled') {
       if (pointStorageKey) localStorage.removeItem(pointStorageKey);
-      setPointOperation(null); pointCreateKeyRef.current = null;
+      setPointOperation(null);
+      // La operación cancelada nunca puede finalizar una venta. Un nuevo
+      // cobro debe tener nuevas create/sale idempotency keys; reutilizar la
+      // sale key chocaría correctamente con el UNIQUE de operaciones Point.
+      pointCreateKeyRef.current = null;
+      saleIdempotencyKeyRef.current = null;
       refreshProducts();
     }
   };
