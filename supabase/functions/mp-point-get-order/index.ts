@@ -53,6 +53,21 @@ Deno.serve(async (req) => {
   try { order = sanitizePointOrder(JSON.parse(raw)); }
   catch { return pointJson({ error: 'Invalid Mercado Pago response', reason: 'MP_GET_FAILED' }, 502); }
 
+  // Diagnóstico seguro del estado autoritativo devuelto por Mercado Pago.
+  // No registrar payload crudo ni access token: solo identificadores/estados
+  // necesarios para diagnosticar la comunicación con la Point física.
+  console.log('[mp-point-get-order] MP order state', {
+    businessId: ctx.businessId,
+    operationId,
+    orderId: order.id,
+    terminalId: operation.terminal_id,
+    status: order.status,
+    statusDetail: order.status_detail ?? null,
+    paymentId: order.payment_id ?? null,
+    paymentStatus: order.payment_status ?? null,
+    paymentStatusDetail: order.payment_status_detail ?? null,
+  });
+
   // Correlación doble: tanto id como external_reference deben coincidir.
   if (order.id !== operation.mp_order_id || order.external_reference !== operation.external_reference) {
     console.error('[mp-point-get-order] correlation mismatch', { businessId: ctx.businessId, operationId });
