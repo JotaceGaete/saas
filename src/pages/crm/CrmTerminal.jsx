@@ -5,7 +5,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, getPointTerminals, setupPointTerminal, createPointOrder, getPointOrder, cancelPointOrder } from '../../services/crmService';
+import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, getPointTerminals, startPointOauth, setupPointTerminal, createPointOrder, getPointOrder, cancelPointOrder } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { canUseFeature } from '../../config/planFeatures';
 import CrmThermalTicket from './components/CrmThermalTicket';
@@ -249,6 +249,7 @@ function CrmTerminalUI() {
   const [pointTerminalId, setPointTerminalId] = useState('');
   const [pointLoading, setPointLoading] = useState(false);
   const [pointError, setPointError] = useState(null);
+  const [pointErrorReason, setPointErrorReason] = useState(null);
   const [pointOperation, setPointOperation] = useState(null);
   const pointPollRef = useRef(null);
   const pointCreateKeyRef = useRef(null);
@@ -797,16 +798,27 @@ function CrmTerminalUI() {
   }, []);
 
   const loadPointTerminals = useCallback(async () => {
-    setPointLoading(true); setPointError(null);
+    setPointLoading(true); setPointError(null); setPointErrorReason(null);
     const { data, error } = await getPointTerminals();
     setPointLoading(false);
-    if (error) { setPointError(error.message); return; }
+    if (error) { setPointError(error.message); setPointErrorReason(error.reason || null); return; }
     const terminals = Array.isArray(data?.terminals) ? data.terminals : [];
     setPointTerminals(terminals);
     setPointTerminalId(prev => {
       if (prev && terminals.some(t => t.id === prev)) return prev;
       return terminals.find(t => t.operating_mode === 'PDV')?.id || terminals[0]?.id || '';
     });
+  }, []);
+
+  const handleConnectPoint = useCallback(async () => {
+    setPointLoading(true); setPointError(null); setPointErrorReason(null);
+    const { data, error } = await startPointOauth();
+    setPointLoading(false);
+    if (error || !data?.authorizationUrl) {
+      setPointError(error?.message || 'No pudimos iniciar la conexión con Mercado Pago Point.');
+      return;
+    }
+    window.location.assign(data.authorizationUrl);
   }, []);
 
   useEffect(() => {
@@ -1855,6 +1867,12 @@ function CrmTerminalUI() {
                                 Cancelar cobro
                               </button>
                             </div>
+                          )}
+                          {pointErrorReason === 'MP_POINT_NOT_CONNECTED' && !pointOperation?.operation_id && (
+                            <button type="button" onClick={handleConnectPoint} disabled={pointLoading}
+                              className="w-full rounded-xl bg-gray-900 px-3 py-2.5 text-xs font-black text-white hover:bg-gray-800 disabled:opacity-50">
+                              Conectar Mercado Pago Point
+                            </button>
                           )}
                           {pointError && <p className="rounded-lg bg-white/70 px-2.5 py-2 text-[11px] font-semibold text-red-600">{pointError}</p>}
                         </div>
