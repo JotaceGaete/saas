@@ -307,7 +307,7 @@ BEGIN
   LOOP
     INSERT INTO public.crm_stock_movements(business_id,product_id,type,quantity,notes,created_by)
     SELECT v_op.business_id,v_agg.product_id,'salida',v_agg.qty,
-      'Venta TPV Point -- NV-'||lpad(v_number::text,4,'0')||' (invoice '||v_invoice.id||')',v_op.created_by
+      'Venta TPV Point -- NV-'||lpad(v_number::text,4,'0')||' (invoice '||v_invoice.id::text||')',v_op.created_by
     FROM public.wa_products p
     WHERE p.id=v_agg.product_id AND p.business_id=v_op.business_id AND p.stock_actual IS NOT NULL;
   END LOOP;
