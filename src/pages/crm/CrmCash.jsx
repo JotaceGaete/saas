@@ -1763,10 +1763,10 @@ export default function CrmCash() {
     setBusy(true);
     setCloseError('');
     const { error } = await closeCashSessionReconciled(sessionId, { reconciliations, closingNotes });
-    setBusy(false);
 
     if (error) {
       if (error.hint === 'crm_cash_session_closed_no_snapshot' || error.hint === 'crm_cash_session_closed_mismatch') {
+        setBusy(false);
         // load() limpia errorMsg al empezar -- el aviso se fija DESPUÉS de
         // que termine, si no lo pisaría antes de que se alcance a ver.
         setClosingSessionId(null);
@@ -1775,18 +1775,38 @@ export default function CrmCash() {
         return;
       }
       if (!error.code) {
-        const { data: freshSession } = await getCashSessionById(sessionId);
-        if (freshSession?.status === 'closed') {
+        // Riesgo B.1 (revisión final) -- busy/submittingRef deben seguir
+        // activos durante TODA la relectura, no solo durante la llamada al
+        // RPC: liberarlos antes (como hacía la versión previa) reabre la
+        // ventana de doble submit justo en el caso que más la necesita --
+        // un error de red ambiguo es exactamente cuando un usuario
+        // reintenta manualmente. Por eso setBusy(false) se movió DESPUÉS
+        // de que getCashSessionById se resuelva (éxito o fallo), nunca
+        // antes.
+        let freshSession = null;
+        let rereadError = null;
+        try {
+          ({ data: freshSession, error: rereadError } = await getCashSessionById(sessionId));
+        } catch (thrown) {
+          // Si la propia relectura falla (p. ej. sigue sin red), no debe
+          // quedar el wizard bloqueado para siempre -- se libera busy
+          // igual, más abajo, y se muestra el mismo mensaje genérico.
+          rereadError = thrown;
+        }
+        setBusy(false);
+
+        if (!rereadError && freshSession?.status === 'closed') {
           setClosingSessionId(null);
           await load();
           return;
         }
-        // Mensaje fijo a propósito -- error.message acá suele ser algo
-        // críptico ("Failed to fetch", "NetworkError…"), no apto para
-        // mostrar tal cual.
+        // Mensaje fijo a propósito -- error.message original (típicamente
+        // "Failed to fetch"/"NetworkError…") y un eventual error de la
+        // propia relectura no son aptos para mostrar tal cual.
         setCloseError('No se pudo confirmar el cierre. Revisa tu conexión e intenta nuevamente.');
         return;
       }
+      setBusy(false);
       setCloseError(error.message || 'No se pudo cerrar la caja.');
       return;
     }
@@ -1794,6 +1814,7 @@ export default function CrmCash() {
     // already_closed=true (éxito idempotente) se trata igual que un cierre
     // nuevo: mismo resultado visible para el usuario, solo que no escribió
     // nada del lado del servidor.
+    setBusy(false);
     setClosingSessionId(null);
     await load();
   };

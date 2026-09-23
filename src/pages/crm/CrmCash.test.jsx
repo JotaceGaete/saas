@@ -1133,6 +1133,67 @@ describe('CAJA-CIERRE-IDEMPOTENTE-1 — error de red ambiguo tras enviar el cier
     expect(within(modal).queryByText('Failed to fetch')).not.toBeInTheDocument();
     expect(screen.getByText('Cerrar caja — conciliación')).toBeInTheDocument();
     expect(closeCashSessionReconciledMock).toHaveBeenCalledTimes(1);
+    // Terminada la relectura (con resultado "sigue open"), el botón vuelve a
+    // estar habilitado para un reintento real.
+    expect(within(modal).getByRole('button', { name: 'Cerrar caja' })).not.toBeDisabled();
+  });
+
+  // Fix del riesgo B.1 (revisión final del PR): busy/submittingRef deben
+  // seguir activos durante TODA la relectura -- liberarlos antes (como
+  // hacía la versión previa, que hacía setBusy(false) justo después del
+  // RPC y ANTES de getCashSessionById) reabre la ventana de doble submit
+  // justo en el escenario que más la necesita.
+  it('mientras la relectura de sesión está pendiente, el wizard sigue bloqueado y un segundo submit no dispara una segunda llamada', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+    let resolveReread;
+    getCashSessionByIdMock.mockReturnValue(new Promise(resolve => { resolveReread = resolve; }));
+    const { modal } = await openCloseWizard();
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+
+    await waitFor(() => expect(getCashSessionByIdMock).toHaveBeenCalledWith('sess1'));
+    // El botón sigue en estado "Cerrando…" (busy=true) mientras la
+    // relectura está en curso -- todavía no se sabe si el cierre ocurrió.
+    const busyButton = within(modal).getByRole('button', { name: 'Cerrando…' });
+    expect(busyButton).toBeDisabled();
+
+    // Un segundo submit del formulario (equivalente a Enter en un input,
+    // no pasa por el atributo disabled del botón) tampoco debe disparar
+    // una segunda llamada: submittingRef sigue en true porque busy sigue
+    // en true durante toda la relectura.
+    fireEvent.submit(modal.querySelector('form'));
+    expect(closeCashSessionReconciledMock).toHaveBeenCalledTimes(1);
+
+    resolveReread({ data: { ...openSession, status: 'open' }, error: null });
+    expect(await within(modal).findByText(/No se pudo confirmar el cierre/)).toBeInTheDocument();
+    // Recién ahora, con la relectura terminada, queda habilitado un
+    // reintento real -- y ese reintento sí es un submit nuevo válido.
+    expect(within(modal).getByRole('button', { name: 'Cerrar caja' })).not.toBeDisabled();
+    expect(closeCashSessionReconciledMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('si la propia relectura de sesión falla (getCashSessionById devuelve error), libera busy y muestra el error sin quedar bloqueado', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+    getCashSessionByIdMock.mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+    const { modal } = await openCloseWizard();
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+
+    await waitFor(() => expect(getCashSessionByIdMock).toHaveBeenCalled());
+    expect(await within(modal).findByText(/No se pudo confirmar el cierre/)).toBeInTheDocument();
+    expect(within(modal).getByRole('button', { name: 'Cerrar caja' })).not.toBeDisabled();
+    expect(screen.getByText('Cerrar caja — conciliación')).toBeInTheDocument();
+  });
+
+  it('si la relectura lanza una excepción (no solo devuelve error), igual libera busy y muestra el mensaje', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+    getCashSessionByIdMock.mockRejectedValue(new Error('network down'));
+    const { modal } = await openCloseWizard();
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+
+    expect(await within(modal).findByText(/No se pudo confirmar el cierre/)).toBeInTheDocument();
+    expect(within(modal).getByRole('button', { name: 'Cerrar caja' })).not.toBeDisabled();
   });
 });
 
