@@ -133,6 +133,19 @@ Deno.serve(async (req) => {
     if (pdv === null) return pointJson({ error: 'Could not verify Point terminal', reason: 'MP_TERMINALS_FAILED' }, 502);
     if (!pdv) return pointJson({ error: 'Point terminal not found or not in PDV mode', reason: 'TERMINAL_NOT_PDV' }, 409);
 
+    // Point es un pago real: debe nacer dentro de una caja abierta. Se guarda
+    // el id exacto para que la finalización/recovery nunca cambie de turno.
+    const { data: cashSession, error: cashError } = await ctx.admin
+      .from('crm_cash_sessions')
+      .select('id')
+      .eq('business_id', ctx.businessId)
+      .eq('status', 'open')
+      .order('opened_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (cashError) return pointJson({ error: 'Could not verify cash session', reason: 'CASH_LOOKUP_FAILED' }, 500);
+    if (!cashSession?.id) return pointJson({ error: 'Open cash session required', reason: 'NO_OPEN_CASH' }, 409);
+
     const operationId = crypto.randomUUID();
     const externalReference = `wpt_${operationId.replaceAll('-', '')}`;
     const snapshot = {
@@ -148,6 +161,7 @@ Deno.serve(async (req) => {
       .from('crm_pos_point_operations')
       .insert({
         id: operationId, business_id: ctx.businessId, created_by: ctx.userId,
+        cash_session_id: cashSession.id,
         terminal_id: terminalId, external_reference: externalReference,
         create_idempotency_key: createKey, sale_idempotency_key: saleKey,
         sale_snapshot: snapshot, amount: total, currency: ctx.currency, mp_status: 'creating',
