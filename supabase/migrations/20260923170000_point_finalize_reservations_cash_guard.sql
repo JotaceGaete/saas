@@ -116,6 +116,41 @@ $$;
 REVOKE ALL ON FUNCTION public.crm_point_release_stock(UUID) FROM PUBLIC, anon, authenticated;
 GRANT EXECUTE ON FUNCTION public.crm_point_release_stock(UUID) TO service_role;
 
+-- Ventas TPV normales también deben respetar reservas Point activas.
+-- El stock físico todavía no se descuenta durante el pago, por lo que sin
+-- este helper una venta normal podría consumir unidades ya comprometidas.
+CREATE OR REPLACE FUNCTION public.crm_point_assert_stock_available(
+  p_business_id UUID,
+  p_product_id UUID,
+  p_requested INTEGER
+) RETURNS VOID
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path=public
+AS $
+DECLARE v_stock INTEGER; v_reserved INTEGER;
+BEGIN
+  SELECT stock_actual INTO v_stock FROM public.wa_products
+   WHERE id=p_product_id AND business_id=p_business_id FOR UPDATE;
+  IF NOT FOUND THEN RAISE EXCEPTION 'PRODUCT_NOT_FOUND' USING ERRCODE='P0001'; END IF;
+  IF v_stock IS NULL THEN RETURN; END IF;
+
+  SELECT COALESCE(SUM(r.quantity),0) INTO v_reserved
+  FROM public.crm_pos_point_stock_reservations r
+  JOIN public.crm_pos_point_operations o ON o.id=r.operation_id
+  WHERE r.business_id=p_business_id AND r.product_id=p_product_id
+    AND o.crm_invoice_id IS NULL
+    AND o.mp_status IN ('creating','created','at_terminal','action_required','processed');
+
+  IF v_stock-v_reserved<p_requested THEN
+    RAISE EXCEPTION 'STOCK_INSUFFICIENT:%:%:%',p_product_id,p_requested,GREATEST(v_stock-v_reserved,0)
+      USING ERRCODE='P0001';
+  END IF;
+END;
+$;
+REVOKE ALL ON FUNCTION public.crm_point_assert_stock_available(UUID,UUID,INTEGER) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION public.crm_point_assert_stock_available(UUID,UUID,INTEGER) TO authenticated,service_role;
+
 -- Finalizador Point específico. No llama crm_create_pos_sale porque esa RPC
 -- selecciona "la caja abierta actual" y depende de auth.uid(); aquí debemos
 -- usar created_by + cash_session_id capturados ANTES de cobrar.
