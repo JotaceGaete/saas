@@ -295,7 +295,7 @@ BEGIN
   );
 
   FOR v_agg IN
-    SELECT NULLIF(x->>'product_id','')::uuid product_id, SUM((x->>'quantity')::integer qty
+    SELECT NULLIF(x->>'product_id','')::uuid product_id, SUM((x->>'quantity')::integer) qty
     FROM jsonb_array_elements(v_snapshot->'items') x
     WHERE NULLIF(x->>'product_id','') IS NOT NULL GROUP BY 1
   LOOP
