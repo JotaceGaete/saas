@@ -312,11 +312,22 @@ BEGIN
         AND p.business_id=v_op.business_id
         AND p.stock_actual IS NOT NULL
     ) THEN
+      v_note := concat(
+        'Venta TPV Point -- NV-',
+        lpad(v_number::text,4,'0'),
+        ' (invoice ',
+        v_invoice.id,
+        ')'
+      );
       INSERT INTO public.crm_stock_movements(
         business_id,product_id,type,quantity,notes,created_by
-      ) VALUES (
-        v_op.business_id,v_agg.product_id,'salida',v_agg.qty,
-        format('Venta TPV Point -- NV-%s (invoice %s)',lpad(v_number::text,4,'0'),v_invoice.id::text),
+      )
+      VALUES (
+        v_op.business_id,
+        v_agg.product_id,
+        'salida',
+        v_agg.qty,
+        v_note,
         v_op.created_by
       );
     END IF;
