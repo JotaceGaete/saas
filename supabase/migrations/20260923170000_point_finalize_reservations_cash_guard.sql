@@ -258,12 +258,6 @@ BEGIN
     IF v_reserved_self<>v_agg.qty THEN
       RAISE EXCEPTION 'POINT_STOCK_RESERVATION_MISSING:%',v_agg.product_id USING ERRCODE='P0001';
     END IF;
-    SELECT COALESCE(SUM(r.quantity),0) INTO v_reserved_other
-      FROM public.crm_pos_point_stock_reservations r
-      JOIN public.crm_pos_point_operations o ON o.id=r.operation_id
-      WHERE r.business_id=v_op.business_id AND r.product_id=v_agg.product_id
-        AND r.operation_id<>v_op.id AND o.crm_invoice_id IS NULL
-        AND o.mp_status IN ('creating','created','at_terminal','action_required','processed');
     IF v_stock < v_agg.qty THEN
       RAISE EXCEPTION 'STOCK_INSUFFICIENT:%:%:%',v_agg.product_id,v_agg.qty,v_stock USING ERRCODE='P0001';
     END IF;
