@@ -5,7 +5,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer } from '../../services/crmService';
+import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, getPointTerminals, setupPointTerminal, createPointOrder, getPointOrder, cancelPointOrder } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { canUseFeature } from '../../config/planFeatures';
 import CrmThermalTicket from './components/CrmThermalTicket';
@@ -36,7 +36,7 @@ const PAYMENT_METHODS = [
   { value: 'cash',          label: 'Efectivo',       icon: 'Banknote' },
   { value: 'debit_card',    label: 'Débito',         icon: 'CreditCard' },
   { value: 'credit_card',   label: 'Crédito',        icon: 'CreditCard' },
-  { value: 'mercado_pago',  label: 'Mercado Pago',   icon: 'Wallet' },
+  { value: 'mercado_pago',  label: 'Mercado Pago manual', icon: 'Wallet' },
   { value: 'bank_transfer', label: 'Transferencia',  icon: 'ArrowLeftRight' },
   { value: 'check',         label: 'Cheque',         icon: 'BadgeCheck' },
   { value: 'other',         label: 'Otro',           icon: 'MoreHorizontal' },
@@ -241,6 +241,19 @@ function CrmTerminalUI() {
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+
+  // POINT-SMART-2-7: el flujo integrado es deliberadamente separado del
+  // medio "Mercado Pago manual". Fase 1 cobra el TOTAL completo por Point;
+  // pagos mixtos con Point quedan fuera hasta modelarlos explícitamente.
+  const [pointTerminals, setPointTerminals] = useState([]);
+  const [pointTerminalId, setPointTerminalId] = useState('');
+  const [pointLoading, setPointLoading] = useState(false);
+  const [pointError, setPointError] = useState(null);
+  const [pointOperation, setPointOperation] = useState(null);
+  const pointPollRef = useRef(null);
+  const pointCreateKeyRef = useRef(null);
+  const pointStorageKey = useMemo(() => business?.id ? `walinka:point-active:${business.id}` : null, [business?.id]);
+
   // TPV-CORE-3: paso del flujo de checkout -- puramente de interfaz, nunca
   // representa una venta registrada ni se persiste en el draft (ver
   // efecto de restauración más abajo: tras refresh siempre vuelve a
@@ -615,6 +628,10 @@ function CrmTerminalUI() {
     // generar una idempotency key nueva, nunca reutilizar la del intento
     // anterior (ya completado o descartado).
     saleIdempotencyKeyRef.current = null;
+    pointCreateKeyRef.current = null;
+    setPointOperation(null);
+    setPointError(null);
+    if (pointStorageKey) localStorage.removeItem(pointStorageKey);
     draftDebouncerRef.current.cancel();
     if (draftKey) removePosTerminalDraft(draftKey);
     setDraftNotice(null);
@@ -778,6 +795,121 @@ function CrmTerminalUI() {
     // este flush por un cancel() o se pierde el último cambio sin guardar.
     draftDebouncerRef.current.flush(() => persistDraftNowRef.current());
   }, []);
+
+  const loadPointTerminals = useCallback(async () => {
+    setPointLoading(true); setPointError(null);
+    const { data, error } = await getPointTerminals();
+    setPointLoading(false);
+    if (error) { setPointError(error.message); return; }
+    const terminals = Array.isArray(data?.terminals) ? data.terminals : [];
+    setPointTerminals(terminals);
+    setPointTerminalId(prev => {
+      if (prev && terminals.some(t => t.id === prev)) return prev;
+      return terminals.find(t => t.operating_mode === 'PDV')?.id || terminals[0]?.id || '';
+    });
+  }, []);
+
+  useEffect(() => {
+    if (checkoutStep === 'payment' && pointTerminals.length === 0 && !pointLoading) loadPointTerminals();
+  }, [checkoutStep, pointTerminals.length, pointLoading, loadPointTerminals]);
+
+  // Recuperación después de refresh/cierre de pestaña: solo guardamos el
+  // operationId. El estado authoritative se vuelve a pedir al backend.
+  useEffect(() => {
+    if (!pointStorageKey || pointOperation) return;
+    try {
+      const operationId = localStorage.getItem(pointStorageKey);
+      if (operationId) setPointOperation({ operation_id: operationId, status: 'recovering' });
+    } catch { /* localStorage no es autoridad */ }
+  }, [pointStorageKey, pointOperation]);
+
+  const finishPointUi = useCallback((data) => {
+    if (!data?.invoice_id) return;
+    const saleSnapshot = {
+      items: [...cart], customer: selectedCustomer, paymentMethod: 'mercado_pago',
+      payments: [{ method: 'mercado_pago', amount: total }],
+      discountAmount, subtotal, total, amountReceived: null, change: null,
+      initialPaymentAmount: null, initialPaymentMethod: null, pendingBalance: 0,
+      paymentStatus: 'Pagada', notes: notes || null, createdAt: new Date().toISOString(),
+    };
+    draftDebouncerRef.current.cancel();
+    if (draftKey) removePosTerminalDraft(draftKey);
+    if (pointStorageKey) localStorage.removeItem(pointStorageKey);
+    setPointOperation(null);
+    setTicketData({ sale: { id: data.invoice_id }, ...saleSnapshot });
+    refreshProducts();
+  }, [cart, selectedCustomer, total, discountAmount, subtotal, notes, draftKey, pointStorageKey]);
+
+  const pollPointOnce = useCallback(async () => {
+    const operationId = pointOperation?.operation_id;
+    if (!operationId) return;
+    const { data, error } = await getPointOrder(operationId);
+    if (error && !data) { setPointError(error.message); return; }
+    const next = data || {};
+    setPointOperation(prev => ({ ...prev, ...next }));
+    if (next.invoice_id) { finishPointUi(next); return; }
+    if (['failed','expired','canceled','refunded'].includes(next.status)) {
+      if (pointStorageKey) localStorage.removeItem(pointStorageKey);
+      setPointError(next.status === 'expired' ? 'El cobro Point venció.' : `El cobro Point terminó como ${next.status}.`);
+    }
+  }, [pointOperation?.operation_id, pointStorageKey, finishPointUi]);
+
+  useEffect(() => {
+    if (!pointOperation?.operation_id || pointOperation?.invoice_id) return;
+    pollPointOnce();
+    pointPollRef.current = window.setInterval(pollPointOnce, 2000);
+    return () => { if (pointPollRef.current) window.clearInterval(pointPollRef.current); };
+  }, [pointOperation?.operation_id, pointOperation?.invoice_id, pollPointOnce]);
+
+  const handleSetupPoint = async () => {
+    if (!pointTerminalId) return;
+    setPointLoading(true); setPointError(null);
+    const { data, error } = await setupPointTerminal(pointTerminalId);
+    setPointLoading(false);
+    if (error) { setPointError(error.message); return; }
+    await loadPointTerminals();
+    if (data?.restart_required) setPointError('Modo PDV activado. Reinicia físicamente la Point antes de cobrar.');
+  };
+
+  const handlePointCharge = async () => {
+    if (submitLockRef.current || pointOperation?.operation_id) return;
+    if (!pointTerminalId || cart.length === 0 || total <= 0) return;
+    const terminal = pointTerminals.find(t => t.id === pointTerminalId);
+    if (terminal?.operating_mode !== 'PDV') { setPointError('Activa el modo PDV antes de cobrar.'); return; }
+
+    submitLockRef.current = true; setPointLoading(true); setPointError(null);
+    try {
+      const { data: openSession } = await getOpenCashSession(business.id);
+      if (!openSession) { setPointError('Debes abrir caja antes de cobrar con Point.'); return; }
+      if (!pointCreateKeyRef.current) pointCreateKeyRef.current = crypto.randomUUID();
+      const { data, error } = await createPointOrder({
+        terminalId: pointTerminalId, items: cart, customerId: customerId || null,
+        discount: discountAmount, notes: notes || null,
+        createIdempotencyKey: pointCreateKeyRef.current,
+        saleIdempotencyKey: getOrCreateSaleIdempotencyKey(),
+      });
+      if (data?.operation_id) {
+        setPointOperation(data);
+        if (pointStorageKey) localStorage.setItem(pointStorageKey, data.operation_id);
+      }
+      if (error) setPointError(error.message);
+    } finally {
+      submitLockRef.current = false; setPointLoading(false);
+    }
+  };
+
+  const handleCancelPoint = async () => {
+    if (!pointOperation?.operation_id) return;
+    setPointLoading(true); setPointError(null);
+    const { data, error } = await cancelPointOrder(pointOperation.operation_id);
+    setPointLoading(false);
+    if (error) { setPointError(error.reason === 'CANCEL_ON_TERMINAL_REQUIRED' ? 'Cancela el cobro directamente en la Point.' : error.message); return; }
+    if (data?.status === 'canceled') {
+      if (pointStorageKey) localStorage.removeItem(pointStorageKey);
+      setPointOperation(null); pointCreateKeyRef.current = null;
+      refreshProducts();
+    }
+  };
 
   const handleRegister = async () => {
     // Lock síncrono -- ver comentario junto a la declaración de
