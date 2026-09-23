@@ -72,6 +72,7 @@ const reopenCashSessionMock = vi.fn();
 const updateCashSessionMock = vi.fn();
 const getCrmInvoiceMock = vi.fn();
 const getInvoicePaymentSummaryMock = vi.fn();
+const getCashSessionByIdMock = vi.fn();
 
 vi.mock('services/crmService', () => ({
   PAYMENT_METHOD_LABELS,
@@ -87,6 +88,7 @@ vi.mock('services/crmService', () => ({
   getCashSessionMovements: (...a) => getCashSessionMovementsMock(...a),
   getCashSessionPayments: (...a) => getCashSessionPaymentsMock(...a),
   getCashSessionReconciliation: (...a) => getCashSessionReconciliationMock(...a),
+  getCashSessionById: (...a) => getCashSessionByIdMock(...a),
   getCashRecentSessions: (...a) => getCashRecentSessionsMock(...a),
   getCashSessionsForDate: (...a) => getCashSessionsForDateMock(...a),
   getCrmInvoice: (...a) => getCrmInvoiceMock(...a),
@@ -152,6 +154,7 @@ beforeEach(() => {
     getCashSessionReconciliationMock, closeCashSessionReconciledMock,
     createCashMovementMock, getCostItemsMock, reopenCashSessionMock, updateCashSessionMock,
     getCrmInvoiceMock, getInvoicePaymentSummaryMock, printReceiptMock, buildSaleReceiptMock, readPrinterConfigMock,
+    getCashSessionByIdMock,
   ].forEach(m => m.mockReset());
 
   getOpenCashSessionMock.mockResolvedValue({ data: openSession, error: null });
@@ -169,6 +172,7 @@ beforeEach(() => {
   updateCashSessionMock.mockResolvedValue({ data: closedSession, error: null });
   getCrmInvoiceMock.mockResolvedValue({ data: null, error: null });
   getInvoicePaymentSummaryMock.mockResolvedValue({ data: null, error: null });
+  getCashSessionByIdMock.mockResolvedValue({ data: openSession, error: null });
   buildSaleReceiptMock.mockReturnValue({ lines: [] });
   readPrinterConfigMock.mockReturnValue({
     printerName: 'EPSON-TM-T20', paperWidthMm: 80, autoCut: true, printLogo: true,
@@ -887,6 +891,16 @@ describe('CASH-SESSION-ROW-ACTIONS — Editar y Reabrir siguen funcionando', () 
   });
 });
 
+// Compartido por CAJA-CIERRE-CONCILIACION-1 y CAJA-CIERRE-IDEMPOTENTE-1 --
+// module-scope para que ambos bloques de describe lo usen sin duplicarlo.
+async function openCloseWizard() {
+  render(<CrmCash />);
+  const trigger = await screen.findByRole('button', { name: 'Cerrar caja' });
+  fireEvent.click(trigger);
+  const heading = await screen.findByText('Cerrar caja — conciliación');
+  return { modal: heading.closest('.fixed') };
+}
+
 /**
  * CAJA-CIERRE-CONCILIACION-1 — "Cerrar caja" abre el asistente de
  * conciliación (CloseCashSessionWizard) en vez de cerrar directo. Cubre:
@@ -896,14 +910,6 @@ describe('CASH-SESSION-ROW-ACTIONS — Editar y Reabrir siguen funcionando', () 
  * servidor mostrado sin swallow.
  */
 describe('CAJA-CIERRE-CONCILIACION-1 — CloseCashSessionWizard', () => {
-  async function openCloseWizard() {
-    render(<CrmCash />);
-    const trigger = await screen.findByRole('button', { name: 'Cerrar caja' });
-    fireEvent.click(trigger);
-    const heading = await screen.findByText('Cerrar caja — conciliación');
-    return { modal: heading.closest('.fixed') };
-  }
-
   it('el botón "Cerrar caja" abre el asistente en vez de cerrar directo', async () => {
     const { modal } = await openCloseWizard();
     expect(within(modal).getByText('Efectivo')).toBeInTheDocument();
@@ -985,14 +991,249 @@ describe('CAJA-CIERRE-CONCILIACION-1 — CloseCashSessionWizard', () => {
   });
 
   it('si el servidor rechaza el cierre (medio omitido detectado tarde), muestra el mensaje exacto sin swallow', async () => {
+    // code: '23514' -- forma real de un PostgrestError de la RPC (ver
+    // 20260915180000_crm_cash_session_reconciliations.sql). Distingue este
+    // caso (error de dominio real) del error de red ambiguo (sin `code`)
+    // que CAJA-CIERRE-IDEMPOTENTE-1 maneja releyendo la sesión.
     closeCashSessionReconciledMock.mockResolvedValue({
       data: null,
-      error: { message: 'Falta conciliar debit_card: tuvo actividad de 50000 en este turno' },
+      error: { message: 'Falta conciliar debit_card: tuvo actividad de 50000 en este turno', code: '23514' },
     });
     const { modal } = await openCloseWizard();
     fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
     fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
     expect(await within(modal).findByText('Falta conciliar debit_card: tuvo actividad de 50000 en este turno')).toBeInTheDocument();
+  });
+});
+
+/**
+ * CAJA-CIERRE-IDEMPOTENTE-1 — corrige el bug real de cierre/reapertura de
+ * caja: crm_close_cash_session idempotente (already_closed / error de
+ * dominio "ya cerrada" / nunca 23505), guardia sincrónica contra doble
+ * submit, controles deshabilitados durante busy, relectura ante error de
+ * red ambiguo, y reflejo en la UI del bloqueo de reapertura.
+ */
+describe('CAJA-CIERRE-IDEMPOTENTE-1 — guardia contra doble submit y controles busy', () => {
+  async function openCloseWizardWithAmount() {
+    const { modal } = await openCloseWizard();
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
+    return { modal };
+  }
+
+  it('dos submits sincrónicos (antes de que el prop busy se propague) solo llaman una vez a closeCashSessionReconciled', async () => {
+    let resolveClose;
+    closeCashSessionReconciledMock.mockReturnValue(new Promise(resolve => { resolveClose = resolve; }));
+    const { modal } = await openCloseWizardWithAmount();
+
+    const submitButton = within(modal).getByRole('button', { name: 'Cerrar caja' });
+    // Sin await entre medio -- misma ventana sincrónica que un doble click
+    // o Enter accidental, antes de que React re-renderice con busy=true.
+    fireEvent.click(submitButton);
+    fireEvent.click(submitButton);
+
+    expect(closeCashSessionReconciledMock).toHaveBeenCalledTimes(1);
+    resolveClose({ data: { session: {}, reconciliations: [], already_closed: false }, error: null });
+    await waitFor(() => expect(screen.queryByText('Cerrar caja — conciliación')).not.toBeInTheDocument());
+  });
+
+  it('mientras está busy: inputs, "+ Agregar medio", Cancelar y la X quedan deshabilitados, y el botón dice "Cerrando…"', async () => {
+    let resolveClose;
+    closeCashSessionReconciledMock.mockReturnValue(new Promise(resolve => { resolveClose = resolve; }));
+    const { modal } = await openCloseWizardWithAmount();
+
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+
+    const submitButton = await within(modal).findByRole('button', { name: 'Cerrando…' });
+    expect(submitButton).toBeDisabled();
+    expect(within(modal).getByPlaceholderText('0')).toBeDisabled();
+    expect(within(modal).getByDisplayValue('+ Agregar medio')).toBeDisabled();
+    expect(within(modal).getByRole('button', { name: 'Agregar' })).toBeDisabled();
+    expect(within(modal).getByPlaceholderText('Opcional')).toBeDisabled();
+    const cancelButtons = within(modal).getAllByRole('button', { name: 'Cancelar' });
+    expect(cancelButtons).toHaveLength(2);
+    cancelButtons.forEach(btn => expect(btn).toBeDisabled());
+
+    resolveClose({ data: { session: {}, reconciliations: [], already_closed: false }, error: null });
+    await waitFor(() => expect(screen.queryByText('Cerrar caja — conciliación')).not.toBeInTheDocument());
+  });
+});
+
+describe('CAJA-CIERRE-IDEMPOTENTE-1 — already_closed y errores de dominio "ya cerrada"', () => {
+  it('already_closed=true se trata como éxito: cierra el asistente y recarga el estado', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({
+      data: { session: { id: 'sess1', status: 'closed' }, reconciliations: [], already_closed: true },
+      error: null,
+    });
+    const { modal } = await openCloseWizard();
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
+    const callsBefore = getOpenCashSessionMock.mock.calls.length;
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+
+    await waitFor(() => expect(screen.queryByText('Cerrar caja — conciliación')).not.toBeInTheDocument());
+    expect(getOpenCashSessionMock.mock.calls.length).toBeGreaterThan(callsBefore);
+  });
+
+  it('error de dominio "ya cerrada con conciliación distinta" (hint): recarga el estado y muestra el mensaje, sin cerrar como error técnico de UNIQUE', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({
+      data: null,
+      error: {
+        message: 'La caja ya está cerrada con una conciliación distinta a la registrada',
+        code: '23514',
+        hint: 'crm_cash_session_closed_mismatch',
+      },
+    });
+    const { modal } = await openCloseWizard();
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
+    const callsBefore = getOpenCashSessionMock.mock.calls.length;
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+
+    // El asistente se cierra -- no se deja al usuario reintentando contra un
+    // estado que el servidor ya rechazó por completo.
+    await waitFor(() => expect(screen.queryByText('Cerrar caja — conciliación')).not.toBeInTheDocument());
+    expect(await screen.findByText('La caja ya está cerrada con una conciliación distinta a la registrada')).toBeInTheDocument();
+    expect(screen.queryByText(/23505/)).not.toBeInTheDocument();
+    expect(getOpenCashSessionMock.mock.calls.length).toBeGreaterThan(callsBefore);
+  });
+
+  it('error de dominio "ya cerrada, cierre legado sin snapshot" (hint): mismo tratamiento -- recarga y avisa', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({
+      data: null,
+      error: { message: 'La caja ya está cerrada', code: '23514', hint: 'crm_cash_session_closed_no_snapshot' },
+    });
+    const { modal } = await openCloseWizard();
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+
+    await waitFor(() => expect(screen.queryByText('Cerrar caja — conciliación')).not.toBeInTheDocument());
+    expect(await screen.findByText('La caja ya está cerrada')).toBeInTheDocument();
+  });
+});
+
+describe('CAJA-CIERRE-IDEMPOTENTE-1 — error de red ambiguo tras enviar el cierre', () => {
+  it('si al relecturar la sesión ya figura closed, trata el cierre como realizado (cierra el asistente y recarga)', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+    getCashSessionByIdMock.mockResolvedValue({ data: { ...openSession, id: 'sess1', status: 'closed' }, error: null });
+    const { modal } = await openCloseWizard();
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+
+    await waitFor(() => expect(getCashSessionByIdMock).toHaveBeenCalledWith('sess1'));
+    await waitFor(() => expect(screen.queryByText('Cerrar caja — conciliación')).not.toBeInTheDocument());
+  });
+
+  it('si al releer la sesión sigue open, permite reintentar (el asistente queda abierto con el error)', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+    getCashSessionByIdMock.mockResolvedValue({ data: { ...openSession, status: 'open' }, error: null });
+    const { modal } = await openCloseWizard();
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+
+    await waitFor(() => expect(getCashSessionByIdMock).toHaveBeenCalled());
+    expect(await within(modal).findByText(/No se pudo confirmar el cierre/)).toBeInTheDocument();
+    expect(within(modal).queryByText('Failed to fetch')).not.toBeInTheDocument();
+    expect(screen.getByText('Cerrar caja — conciliación')).toBeInTheDocument();
+    expect(closeCashSessionReconciledMock).toHaveBeenCalledTimes(1);
+    // Terminada la relectura (con resultado "sigue open"), el botón vuelve a
+    // estar habilitado para un reintento real.
+    expect(within(modal).getByRole('button', { name: 'Cerrar caja' })).not.toBeDisabled();
+  });
+
+  // Fix del riesgo B.1 (revisión final del PR): busy/submittingRef deben
+  // seguir activos durante TODA la relectura -- liberarlos antes (como
+  // hacía la versión previa, que hacía setBusy(false) justo después del
+  // RPC y ANTES de getCashSessionById) reabre la ventana de doble submit
+  // justo en el escenario que más la necesita.
+  it('mientras la relectura de sesión está pendiente, el wizard sigue bloqueado y un segundo submit no dispara una segunda llamada', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+    let resolveReread;
+    getCashSessionByIdMock.mockReturnValue(new Promise(resolve => { resolveReread = resolve; }));
+    const { modal } = await openCloseWizard();
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+
+    await waitFor(() => expect(getCashSessionByIdMock).toHaveBeenCalledWith('sess1'));
+    // El botón sigue en estado "Cerrando…" (busy=true) mientras la
+    // relectura está en curso -- todavía no se sabe si el cierre ocurrió.
+    const busyButton = within(modal).getByRole('button', { name: 'Cerrando…' });
+    expect(busyButton).toBeDisabled();
+
+    // Un segundo submit del formulario (equivalente a Enter en un input,
+    // no pasa por el atributo disabled del botón) tampoco debe disparar
+    // una segunda llamada: submittingRef sigue en true porque busy sigue
+    // en true durante toda la relectura.
+    fireEvent.submit(modal.querySelector('form'));
+    expect(closeCashSessionReconciledMock).toHaveBeenCalledTimes(1);
+
+    resolveReread({ data: { ...openSession, status: 'open' }, error: null });
+    expect(await within(modal).findByText(/No se pudo confirmar el cierre/)).toBeInTheDocument();
+    // Recién ahora, con la relectura terminada, queda habilitado un
+    // reintento real -- y ese reintento sí es un submit nuevo válido.
+    expect(within(modal).getByRole('button', { name: 'Cerrar caja' })).not.toBeDisabled();
+    expect(closeCashSessionReconciledMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('si la propia relectura de sesión falla (getCashSessionById devuelve error), libera busy y muestra el error sin quedar bloqueado', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+    getCashSessionByIdMock.mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+    const { modal } = await openCloseWizard();
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+
+    await waitFor(() => expect(getCashSessionByIdMock).toHaveBeenCalled());
+    expect(await within(modal).findByText(/No se pudo confirmar el cierre/)).toBeInTheDocument();
+    expect(within(modal).getByRole('button', { name: 'Cerrar caja' })).not.toBeDisabled();
+    expect(screen.getByText('Cerrar caja — conciliación')).toBeInTheDocument();
+  });
+
+  it('si la relectura lanza una excepción (no solo devuelve error), igual libera busy y muestra el mensaje', async () => {
+    closeCashSessionReconciledMock.mockResolvedValue({ data: null, error: { message: 'Failed to fetch' } });
+    getCashSessionByIdMock.mockRejectedValue(new Error('network down'));
+    const { modal } = await openCloseWizard();
+    fireEvent.change(within(modal).getByPlaceholderText('0'), { target: { value: '0' } });
+    fireEvent.click(within(modal).getByRole('button', { name: 'Cerrar caja' }));
+
+    expect(await within(modal).findByText(/No se pudo confirmar el cierre/)).toBeInTheDocument();
+    expect(within(modal).getByRole('button', { name: 'Cerrar caja' })).not.toBeDisabled();
+  });
+});
+
+describe('CAJA-CIERRE-IDEMPOTENTE-1 — la UI refleja el bloqueo de reapertura cuando ya se conoce la conciliación', () => {
+  beforeEach(() => {
+    getCashRecentSessionsMock.mockResolvedValue({ data: [openSession, closedSession], error: null });
+    getOpenCashSessionMock.mockResolvedValue({ data: null, error: null });
+  });
+
+  it('tras ver el detalle de una caja con conciliación registrada, "Reabrir" queda deshabilitado y no llama a reopenCashSession', async () => {
+    getCashSessionReconciliationMock.mockResolvedValue({
+      data: [{ id: 'r1', payment_method: 'cash', reconciled_amount: 45000, expected_amount: 45000 }],
+      error: null,
+    });
+    render(<CrmCash />);
+    fireEvent.click(await screen.findByRole('button', { name: /Historial de cajas/ }));
+    await screen.findByText(/12 de septiembre de 2026/i);
+
+    const detailButtons = screen.getAllByRole('button', { name: 'Ver detalle' });
+    fireEvent.click(detailButtons[1]); // fila de closedSession (sess0)
+    await waitFor(() => expect(getCashSessionReconciliationMock).toHaveBeenCalledWith('biz1', 'sess0'));
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar' })); // cierra el modal de detalle
+
+    const menuButtons = screen.getAllByRole('button', { name: 'Más acciones' });
+    fireEvent.click(menuButtons[1]);
+    const reopenItem = await screen.findByRole('menuitem', { name: 'Reabrir' });
+    expect(reopenItem).toBeDisabled();
+    fireEvent.click(reopenItem);
+    expect(reopenCashSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('sin haber visto el detalle todavía (conciliación desconocida), "Reabrir" sigue clickeable -- el backend es la autoridad final', async () => {
+    render(<CrmCash />);
+    fireEvent.click(await screen.findByRole('button', { name: /Historial de cajas/ }));
+    await screen.findByText(/12 de septiembre de 2026/i);
+
+    const menuButtons = screen.getAllByRole('button', { name: 'Más acciones' });
+    fireEvent.click(menuButtons[1]);
+    fireEvent.click(await screen.findByRole('menuitem', { name: 'Reabrir' }));
+    await waitFor(() => expect(reopenCashSessionMock).toHaveBeenCalledWith('sess0'));
   });
 });
 

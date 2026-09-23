@@ -24,6 +24,7 @@ import {
   getCashSessionPayments,
   getCashSessionReconciliation,
   getCashRecentSessions,
+  getCashSessionById,
   getCashSessionsForDate,
   getCrmInvoice,
   getInvoicePaymentSummary,
@@ -228,7 +229,17 @@ function CashTabs({ active, onChange }) {
 // Menú "(...)" para las acciones secundarias de una fila del historial
 // (Editar / Reabrir / Cerrar) -- "Ver detalle" queda como acción principal
 // fuera del menú.
-function RowActionsMenu({ session, busy, onEdit, onReopen, onClose }) {
+//
+// CAJA-CIERRE-IDEMPOTENTE-1 -- `reconciled` refleja la regla real (una caja
+// con conciliación registrada no se puede reabrir), pero solo cuando ya se
+// conoce: reconciliationBySession (el caché que alimenta este prop) recién
+// se llena cuando el usuario abrió el detalle de ESA fila al menos una vez
+// en esta sesión de la página, no para toda la tabla de una vez -- eso
+// evitaría un fetch por fila solo para pintar el menú. La autoridad real
+// sigue siendo la base de datos (trigger crm_cash_sessions_block_reopen_reconciled,
+// 20260923150000): si `reconciled` es undefined (desconocido), "Reabrir"
+// queda clickeable y el backend la rechaza igual si corresponde.
+function RowActionsMenu({ session, busy, reconciled, onEdit, onReopen, onClose }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
 
@@ -273,6 +284,17 @@ function RowActionsMenu({ session, busy, onEdit, onReopen, onClose }) {
             >
               <Icon name="LockKeyhole" size={14} />
               Cerrar caja
+            </button>
+          ) : reconciled ? (
+            <button
+              type="button"
+              role="menuitem"
+              disabled
+              title="Esta caja ya tiene conciliación registrada y no se puede reabrir."
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-bold text-gray-300"
+            >
+              <Icon name="RotateCcw" size={14} />
+              Reabrir
             </button>
           ) : (
             <button
@@ -1265,6 +1287,17 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
   const [addMethodValue, setAddMethodValue] = useState('');
   const [error, setError] = useState('');
 
+  // CAJA-CIERRE-IDEMPOTENTE-1 -- guardia SÍNCRONA contra doble submit.
+  // `busy` (prop, actualizado por setBusy en el padre) no basta: entre el
+  // primer click/Enter y que ese estado se propague y deshabilite el botón
+  // puede pasar más de un render, y un segundo click/Enter en esa ventana
+  // dispararía una segunda llamada a la RPC. submittingRef se marca en el
+  // mismo tick del primer submit válido, antes de llamar a onSubmit.
+  const submittingRef = useRef(false);
+  useEffect(() => {
+    if (!busy) submittingRef.current = false;
+  }, [busy]);
+
   const expectedFor = (method) => (method === 'cash' ? expectedCash : (expectedByMethod[method] || 0));
   const availableToAdd = RECONCILE_ALL_METHODS.filter(m => !methods.includes(m));
 
@@ -1293,6 +1326,7 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
 
   const handleSubmit = (event) => {
     event.preventDefault();
+    if (submittingRef.current) return;
     setError('');
     for (const method of methods) {
       const raw = amounts[method];
@@ -1310,6 +1344,7 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
       reconciled_amount: parseMoneyInput(amounts[method]),
       notes: (notesByMethod[method] || '').trim() || null,
     }));
+    submittingRef.current = true;
     onSubmit({ reconciliations, closingNotes: observation.trim() || null });
   };
 
@@ -1318,7 +1353,13 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
       <form onSubmit={handleSubmit} className="flex max-h-full w-full max-w-xl flex-col rounded-2xl border border-gray-100 bg-white shadow-xl">
         <div className="flex items-center justify-between gap-3 border-b border-gray-100 px-5 py-4">
           <h3 className="text-sm font-bold text-gray-900">Cerrar caja — conciliación</h3>
-          <button type="button" onClick={onCancel} className="text-gray-400 hover:text-gray-600" aria-label="Cancelar">
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={busy}
+            className="text-gray-400 hover:text-gray-600 disabled:opacity-50"
+            aria-label="Cancelar"
+          >
             <Icon name="X" size={17} />
           </button>
         </div>
@@ -1348,7 +1389,8 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
                       <button
                         type="button"
                         onClick={() => handleRemoveMethod(method)}
-                        className="text-xs font-semibold text-gray-400 hover:text-red-500"
+                        disabled={busy}
+                        className="text-xs font-semibold text-gray-400 hover:text-red-500 disabled:opacity-50"
                       >
                         Quitar
                       </button>
@@ -1369,7 +1411,8 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
                       value={fmtMoneyInput(raw)}
                       onChange={e => { setAmounts(prev => ({ ...prev, [method]: e.target.value.replace(/\D/g, '') })); setError(''); }}
                       placeholder="0"
-                      className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-7 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      disabled={busy}
+                      className="w-full rounded-xl border border-gray-200 bg-white py-2.5 pl-7 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
                     />
                   </div>
                   {diff !== null && diff !== 0 && (
@@ -1387,7 +1430,8 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
               <select
                 value={addMethodValue}
                 onChange={e => setAddMethodValue(e.target.value)}
-                className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                disabled={busy}
+                className="flex-1 rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-gray-300 disabled:opacity-50"
               >
                 <option value="">+ Agregar medio</option>
                 {availableToAdd.map(m => (
@@ -1397,7 +1441,7 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
               <button
                 type="button"
                 onClick={handleAddMethod}
-                disabled={!addMethodValue}
+                disabled={!addMethodValue || busy}
                 className="rounded-xl border border-gray-200 px-3 py-2.5 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
               >
                 Agregar
@@ -1414,7 +1458,8 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
               onChange={e => { setObservation(e.target.value); setError(''); }}
               rows={3}
               placeholder={anyDiff ? 'Explica la diferencia encontrada…' : 'Opcional'}
-              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500"
+              disabled={busy}
+              className="w-full rounded-xl border border-gray-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-500 disabled:opacity-50"
             />
           </div>
         </div>
@@ -1423,7 +1468,8 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50"
+            disabled={busy}
+            className="rounded-xl border border-gray-200 px-4 py-2.5 text-sm font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
           >
             Cancelar
           </button>
@@ -1433,7 +1479,7 @@ function CloseCashSessionWizard({ session, payments, movements, currency, busy, 
             className="flex items-center justify-center gap-2 rounded-xl bg-red-600 px-4 py-2.5 text-sm font-bold text-white hover:bg-red-700 disabled:opacity-50"
           >
             {busy && <Icon name="Loader2" size={15} className="animate-spin" />}
-            Cerrar caja
+            {busy ? 'Cerrando…' : 'Cerrar caja'}
           </button>
         </div>
       </form>
@@ -1703,16 +1749,72 @@ export default function CrmCash() {
     setClosingSessionId(sessionId);
   };
 
+  // CAJA-CIERRE-IDEMPOTENTE-1 -- crm_close_cash_session ahora puede devolver
+  // already_closed=true (reintento idéntico sobre una caja que esta misma
+  // conciliación ya había cerrado: doble submit, reintento tras timeout, dos
+  // pestañas) o un error de dominio "caja ya cerrada" identificable por
+  // error.hint (nunca un 23505 técnico de la UNIQUE). Un error SIN código
+  // Postgres reconocible (fetch/timeout/red caída) es ambiguo: no se sabe si
+  // el cierre llegó a aplicarse del lado del servidor, así que se relee el
+  // estado real antes de decidir qué mostrar.
   const handleSubmitClose = async ({ reconciliations, closingNotes }) => {
     if (!closingSessionId) return;
+    const sessionId = closingSessionId;
     setBusy(true);
     setCloseError('');
-    const { error } = await closeCashSessionReconciled(closingSessionId, { reconciliations, closingNotes });
-    setBusy(false);
+    const { error } = await closeCashSessionReconciled(sessionId, { reconciliations, closingNotes });
+
     if (error) {
+      if (error.hint === 'crm_cash_session_closed_no_snapshot' || error.hint === 'crm_cash_session_closed_mismatch') {
+        setBusy(false);
+        // load() limpia errorMsg al empezar -- el aviso se fija DESPUÉS de
+        // que termine, si no lo pisaría antes de que se alcance a ver.
+        setClosingSessionId(null);
+        await load();
+        setErrorMsg(error.message || 'Esta caja ya estaba cerrada.');
+        return;
+      }
+      if (!error.code) {
+        // Riesgo B.1 (revisión final) -- busy/submittingRef deben seguir
+        // activos durante TODA la relectura, no solo durante la llamada al
+        // RPC: liberarlos antes (como hacía la versión previa) reabre la
+        // ventana de doble submit justo en el caso que más la necesita --
+        // un error de red ambiguo es exactamente cuando un usuario
+        // reintenta manualmente. Por eso setBusy(false) se movió DESPUÉS
+        // de que getCashSessionById se resuelva (éxito o fallo), nunca
+        // antes.
+        let freshSession = null;
+        let rereadError = null;
+        try {
+          ({ data: freshSession, error: rereadError } = await getCashSessionById(sessionId));
+        } catch (thrown) {
+          // Si la propia relectura falla (p. ej. sigue sin red), no debe
+          // quedar el wizard bloqueado para siempre -- se libera busy
+          // igual, más abajo, y se muestra el mismo mensaje genérico.
+          rereadError = thrown;
+        }
+        setBusy(false);
+
+        if (!rereadError && freshSession?.status === 'closed') {
+          setClosingSessionId(null);
+          await load();
+          return;
+        }
+        // Mensaje fijo a propósito -- error.message original (típicamente
+        // "Failed to fetch"/"NetworkError…") y un eventual error de la
+        // propia relectura no son aptos para mostrar tal cual.
+        setCloseError('No se pudo confirmar el cierre. Revisa tu conexión e intenta nuevamente.');
+        return;
+      }
+      setBusy(false);
       setCloseError(error.message || 'No se pudo cerrar la caja.');
       return;
     }
+
+    // already_closed=true (éxito idempotente) se trata igual que un cierre
+    // nuevo: mismo resultado visible para el usuario, solo que no escribió
+    // nada del lado del servidor.
+    setBusy(false);
     setClosingSessionId(null);
     await load();
   };
@@ -2238,6 +2340,11 @@ export default function CrmCash() {
                                 <RowActionsMenu
                                   session={session}
                                   busy={busy}
+                                  reconciled={
+                                    reconciliationBySession[session.id] !== undefined
+                                      ? reconciliationBySession[session.id]?.length > 0
+                                      : undefined
+                                  }
                                   onEdit={() => setEditingSession(session)}
                                   onReopen={() => handleReopen(session.id)}
                                   onClose={() => handleOpenCloseWizard(session.id)}

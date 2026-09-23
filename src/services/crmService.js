@@ -1571,6 +1571,12 @@ export async function openCashSession(businessId, { openedBy, initialAmount = nu
   return { data, error };
 }
 
+// CAJA-CIERRE-IDEMPOTENTE-1 -- un UPDATE directo (sin RPC) ya no basta para
+// reabrir una caja con conciliación registrada: el trigger
+// crm_cash_sessions_block_reopen_reconciled (20260923150000) lo rechaza a
+// nivel de base de datos, identificable por error.hint. Esta es la única
+// barrera real -- este wrapper solo traduce ese rechazo a un mensaje legible,
+// nunca decide el bloqueo del lado del cliente.
 export async function reopenCashSession(sessionId) {
   const { data: session, error: sessionError } = await supabase
     .from('crm_cash_sessions')
@@ -1601,6 +1607,24 @@ export async function reopenCashSession(sessionId) {
       error: new Error('Ya hay una caja abierta en otra pestaña. Recarga la página para verla.'),
     };
   }
+  if (error?.hint === 'crm_cash_session_reopen_blocked_reconciled') {
+    return {
+      data: null,
+      error: new Error('Esta caja ya tiene una conciliación registrada y no se puede reabrir.'),
+    };
+  }
+  return { data, error };
+}
+
+// Lectura puntual de una sesión por id -- usada tras un error de red
+// ambiguo al cerrar caja (CAJA-CIERRE-IDEMPOTENTE-1): el caller relee el
+// estado real en vez de asumir si el cierre se aplicó o no.
+export async function getCashSessionById(sessionId) {
+  const { data, error } = await supabase
+    .from('crm_cash_sessions')
+    .select('*')
+    .eq('id', sessionId)
+    .single();
   return { data, error };
 }
 
@@ -1635,6 +1659,14 @@ export async function closeCashSession(sessionId) {
 // server-side, exige conciliar cada medio con actividad real y persiste un
 // snapshot inmutable en crm_cash_session_reconciliations. Este wrapper solo
 // desempaqueta el JSONB de retorno.
+//
+// CAJA-CIERRE-IDEMPOTENTE-1 (20260923150000): la RPC ahora es idempotente.
+// data.already_closed distingue un cierre nuevo (false) de un reintento
+// exitoso sobre una caja ya cerrada con exactamente el mismo payload
+// (true) -- el caller (CrmCash.jsx) decide qué mostrar según ese flag, este
+// wrapper no lo interpreta. Un error con error.hint indica un error de
+// dominio de "caja ya cerrada" (crm_cash_session_closed_no_snapshot /
+// crm_cash_session_closed_mismatch) en vez de una falla técnica.
 export async function closeCashSessionReconciled(sessionId, { reconciliations, closingNotes } = {}) {
   const { data, error } = await supabase.rpc('crm_close_cash_session', {
     p_session_id: sessionId,
