@@ -5,7 +5,7 @@
 // NO mueve caja y NO descuenta stock.
 
 import {
-  MP_ORDERS_URL, MP_TERMINALS_URL, pointCorsHeaders, pointJson,
+  MP_ORDERS_URL, MP_TERMINALS_URL, MP_ALLOWED_STATUSES, pointCorsHeaders, pointJson,
   resolvePointContext, sanitizePointOrder,
 } from '../_shared/mpPoint.ts';
 
@@ -216,6 +216,10 @@ Deno.serve(async (req) => {
 
   if (!sanitized.id || sanitized.external_reference !== operation.external_reference || !sanitized.status) {
     return pointJson({ error: 'Mercado Pago response could not be correlated', reason: 'MP_CREATE_AMBIGUOUS', operation_id: operation.id }, 502);
+  }
+  if (!MP_ALLOWED_STATUSES.has(sanitized.status)) {
+    console.error('[mp-point-create-order] unknown MP status:', sanitized.status, { businessId: ctx.businessId, operationId: operation.id });
+    return pointJson({ error: 'Unsupported Mercado Pago order status', reason: 'MP_STATUS_UNKNOWN', operation_id: operation.id, order_id: sanitized.id }, 502);
   }
 
   const { error: updateError } = await ctx.admin.from('crm_pos_point_operations').update({
