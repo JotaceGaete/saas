@@ -76,6 +76,32 @@ Deno.serve(async (req) => {
     return pointJson({ error: 'Order read but local sync failed', reason: 'LOCAL_SYNC_FAILED' }, 500);
   }
 
+  let invoiceId = operation.crm_invoice_id ?? null;
+  let finalized = !!invoiceId;
+
+  // Polling y webhook comparten el mismo finalizador idempotente. Así una
+  // pestaña activa puede completar inmediatamente la venta sin depender de
+  // la llegada del webhook; si ambos llegan juntos, solo se crea una invoice.
+  if (order.status === 'processed' && !invoiceId) {
+    const { data: invoices, error: finalizeError } = await ctx.admin.rpc('crm_finalize_point_sale', {
+      p_operation_id: operation.id,
+    });
+    if (finalizeError) {
+      console.error('[mp-point-get-order] processed payment could not finalize:', finalizeError.message, { businessId: ctx.businessId, operationId });
+      return pointJson({
+        error: 'Payment processed but sale finalization is pending',
+        reason: 'POINT_FINALIZATION_PENDING',
+        operation_id: operation.id, order_id: order.id, status: order.status,
+      }, 202);
+    }
+    const invoice = Array.isArray(invoices) ? invoices[0] : invoices;
+    invoiceId = invoice?.id ?? null;
+    finalized = !!invoiceId;
+  } else if (['failed', 'expired', 'canceled', 'refunded'].includes(order.status)) {
+    const { error: releaseError } = await ctx.admin.rpc('crm_point_release_stock', { p_operation_id: operation.id });
+    if (releaseError) console.error('[mp-point-get-order] stock release failed:', releaseError.message, { businessId: ctx.businessId, operationId });
+  }
+
   return pointJson({
     ok: true,
     operation_id: operation.id,
@@ -86,7 +112,7 @@ Deno.serve(async (req) => {
     payment_status: order.payment_status,
     payment_status_detail: order.payment_status_detail,
     amount: order.amount,
-    finalized: !!operation.crm_invoice_id,
-    invoice_id: operation.crm_invoice_id ?? null,
+    finalized,
+    invoice_id: invoiceId,
   }, 200);
 });
