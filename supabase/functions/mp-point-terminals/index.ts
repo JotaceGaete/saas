@@ -146,9 +146,28 @@ Deno.serve(async (req) => {
 
   const raw = await mpRes.text();
   if (!mpRes.ok) {
-    // No loguear body crudo: el status basta para diagnóstico y evita
-    // propagar/registrar datos que Mercado Pago pudiera incluir.
-    console.error('[mp-point-terminals] Mercado Pago error status:', mpRes.status, { businessId });
+    // Diagnóstico seguro: extraer solo campos de error conocidos de MP.
+    // Nunca registrar el body crudo, headers ni access_token.
+    let mpErrorCode: string | null = null;
+    let mpErrorMessage: string | null = null;
+    try {
+      const errorPayload = JSON.parse(raw) as Record<string, unknown>;
+      mpErrorCode =
+        safeString(errorPayload.code) ??
+        safeString(errorPayload.error) ??
+        safeString(errorPayload.cause);
+      mpErrorMessage =
+        safeString(errorPayload.message) ??
+        safeString(errorPayload.error_description);
+    } catch {
+      // Una respuesta no-JSON no se registra para evitar filtrar contenido.
+    }
+    console.error('[mp-point-terminals] Mercado Pago error', {
+      status: mpRes.status,
+      code: mpErrorCode,
+      message: mpErrorMessage,
+      businessId,
+    });
     if (mpRes.status === 401) {
       return jsonResponse({ error: 'Mercado Pago connection unauthorized', reason: 'MP_CONNECTION_UNAUTHORIZED' }, 409);
     }
