@@ -40,7 +40,7 @@ Deno.serve(async(req)=>{
   if(opError) return json({ok:false,error:'internal_error'},500);
   if(!op) return ignored('unknown_order');
 
-  const {data:rows,error:connError}=await admin.rpc('wa_get_mp_connection_for_checkout',{p_business_id:op.business_id});
+  const {data:rows,error:connError}=await admin.rpc('wa_get_mp_point_connection',{p_business_id:op.business_id});
   if(connError) return json({ok:false,error:'internal_error'},500);
   const conn=Array.isArray(rows)?rows[0]:null;
   if(!conn?.access_token) return ignored('mp_not_connected');
