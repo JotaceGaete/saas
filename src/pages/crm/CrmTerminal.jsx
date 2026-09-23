@@ -1781,6 +1781,83 @@ function CrmTerminalUI() {
 
                     {checkoutStep === 'payment' && (
                       <>
+                        {/* POINT-SMART-2-7 — Point integrado. Separado de
+                            "Mercado Pago manual": en esta fase cobra el total
+                            completo y el backend crea la venta solo al recibir
+                            processed desde Mercado Pago. */}
+                        <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-3 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-yellow-300">
+                                <Icon name="Smartphone" size={16} className="text-gray-900" />
+                              </span>
+                              <div>
+                                <p className="text-xs font-black text-gray-900">Mercado Pago Point</p>
+                                <p className="text-[10px] text-gray-600">Cobro integrado · total {fmt(total, business?.currency)}</p>
+                              </div>
+                            </div>
+                            <button type="button" onClick={loadPointTerminals} disabled={pointLoading || !!pointOperation?.operation_id}
+                              className="rounded-lg px-2 py-1 text-[10px] font-bold text-gray-700 hover:bg-yellow-100 disabled:opacity-40">
+                              Actualizar
+                            </button>
+                          </div>
+
+                          {!pointOperation?.operation_id ? (
+                            <>
+                              {pointTerminals.length > 0 ? (
+                                <div className="flex gap-2">
+                                  <select value={pointTerminalId} onChange={e => setPointTerminalId(e.target.value)}
+                                    className="min-w-0 flex-1 rounded-xl border border-yellow-300 bg-white px-2.5 py-2 text-xs">
+                                    {pointTerminals.map(t => (
+                                      <option key={t.id} value={t.id}>
+                                        {t.id}{t.operating_mode === 'PDV' ? ' · PDV' : ` · ${t.operating_mode || 'sin configurar'}`}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode !== 'PDV' && (
+                                    <button type="button" onClick={handleSetupPoint} disabled={pointLoading}
+                                      className="rounded-xl bg-gray-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-50">
+                                      Activar PDV
+                                    </button>
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-gray-600">
+                                  {pointLoading ? 'Buscando terminales Point…' : 'No encontramos una terminal Point en la cuenta conectada.'}
+                                </p>
+                              )}
+                              <button type="button" onClick={handlePointCharge}
+                                disabled={pointLoading || !pointTerminalId || pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode !== 'PDV' || total <= 0}
+                                className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-300 px-3 py-2.5 text-sm font-black text-gray-950 hover:bg-yellow-200 disabled:bg-yellow-100 disabled:text-gray-400">
+                                {pointLoading ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Zap" size={15} />}
+                                Enviar {fmt(total, business?.currency)} a la Point
+                              </button>
+                            </>
+                          ) : (
+                            <div className="rounded-xl bg-white border border-yellow-200 p-3 space-y-2">
+                              <div className="flex items-center gap-2">
+                                <Icon name={pointOperation.status === 'processed' ? 'BadgeCheck' : 'Loader2'} size={16}
+                                  className={pointOperation.status === 'processed' ? 'text-emerald-600' : 'animate-spin text-yellow-600'} />
+                                <div>
+                                  <p className="text-xs font-black text-gray-900">
+                                    {pointOperation.status === 'recovering' ? 'Recuperando cobro…'
+                                      : pointOperation.status === 'at_terminal' ? 'Esperando al cliente en la Point…'
+                                      : pointOperation.status === 'action_required' ? 'Revisa la pantalla de la Point'
+                                      : pointOperation.status === 'processed' ? 'Pago aprobado · registrando venta…'
+                                      : 'Enviando cobro a la Point…'}
+                                  </p>
+                                  <p className="text-[10px] text-gray-500">Estado: {pointOperation.status || 'consultando'}</p>
+                                </div>
+                              </div>
+                              <button type="button" onClick={handleCancelPoint} disabled={pointLoading || pointOperation.status === 'processed'}
+                                className="w-full rounded-lg border border-gray-200 px-2 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+                                Cancelar cobro
+                              </button>
+                            </div>
+                          )}
+                          {pointError && <p className="rounded-lg bg-white/70 px-2.5 py-2 text-[11px] font-semibold text-red-600">{pointError}</p>}
+                        </div>
+
                         {/* Payment method — reutiliza exactamente el mismo
                             estado/lógica de payments/cuenta corriente que
                             existía antes de TPV-CORE-3; solo cambió CUÁNDO
