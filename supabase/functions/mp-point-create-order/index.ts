@@ -236,9 +236,35 @@ Deno.serve(async (req) => {
 
   const raw = await mpRes.text();
   if (!mpRes.ok) {
+    // Mercado Pago suele explicar los 4xx con un JSON pequeño (code/message/
+    // details). Registramos una versión limitada para diagnóstico sin headers,
+    // access token ni datos de autorización. Nunca loguear la respuesta cruda
+    // completa sin límite.
+    let mpError: unknown = raw.slice(0, 2000);
+    try {
+      const parsed = JSON.parse(raw);
+      mpError = {
+        code: parsed?.code ?? parsed?.error ?? null,
+        message: parsed?.message ?? parsed?.error_description ?? null,
+        status: parsed?.status ?? null,
+        details: Array.isArray(parsed?.details)
+          ? parsed.details.slice(0, 10).map((d: Record<string, unknown>) => ({
+              code: d?.code ?? null,
+              message: d?.message ?? null,
+            }))
+          : null,
+      };
+    } catch { /* texto limitado ya preparado */ }
+
     await ctx.admin.from('crm_pos_point_operations')
       .update({ mp_status_detail: `create_http_${mpRes.status}` }).eq('id', operation.id);
-    console.error('[mp-point-create-order] MP create error status:', mpRes.status, { businessId: ctx.businessId, operationId: operation.id });
+    console.error('[mp-point-create-order] MP create rejected', {
+      httpStatus: mpRes.status,
+      businessId: ctx.businessId,
+      operationId: operation.id,
+      terminalId: operation.terminal_id,
+      mpError,
+    });
     return pointJson({ error: 'Could not create Point order', reason: 'MP_CREATE_FAILED', operation_id: operation.id }, mpRes.status >= 500 ? 502 : 409);
   }
 
