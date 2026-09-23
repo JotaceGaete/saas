@@ -988,6 +988,10 @@ async function invokePointFunction(name, body = {}) {
   };
 }
 
+export async function startPointOauth() {
+  return invokePointFunction('mp-point-oauth-start', {});
+}
+
 export async function getPointTerminals() {
   return invokePointFunction('mp-point-terminals', {});
 }
