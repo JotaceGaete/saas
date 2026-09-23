@@ -35,6 +35,18 @@ verify_jwt = false
 [functions.mp-point-setup-terminal]
 verify_jwt = false
 
+# POINT-SMART-2-5: Orders API. Las tres funciones validan JWT/tenant dentro
+# del handler y mantienen el OAuth del comercio exclusivamente server-side.
+# verify_jwt=false es solo para permitir CORS preflight OPTIONS.
+[functions.mp-point-create-order]
+verify_jwt = false
+
+[functions.mp-point-get-order]
+verify_jwt = false
+
+[functions.mp-point-cancel-order]
+verify_jwt = false
+
 # mp-oauth-callback: público, igual que mp-webhook — Mercado Pago redirige
 # el browser acá directamente, sin JWT de Walinka.
 [functions.mp-oauth-callback]
