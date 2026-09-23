@@ -305,11 +305,21 @@ BEGIN
     FROM jsonb_array_elements(v_snapshot->'items') x
     WHERE NULLIF(x->>'product_id','') IS NOT NULL GROUP BY 1
   LOOP
-    INSERT INTO public.crm_stock_movements(business_id,product_id,type,quantity,notes,created_by)
-    SELECT v_op.business_id,v_agg.product_id,'salida',v_agg.qty,
-      'Venta TPV Point -- NV-'||lpad(v_number::text,4,'0')||' (invoice '||v_invoice.id::text||')',v_op.created_by
-    FROM public.wa_products p
-    WHERE p.id=v_agg.product_id AND p.business_id=v_op.business_id AND p.stock_actual IS NOT NULL;
+    IF EXISTS (
+      SELECT 1
+      FROM public.wa_products p
+      WHERE p.id=v_agg.product_id
+        AND p.business_id=v_op.business_id
+        AND p.stock_actual IS NOT NULL
+    ) THEN
+      INSERT INTO public.crm_stock_movements(
+        business_id,product_id,type,quantity,notes,created_by
+      ) VALUES (
+        v_op.business_id,v_agg.product_id,'salida',v_agg.qty,
+        format('Venta TPV Point -- NV-%s (invoice %s)',lpad(v_number::text,4,'0'),v_invoice.id::text),
+        v_op.created_by
+      );
+    END IF;
   END LOOP;
 
   UPDATE public.crm_pos_point_operations
