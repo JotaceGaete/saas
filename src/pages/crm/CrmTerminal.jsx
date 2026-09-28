@@ -253,6 +253,7 @@ function CrmTerminalUI() {
   const [pointError, setPointError] = useState(null);
   const [pointErrorReason, setPointErrorReason] = useState(null);
   const [pointOperation, setPointOperation] = useState(null);
+  const [pointCanceling, setPointCanceling] = useState(false);
   const pointPollRef = useRef(null);
   const pointCreateKeyRef = useRef(null);
   const pointStorageKey = useMemo(() => business?.id ? `walinka:point-active:${business.id}` : null, [business?.id]);
@@ -1020,20 +1021,35 @@ function CrmTerminalUI() {
   };
 
   const handleCancelPoint = async () => {
-    if (!pointOperation?.operation_id) return;
-    setPointLoading(true); setPointError(null);
-    const { data, error } = await cancelPointOrder(pointOperation.operation_id);
-    setPointLoading(false);
-    if (error) { setPointError(error.reason === 'CANCEL_ON_TERMINAL_REQUIRED' ? 'Cancela el cobro directamente en la Point.' : error.message); return; }
-    if (data?.status === 'canceled') {
-      if (pointStorageKey) localStorage.removeItem(pointStorageKey);
-      setPointOperation(null);
-      // La operación cancelada nunca puede finalizar una venta. Un nuevo
-      // cobro debe tener nuevas create/sale idempotency keys; reutilizar la
-      // sale key chocaría correctamente con el UNIQUE de operaciones Point.
-      pointCreateKeyRef.current = null;
-      saleIdempotencyKeyRef.current = null;
-      refreshProducts();
+    const operationId = pointOperation?.operation_id;
+    if (!operationId || pointCanceling || pointOperation?.status === 'processed') return;
+    // Cancelar es una acción independiente del loading usado por polling,
+    // terminal discovery y setup. Si el polling mantiene pointLoading o una
+    // consulta se solapa, el cajero igual debe poder solicitar la cancelación.
+    setPointCanceling(true); setPointError(null);
+    try {
+      const { data, error } = await cancelPointOrder(operationId);
+      if (error) {
+        setPointError(error.message || 'No pudimos confirmar la cancelación. Walinka seguirá consultando el mismo cobro.');
+        return;
+      }
+      if (data?.status === 'canceled') {
+        if (pointStorageKey) localStorage.removeItem(pointStorageKey);
+        setPointOperation(null);
+        // La operación cancelada nunca puede finalizar una venta. Un nuevo
+        // cobro debe tener nuevas create/sale idempotency keys; reutilizar la
+        // sale key chocaría correctamente con el UNIQUE de operaciones Point.
+        pointCreateKeyRef.current = null;
+        saleIdempotencyKeyRef.current = null;
+        refreshProducts();
+      } else {
+        // Una respuesta 202/estado aún no terminal NO habilita otro cobro.
+        // Conservamos operationId e idempotencia y dejamos que polling
+        // reconcilie el resultado authoritative.
+        setPointError('Mercado Pago recibió la cancelación, pero todavía no confirmó el estado final.');
+      }
+    } finally {
+      setPointCanceling(false);
     }
   };
 
@@ -2037,9 +2053,9 @@ function CrmTerminalUI() {
                                   <p className="text-[10px] text-gray-500">Estado: {pointOperation.status || 'consultando'}</p>
                                 </div>
                               </div>
-                              <button type="button" onClick={handleCancelPoint} disabled={pointLoading || pointOperation.status === 'processed'}
+                              <button type="button" onClick={handleCancelPoint} disabled={pointCanceling || pointOperation.status === 'processed'}
                                 className="w-full rounded-lg border border-gray-200 px-2 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40">
-                                Cancelar cobro
+                                {pointCanceling ? 'Cancelando…' : 'Cancelar cobro'}
                               </button>
                             </div>
                           )}
