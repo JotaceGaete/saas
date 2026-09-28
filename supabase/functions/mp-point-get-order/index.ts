@@ -43,6 +43,7 @@ Deno.serve(async (req) => {
     return pointJson({ error: 'Mercado Pago unavailable', reason: 'MP_GET_UNAVAILABLE' }, 502);
   }
 
+  const mpRequestId = mpRes.headers.get('x-request-id') ?? mpRes.headers.get('x-correlation-id') ?? null;
   const raw = await mpRes.text();
   if (!mpRes.ok) {
     // Diagnóstico seguro: algunos errores de Orders API no usan siempre la
@@ -74,6 +75,7 @@ Deno.serve(async (req) => {
 
     console.error('[mp-point-get-order] MP get rejected', {
       httpStatus: mpRes.status,
+      mpRequestId,
       businessId: ctx.businessId,
       operationId,
       orderId: operation.mp_order_id,
@@ -92,6 +94,7 @@ Deno.serve(async (req) => {
   // necesarios para diagnosticar la comunicación con la Point física.
   console.log('[mp-point-get-order] MP order state', {
     businessId: ctx.businessId,
+    mpRequestId,
     operationId,
     orderId: order.id,
     terminalId: operation.terminal_id,
