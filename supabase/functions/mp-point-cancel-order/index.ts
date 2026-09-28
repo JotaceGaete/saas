@@ -1,7 +1,7 @@
 // mp-point-cancel-order — POINT-SMART-2-5C.
-// Cancela vía API únicamente una order cuyo estado authoritative todavía es
-// 'created'. Si ya llegó a la terminal (at_terminal), la API de MP exige
-// cancelarla físicamente desde la Point.
+// Cancela vía Orders API una order cuyo estado authoritative sea 'created' o
+// 'at_terminal'. Para 'at_terminal', Mercado Pago exige el header condicional
+// x-allow-cancelable-status: at_terminal.
 
 import {
   MP_ORDERS_URL, MP_ALLOWED_STATUSES, pointCorsHeaders, pointJson,
@@ -115,14 +115,7 @@ Deno.serve(async (req) => {
   if (order.status === 'canceled') {
     return pointJson({ ok: true, changed: false, operation_id: operation.id, order_id: order.id, status: 'canceled' }, 200);
   }
-  if (order.status === 'at_terminal') {
-    return pointJson({
-      error: 'Cancel the payment on the Point terminal',
-      reason: 'CANCEL_ON_TERMINAL_REQUIRED',
-      operation_id: operation.id, order_id: order.id, status: order.status,
-    }, 409);
-  }
-  if (order.status !== 'created') {
+  if (order.status !== 'created' && order.status !== 'at_terminal') {
     return pointJson({
       error: 'Point order can no longer be canceled by API',
       reason: 'ORDER_NOT_CANCELABLE',
@@ -138,6 +131,7 @@ Deno.serve(async (req) => {
         Authorization: `Bearer ${ctx.accessToken}`,
         'Content-Type': 'application/json',
         'X-Idempotency-Key': String(operation.cancel_idempotency_key),
+        ...(order.status === 'at_terminal' ? { 'x-allow-cancelable-status': 'at_terminal' } : {}),
       },
     });
   } catch {
