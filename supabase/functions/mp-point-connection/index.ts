@@ -56,11 +56,29 @@ Deno.serve(async(req)=>{
   }
 
   // No cambiar de cuenta con un cobro Point sin resolver.
-  const activeStatuses=['creating','created','at_terminal','action_required'];
+  // Solo bloquear por operaciones realmente pendientes. Historial viejo en
+  // at_terminal/action_required puede quedar huérfano si MP ya lo canceló o
+  // expiró; el cambio de cuenta no debe quedar secuestrado para siempre por
+  // ese ledger histórico. Una operación local en 'creating' sí puede estar
+  // en una ventana ambigua de creación, por lo que sigue bloqueando.
   const {data:active,error:activeError}=await admin.from('crm_pos_point_operations')
-    .select('id,mp_status').eq('business_id',businessId).in('mp_status',activeStatuses).limit(1);
+    .select('id,mp_status,mp_order_id,created_at')
+    .eq('business_id',businessId)
+    .in('mp_status',['creating','created','at_terminal','action_required'])
+    .order('created_at',{ascending:false})
+    .limit(20);
   if(activeError) return jsonResponse({error:'Could not verify active Point operations'},500);
-  if(active?.length) return jsonResponse({error:'Hay un cobro Point pendiente. Resuélvelo antes de cambiar la cuenta.',reason:'POINT_OPERATION_ACTIVE'},409);
+
+  const ambiguousCreating=(active??[]).find((op:Record<string,unknown>)=>op.mp_status==='creating');
+  if(ambiguousCreating) return jsonResponse({
+    error:'Hay un cobro Point en creación. Cancélalo o recupéralo antes de cambiar la cuenta.',
+    reason:'POINT_OPERATION_ACTIVE',
+    operation_id:ambiguousCreating.id,
+  },409);
+
+  // Las órdenes con id remoto se reconciliarán/cancelarán desde el TPV antes
+  // de iniciar otro cobro. Para cambiar de cuenta, no las usamos como lock
+  // permanente: pertenecen a la conexión que justamente se está retirando.
 
   const {error:disconnectError}=await admin.from('mp_point_connections').update({
     status:'disconnected',disconnected_at:new Date().toISOString(),
