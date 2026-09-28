@@ -1894,6 +1894,31 @@ function CrmTerminalUI() {
                       borra carrito/cliente/descuento/notas/pagos/key/draft.*/}
                   <div className="flex flex-col gap-2 mt-2.5 lg:flex-none lg:shrink-0">
 
+                    {checkoutStep === 'sale' && pointOperation?.operation_id && (
+                      <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-3 shadow-sm">
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="flex min-w-0 items-start gap-2">
+                            <Icon name={pointOperation.status === 'processed' ? 'BadgeCheck' : 'Loader2'} size={16}
+                              className={pointOperation.status === 'processed' ? 'mt-0.5 text-emerald-600' : 'mt-0.5 animate-spin text-yellow-600'} />
+                            <div className="min-w-0">
+                              <p className="text-xs font-black text-gray-900">Cobro Point en curso</p>
+                              <p className="mt-0.5 text-[11px] text-gray-600">
+                                Estado: {pointOperation.status || 'consultando'}
+                                {pointOperation.payment_status_detail ? ` · ${pointOperation.payment_status_detail}` : ''}
+                              </p>
+                              {pointOperation.order_id && (
+                                <p className="mt-0.5 break-all text-[9px] text-gray-400">Order: {pointOperation.order_id}</p>
+                              )}
+                            </div>
+                          </div>
+                          <button type="button" onClick={() => setCheckoutStep('payment')}
+                            className="shrink-0 rounded-lg border border-yellow-300 bg-white px-2.5 py-1.5 text-[10px] font-black text-gray-700 hover:bg-yellow-100">
+                            Ver cobro
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {checkoutStep === 'sale' && (
                       <>
                         {/* Discount + Notes — single compact row */}
@@ -1931,12 +1956,12 @@ function CrmTerminalUI() {
                             </p>
                           )}
                           <button
-                            onClick={handleGoToPayment}
+                            onClick={pointOperation?.operation_id ? () => setCheckoutStep('payment') : handleGoToPayment}
                             disabled={cart.length === 0 || hasStockIssues}
                             className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-base font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4 xl:text-lg min-h-[44px]"
                           >
                             <Icon name="Wallet" size={18} />
-                            Cobrar {fmt(total, business?.currency)}
+                            {pointOperation?.operation_id ? 'Ver cobro Point en curso' : `Cobrar ${fmt(total, business?.currency)}`}
                           </button>
                         </div>
                       </>
@@ -2357,12 +2382,12 @@ function CrmTerminalUI() {
               {checkoutStep === 'sale' ? (
                 <button
                   type="button"
-                  onClick={handleGoToPayment}
+                  onClick={pointOperation?.operation_id ? () => setCheckoutStep('payment') : handleGoToPayment}
                   disabled={cart.length === 0 || hasStockIssues}
                   className="shrink-0 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-sm transition-colors flex items-center gap-2 min-h-[44px]"
                 >
                   <Icon name="Wallet" size={16} />
-                  Cobrar
+                  {pointOperation?.operation_id ? 'Ver cobro Point' : 'Cobrar'}
                 </button>
               ) : requiresCustomerForPending && !customerId ? (
                 <button
