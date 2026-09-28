@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
 
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { body = {}; }
-  const action = body.action === 'select' || body.action === 'unlink' || body.action === 'get' ? body.action : null;
+  const action = body.action === 'select' || body.action === 'unlink' || body.action === 'get' || body.action === 'verify' ? body.action : null;
   if (!action) return jsonResponse({ error: 'Invalid action', reason: 'INVALID_REQUEST' }, 400);
 
   if (action === 'get') {
@@ -89,6 +89,30 @@ Deno.serve(async (req) => {
   }
   const terminal = source.find((t) => safeString(t.id) === terminalId);
   if (!terminal) return jsonResponse({ error: 'Point terminal not found', reason: 'TERMINAL_NOT_FOUND' }, 404);
+
+  if (action === 'verify') {
+    const { data: preference, error: preferenceError } = await admin.from('crm_point_terminal_preferences')
+      .select('terminal_id,verification_status,selected_at,verified_at')
+      .eq('business_id', businessId).maybeSingle();
+    if (preferenceError) return jsonResponse({ error: 'Could not read Point preference' }, 500);
+    if (!preference?.terminal_id || preference.terminal_id !== terminalId) {
+      return jsonResponse({ error: 'Point terminal is not the active terminal', reason: 'POINT_TERMINAL_NOT_ACTIVE' }, 409);
+    }
+    if (safeString(terminal.operating_mode) !== 'PDV') {
+      return jsonResponse({ error: 'Mercado Pago does not report this terminal in PDV mode', reason: 'POINT_TERMINAL_NOT_PDV' }, 409);
+    }
+    const { data: verified, error: verifyError } = await admin.from('crm_point_terminal_preferences').update({
+      verification_status: 'verified', verified_at: new Date().toISOString(),
+    }).eq('business_id', businessId).eq('terminal_id', terminalId)
+      .select('terminal_id,verification_status,selected_at,verified_at').single();
+    if (verifyError) return jsonResponse({ error: 'Could not verify Point terminal' }, 500);
+    return jsonResponse({ ok: true, preference: verified, terminal: {
+      id: terminalId,
+      pos_id: safeString(terminal.pos_id),
+      store_id: safeString(terminal.store_id),
+      operating_mode: safeString(terminal.operating_mode) ?? 'UNDEFINED',
+    }});
+  }
 
   const { data, error } = await admin.from('crm_point_terminal_preferences').upsert({
     business_id: businessId,
