@@ -261,7 +261,7 @@ Deno.serve(async (req) => {
     type: 'point',
     external_reference: operation.external_reference,
     expiration_time: 'PT16M',
-    transactions: { payments: [{ amount: String(operation.amount), payment_method: { default_type: 'debit_card' } }] },
+    transactions: { payments: [{ amount: String(operation.amount) }] },
     config: { point: { terminal_id: operation.terminal_id, print_on_terminal: 'no_ticket' } },
     description: 'Venta Walinka',
   };
@@ -291,6 +291,14 @@ Deno.serve(async (req) => {
     let mpError: unknown = raw.slice(0, 2000);
     try {
       const parsed = JSON.parse(raw);
+      // Mantener una vista segura pero más amplia del error. Algunos 4xx de
+      // Orders API no usan code/message/details en el nivel raíz.
+      const safeKeys = ['code', 'error', 'message', 'error_description', 'status', 'cause', 'details'];
+      const safeShape = Object.fromEntries(
+        safeKeys
+          .filter((key) => parsed?.[key] !== undefined)
+          .map((key) => [key, parsed[key]]),
+      );
       mpError = {
         code: parsed?.code ?? parsed?.error ?? null,
         message: parsed?.message ?? parsed?.error_description ?? null,
@@ -301,6 +309,8 @@ Deno.serve(async (req) => {
               message: d?.message ?? null,
             }))
           : null,
+        responseKeys: Object.keys(parsed || {}).slice(0, 20),
+        safeShape,
       };
     } catch { /* texto limitado ya preparado */ }
 
