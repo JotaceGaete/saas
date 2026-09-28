@@ -45,7 +45,41 @@ Deno.serve(async (req) => {
 
   const raw = await mpRes.text();
   if (!mpRes.ok) {
-    console.error('[mp-point-get-order] MP get error status:', mpRes.status, { businessId: ctx.businessId, operationId });
+    // Diagnóstico seguro: algunos errores de Orders API no usan siempre la
+    // misma forma JSON. Conservar solo campos conocidos y nombres de claves,
+    // nunca headers, access token ni el body crudo completo.
+    let mpError: unknown = raw.slice(0, 2000);
+    try {
+      const parsed = JSON.parse(raw);
+      const safeKeys = ['code', 'error', 'message', 'error_description', 'status', 'cause', 'details'];
+      const safeShape = Object.fromEntries(
+        safeKeys
+          .filter((key) => parsed?.[key] !== undefined)
+          .map((key) => [key, parsed[key]]),
+      );
+      mpError = {
+        code: parsed?.code ?? parsed?.error ?? null,
+        message: parsed?.message ?? parsed?.error_description ?? null,
+        status: parsed?.status ?? null,
+        details: Array.isArray(parsed?.details)
+          ? parsed.details.slice(0, 10).map((d: Record<string, unknown>) => ({
+              code: d?.code ?? null,
+              message: d?.message ?? null,
+            }))
+          : null,
+        responseKeys: Object.keys(parsed || {}).slice(0, 20),
+        safeShape,
+      };
+    } catch { /* texto limitado ya preparado */ }
+
+    console.error('[mp-point-get-order] MP get rejected', {
+      httpStatus: mpRes.status,
+      businessId: ctx.businessId,
+      operationId,
+      orderId: operation.mp_order_id,
+      terminalId: operation.terminal_id,
+      mpError,
+    });
     return pointJson({ error: 'Could not get Point order', reason: 'MP_GET_FAILED' }, mpRes.status === 404 ? 404 : 502);
   }
 
