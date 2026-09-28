@@ -5,7 +5,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, getPointTerminals, getPointTerminalPreference, selectPointTerminal, unlinkPointTerminal, startPointOauth, getPointConnection, disconnectPointConnection, setupPointTerminal, createPointOrder, getPointOrder, cancelPointOrder } from '../../services/crmService';
+import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, getPointTerminals, getPointTerminalPreference, selectPointTerminal, unlinkPointTerminal, verifyPointTerminal, startPointOauth, getPointConnection, disconnectPointConnection, setupPointTerminal, createPointOrder, getPointOrder, cancelPointOrder } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { canUseFeature } from '../../config/planFeatures';
 import CrmThermalTicket from './components/CrmThermalTicket';
@@ -848,6 +848,19 @@ function CrmTerminalUI() {
     }
     setPointPreference(data?.preference || { terminal_id: terminalId, verification_status: 'pending' });
     setPointTerminalId(terminalId);
+  };
+
+  const handleVerifyPointTerminal = async () => {
+    if (!pointTerminalId || pointOperation?.operation_id) return;
+    setPointLoading(true); setPointError(null); setPointErrorReason(null);
+    const { data, error } = await verifyPointTerminal(pointTerminalId);
+    setPointLoading(false);
+    if (error) {
+      setPointError(error.message);
+      setPointErrorReason(error.reason || null);
+      return;
+    }
+    setPointPreference(data?.preference || null);
   };
 
   const handleUnlinkPointTerminal = async () => {
@@ -1978,6 +1991,22 @@ function CrmTerminalUI() {
                                       className="w-full rounded-xl bg-gray-900 px-3 py-2.5 text-xs font-bold text-white disabled:opacity-50">
                                       Activar PDV en la Point actual
                                     </button>
+                                  )}
+                                  {pointTerminalId &&
+                                    pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode === 'PDV' &&
+                                    pointPreference?.verification_status !== 'verified' && (
+                                    <div className="rounded-xl border border-amber-200 bg-white/80 p-3 space-y-2">
+                                      <p className="text-[11px] font-bold text-gray-800">
+                                        Confirma en la Point que muestra “Tu point está vinculado al punto de venta”.
+                                      </p>
+                                      <p className="text-[10px] text-gray-500">
+                                        Walinka volverá a comprobar con Mercado Pago que esta misma terminal sigue en modo PDV antes de habilitar cobros.
+                                      </p>
+                                      <button type="button" onClick={handleVerifyPointTerminal} disabled={pointLoading}
+                                        className="w-full rounded-xl bg-gray-900 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50">
+                                        Ya está vinculada · verificar
+                                      </button>
+                                    </div>
                                   )}
                                 </div>
                               ) : (
