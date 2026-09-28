@@ -138,13 +138,27 @@ Deno.serve(async (req) => {
     return pointJson({ error: 'Cancellation result is uncertain; verify order before retrying', reason: 'MP_CANCEL_AMBIGUOUS' }, 503);
   }
 
+  const mpRequestId = cancelRes.headers.get('x-request-id') ?? cancelRes.headers.get('x-correlation-id') ?? null;
   const raw = await cancelRes.text();
   if (!cancelRes.ok) {
-    console.error('[mp-point-cancel-order] MP cancel error status:', cancelRes.status, { businessId: ctx.businessId, operationId });
+    console.error('[mp-point-cancel-order] MP cancel error status:', cancelRes.status, {
+      businessId: ctx.businessId,
+      operationId,
+      orderId: operation.mp_order_id,
+      mpRequestId,
+    });
     // El estado puede haber cambiado entre GET y POST. No inventar resultado:
     // la UI debe consultar nuevamente antes de cualquier acción.
     return pointJson({ error: 'Could not confirm Point cancellation', reason: 'MP_CANCEL_UNCONFIRMED' }, cancelRes.status >= 500 ? 502 : 409);
   }
+
+  console.log('[mp-point-cancel-order] MP cancel accepted', {
+    businessId: ctx.businessId,
+    operationId,
+    orderId: operation.mp_order_id,
+    httpStatus: cancelRes.status,
+    mpRequestId,
+  });
 
   let canceled;
   try { canceled = sanitizePointOrder(JSON.parse(raw)); }
