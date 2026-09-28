@@ -262,7 +262,10 @@ Deno.serve(async (req) => {
     external_reference: operation.external_reference,
     expiration_time: 'PT16M',
     transactions: { payments: [{ amount: String(operation.amount) }] },
-    config: { point: { terminal_id: operation.terminal_id, print_on_terminal: 'no_ticket' } },
+    config: {
+      point: { terminal_id: operation.terminal_id, print_on_terminal: 'no_ticket' },
+      payment_method: { default_type: 'credit_card' },
+    },
     description: 'Venta Walinka',
   };
 
@@ -339,6 +342,16 @@ Deno.serve(async (req) => {
     console.error('[mp-point-create-order] unknown MP status:', sanitized.status, { businessId: ctx.businessId, operationId: operation.id });
     return pointJson({ error: 'Unsupported Mercado Pago order status', reason: 'MP_STATUS_UNKNOWN', operation_id: operation.id, order_id: sanitized.id }, 502);
   }
+
+  console.info('[mp-point-create-order] MP order created', {
+    mpRequestId,
+    businessId: ctx.businessId,
+    operationId: operation.id,
+    orderId: sanitized.id,
+    terminalId: operation.terminal_id,
+    status: sanitized.status,
+    paymentId: sanitized.payment_id,
+  });
 
   const { error: updateError } = await ctx.admin.from('crm_pos_point_operations').update({
     mp_order_id: sanitized.id,
