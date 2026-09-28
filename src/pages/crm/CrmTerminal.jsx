@@ -253,6 +253,10 @@ function CrmTerminalUI() {
   const [pointError, setPointError] = useState(null);
   const [pointErrorReason, setPointErrorReason] = useState(null);
   const [pointOperation, setPointOperation] = useState(null);
+  // Conserva el último resultado terminal solo para diagnóstico/UX. No es una
+  // operación activa y nunca bloquea un cobro nuevo; permite ver cómo terminó
+  // el intento anterior sin crear otra order Point.
+  const [pointLastResult, setPointLastResult] = useState(null);
   const [pointCanceling, setPointCanceling] = useState(false);
   const pointPollRef = useRef(null);
   const pointCreateKeyRef = useRef(null);
@@ -951,6 +955,14 @@ function CrmTerminalUI() {
       // AMBAS claves para que un nuevo intento sea una operación/venta nueva.
       // Mientras el estado sea ambiguo (created/at_terminal/action_required)
       // jamás hacemos esto: allí se conserva la idempotencia original.
+      setPointLastResult({
+        operation_id: operationId,
+        order_id: next.order_id || null,
+        status: next.status,
+        status_detail: next.status_detail || null,
+        payment_status: next.payment_status || null,
+        payment_status_detail: next.payment_status_detail || null,
+      });
       setPointOperation(null);
       pointCreateKeyRef.current = null;
       saleIdempotencyKeyRef.current = null;
@@ -1035,6 +1047,14 @@ function CrmTerminalUI() {
       }
       if (data?.status === 'canceled') {
         if (pointStorageKey) localStorage.removeItem(pointStorageKey);
+        setPointLastResult({
+          operation_id: operationId,
+          order_id: data?.order_id || null,
+          status: 'canceled',
+          status_detail: data?.status_detail || null,
+          payment_status: data?.payment_status || null,
+          payment_status_detail: data?.payment_status_detail || null,
+        });
         setPointOperation(null);
         // La operación cancelada nunca puede finalizar una venta. Un nuevo
         // cobro debe tener nuevas create/sale idempotency keys; reutilizar la
@@ -2057,6 +2077,26 @@ function CrmTerminalUI() {
                                 className="w-full rounded-lg border border-gray-200 px-2 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40">
                                 {pointCanceling ? 'Cancelando…' : 'Cancelar cobro'}
                               </button>
+                            </div>
+                          )}
+                          {!pointOperation?.operation_id && pointLastResult && (
+                            <div className="rounded-xl border border-gray-200 bg-white/80 px-3 py-2.5">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Último cobro Point</p>
+                                  <p className="text-xs font-black text-gray-800">Estado: {pointLastResult.status}</p>
+                                  {pointLastResult.payment_status_detail && (
+                                    <p className="mt-0.5 text-[10px] text-gray-500">Detalle: {pointLastResult.payment_status_detail}</p>
+                                  )}
+                                  {pointLastResult.order_id && (
+                                    <p className="mt-0.5 break-all text-[9px] text-gray-400">Order: {pointLastResult.order_id}</p>
+                                  )}
+                                </div>
+                                <button type="button" onClick={() => setPointLastResult(null)}
+                                  className="shrink-0 rounded-lg border border-gray-200 px-2 py-1 text-[10px] font-bold text-gray-500 hover:bg-gray-50">
+                                  Ocultar
+                                </button>
+                              </div>
                             </div>
                           )}
                           {pointConnection && !pointOperation?.operation_id && (
