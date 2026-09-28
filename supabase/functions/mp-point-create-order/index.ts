@@ -261,7 +261,7 @@ Deno.serve(async (req) => {
     type: 'point',
     external_reference: operation.external_reference,
     expiration_time: 'PT16M',
-    transactions: { payments: [{ amount: String(operation.amount) }] },
+    transactions: { payments: [{ amount: String(operation.amount), payment_method: { default_type: 'debit_card' } }] },
     config: { point: { terminal_id: operation.terminal_id, print_on_terminal: 'no_ticket' } },
     description: 'Venta Walinka',
   };
