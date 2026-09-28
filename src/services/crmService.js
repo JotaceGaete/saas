@@ -992,6 +992,14 @@ export async function startPointOauth() {
   return invokePointFunction('mp-point-oauth-start', {});
 }
 
+export async function getPointConnection() {
+  return invokePointFunction('mp-point-connection', { action: 'get' });
+}
+
+export async function disconnectPointConnection() {
+  return invokePointFunction('mp-point-connection', { action: 'disconnect' });
+}
+
 export async function getPointTerminals() {
   return invokePointFunction('mp-point-terminals', {});
 }
