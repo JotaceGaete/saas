@@ -282,6 +282,7 @@ Deno.serve(async (req) => {
     return pointJson({ error: 'Point order result is uncertain; retry with the same key', reason: 'MP_CREATE_AMBIGUOUS', operation_id: operation.id }, 503);
   }
 
+  const mpRequestId = mpRes.headers.get('x-request-id') ?? mpRes.headers.get('x-correlation-id') ?? null;
   const raw = await mpRes.text();
   if (!mpRes.ok) {
     // Mercado Pago suele explicar los 4xx con un JSON pequeño (code/message/
@@ -318,6 +319,7 @@ Deno.serve(async (req) => {
       .update({ mp_status_detail: `create_http_${mpRes.status}` }).eq('id', operation.id);
     console.error('[mp-point-create-order] MP create rejected', {
       httpStatus: mpRes.status,
+      mpRequestId,
       businessId: ctx.businessId,
       operationId: operation.id,
       terminalId: operation.terminal_id,
