@@ -1016,6 +1016,10 @@ export async function unlinkPointTerminal() {
   return invokePointFunction('mp-point-terminal-preference', { action: 'unlink' });
 }
 
+export async function verifyPointTerminal(terminalId) {
+  return invokePointFunction('mp-point-terminal-preference', { action: 'verify', terminalId });
+}
+
 export async function setupPointTerminal(terminalId) {
   return invokePointFunction('mp-point-setup-terminal', { terminalId });
 }
