@@ -5,7 +5,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, getPointTerminals, startPointOauth, setupPointTerminal, createPointOrder, getPointOrder, cancelPointOrder } from '../../services/crmService';
+import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, getPointTerminals, getPointTerminalPreference, selectPointTerminal, unlinkPointTerminal, startPointOauth, setupPointTerminal, createPointOrder, getPointOrder, cancelPointOrder } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { canUseFeature } from '../../config/planFeatures';
 import CrmThermalTicket from './components/CrmThermalTicket';
@@ -247,6 +247,7 @@ function CrmTerminalUI() {
   // pagos mixtos con Point quedan fuera hasta modelarlos explícitamente.
   const [pointTerminals, setPointTerminals] = useState([]);
   const [pointTerminalId, setPointTerminalId] = useState('');
+  const [pointPreference, setPointPreference] = useState(null);
   const [pointLoading, setPointLoading] = useState(false);
   const [pointError, setPointError] = useState(null);
   const [pointErrorReason, setPointErrorReason] = useState(null);
@@ -799,16 +800,61 @@ function CrmTerminalUI() {
 
   const loadPointTerminals = useCallback(async () => {
     setPointLoading(true); setPointError(null); setPointErrorReason(null);
-    const { data, error } = await getPointTerminals();
+    const [terminalsResult, preferenceResult] = await Promise.all([
+      getPointTerminals(),
+      getPointTerminalPreference(),
+    ]);
     setPointLoading(false);
-    if (error) { setPointError(error.message); setPointErrorReason(error.reason || null); return; }
-    const terminals = Array.isArray(data?.terminals) ? data.terminals : [];
+    if (terminalsResult.error) {
+      setPointError(terminalsResult.error.message);
+      setPointErrorReason(terminalsResult.error.reason || null);
+      return;
+    }
+    if (preferenceResult.error) {
+      setPointError(preferenceResult.error.message);
+      setPointErrorReason(preferenceResult.error.reason || null);
+      return;
+    }
+    const terminals = Array.isArray(terminalsResult.data?.terminals) ? terminalsResult.data.terminals : [];
+    const preference = preferenceResult.data?.preference || null;
     setPointTerminals(terminals);
-    setPointTerminalId(prev => {
-      if (prev && terminals.some(t => t.id === prev)) return prev;
-      return terminals.find(t => t.operating_mode === 'PDV')?.id || terminals[0]?.id || '';
-    });
+    setPointPreference(preference);
+    // Nunca elegir una terminal por ser la primera o por informar PDV.
+    // Solo la preferencia persistida y explícita del comercio es la Point activa.
+    setPointTerminalId(
+      preference?.terminal_id && terminals.some(t => t.id === preference.terminal_id)
+        ? preference.terminal_id
+        : ''
+    );
   }, []);
+
+  const handleSelectPointTerminal = async (terminalId) => {
+    if (pointOperation?.operation_id) return;
+    setPointLoading(true); setPointError(null); setPointErrorReason(null);
+    const { data, error } = await selectPointTerminal(terminalId);
+    setPointLoading(false);
+    if (error) {
+      setPointError(error.message);
+      setPointErrorReason(error.reason || null);
+      return;
+    }
+    setPointPreference(data?.preference || { terminal_id: terminalId, verification_status: 'pending' });
+    setPointTerminalId(terminalId);
+  };
+
+  const handleUnlinkPointTerminal = async () => {
+    if (pointOperation?.operation_id) return;
+    setPointLoading(true); setPointError(null); setPointErrorReason(null);
+    const { error } = await unlinkPointTerminal();
+    setPointLoading(false);
+    if (error) {
+      setPointError(error.message);
+      setPointErrorReason(error.reason || null);
+      return;
+    }
+    setPointPreference(null);
+    setPointTerminalId('');
+  };
 
   const handleConnectPoint = useCallback(async () => {
     setPointLoading(true); setPointError(null); setPointErrorReason(null);
@@ -895,6 +941,14 @@ function CrmTerminalUI() {
   const handlePointCharge = async () => {
     if (submitLockRef.current || pointOperation?.operation_id) return;
     if (!pointTerminalId || cart.length === 0 || total <= 0) return;
+    if (pointPreference?.terminal_id !== pointTerminalId) {
+      setPointError('Selecciona explícitamente la Point que usará este negocio.');
+      return;
+    }
+    if (pointPreference?.verification_status !== 'verified') {
+      setPointError('Esta Point todavía está pendiente de verificación física.');
+      return;
+    }
     const terminal = pointTerminals.find(t => t.id === pointTerminalId);
     if (terminal?.operating_mode !== 'PDV') { setPointError('Activa el modo PDV antes de cobrar.'); return; }
 
@@ -1842,56 +1896,63 @@ function CrmTerminalUI() {
                             <>
                               {pointTerminals.length > 0 ? (
                                 <div className="space-y-2">
-                                  {pointTerminals.length > 1 && (
+                                  {pointPreference?.terminal_id && (
+                                    <div className="rounded-xl border border-gray-900/10 bg-white px-3 py-2.5">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Point actual</p>
+                                          <p className="break-all text-[11px] font-black text-gray-900">{pointPreference.terminal_id}</p>
+                                          <p className="mt-1 text-[10px] text-gray-600">
+                                            {pointPreference.verification_status === 'verified'
+                                              ? 'Verificada para cobros integrados'
+                                              : 'Pendiente de verificación física'}
+                                          </p>
+                                        </div>
+                                        <button type="button" onClick={handleUnlinkPointTerminal} disabled={pointLoading}
+                                          className="shrink-0 rounded-lg border border-gray-200 px-2 py-1 text-[10px] font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-40">
+                                          Desvincular
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {!pointPreference?.terminal_id && (
                                     <p className="text-[10px] font-semibold text-gray-600">
-                                      Encontramos {pointTerminals.length} terminales. Selecciona la Point física que usarás en esta caja.
+                                      Elige la Point física que usará Walinka. No seleccionaremos una automáticamente.
                                     </p>
                                   )}
                                   <div className="space-y-1.5">
                                     {pointTerminals.map((terminal) => {
-                                      const selected = terminal.id === pointTerminalId;
+                                      const selected = terminal.id === pointPreference?.terminal_id;
                                       const mode = terminal.operating_mode || 'UNDEFINED';
                                       return (
-                                        <button
-                                          key={terminal.id}
-                                          type="button"
-                                          onClick={() => setPointTerminalId(terminal.id)}
-                                          disabled={pointLoading}
-                                          className={`w-full rounded-xl border px-3 py-2.5 text-left transition-colors disabled:opacity-50 ${
-                                            selected
-                                              ? 'border-gray-900 bg-white ring-2 ring-gray-900/10'
-                                              : 'border-yellow-200 bg-white/70 hover:bg-white'
-                                          }`}
-                                        >
+                                        <div key={terminal.id}
+                                          className={`w-full rounded-xl border px-3 py-2.5 text-left ${
+                                            selected ? 'border-gray-900 bg-white ring-2 ring-gray-900/10' : 'border-yellow-200 bg-white/70'
+                                          }`}>
                                           <div className="flex items-start justify-between gap-2">
                                             <div className="min-w-0">
                                               <p className="break-all text-[11px] font-black text-gray-900">{terminal.id}</p>
                                               <p className="mt-1 text-[10px] text-gray-600">
-                                                Serial/ID completo · POS {terminal.pos_id || 'sin asignar'} · Tienda {terminal.store_id || 'sin asignar'}
+                                                POS {terminal.pos_id || 'sin asignar'} · Tienda {terminal.store_id || 'sin asignar'}
                                               </p>
-                                              {terminal.external_pos_id && (
-                                                <p className="text-[10px] text-gray-500">Caja externa: {terminal.external_pos_id}</p>
-                                              )}
                                             </div>
                                             <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-black ${
-                                              mode === 'PDV'
-                                                ? 'bg-emerald-100 text-emerald-700'
-                                                : 'bg-amber-100 text-amber-700'
-                                            }`}>
-                                              {mode}
-                                            </span>
+                                              mode === 'PDV' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                                            }`}>{mode}</span>
                                           </div>
-                                          <p className="mt-1.5 text-[10px] font-bold text-gray-700">
-                                            {selected ? '✓ Point seleccionada' : 'Usar esta Point'}
-                                          </p>
-                                        </button>
+                                          <button type="button" onClick={() => handleSelectPointTerminal(terminal.id)}
+                                            disabled={pointLoading || selected}
+                                            className="mt-2 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[10px] font-bold text-gray-800 hover:bg-gray-50 disabled:opacity-50">
+                                            {selected ? '✓ Point actual' : pointPreference?.terminal_id ? 'Cambiar a esta Point' : 'Usar esta Point'}
+                                          </button>
+                                        </div>
                                       );
                                     })}
                                   </div>
-                                  {pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode !== 'PDV' && (
-                                    <button type="button" onClick={handleSetupPoint} disabled={pointLoading || !pointTerminalId}
+                                  {pointTerminalId && pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode !== 'PDV' && (
+                                    <button type="button" onClick={handleSetupPoint} disabled={pointLoading}
                                       className="w-full rounded-xl bg-gray-900 px-3 py-2.5 text-xs font-bold text-white disabled:opacity-50">
-                                      Activar PDV en la Point seleccionada
+                                      Activar PDV en la Point actual
                                     </button>
                                   )}
                                 </div>
@@ -1901,7 +1962,7 @@ function CrmTerminalUI() {
                                 </p>
                               )}
                               <button type="button" onClick={handlePointCharge}
-                                disabled={pointLoading || !pointTerminalId || pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode !== 'PDV' || total <= 0}
+                                disabled={pointLoading || !pointTerminalId || pointPreference?.verification_status !== 'verified' || pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode !== 'PDV' || total <= 0}
                                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-300 px-3 py-2.5 text-sm font-black text-gray-950 hover:bg-yellow-200 disabled:bg-yellow-100 disabled:text-gray-400">
                                 {pointLoading ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Zap" size={15} />}
                                 Enviar {fmt(total, business?.currency)} a la Point
