@@ -973,9 +973,23 @@ function CrmTerminalUI() {
 
   useEffect(() => {
     if (!pointOperation?.operation_id || pointOperation?.invoice_id) return;
-    pollPointOnce();
-    pointPollRef.current = window.setInterval(pollPointOnce, 2000);
-    return () => { if (pointPollRef.current) window.clearInterval(pointPollRef.current); };
+
+    // Point Orders puede aplicar rate limiting si consultamos demasiado rápido.
+    // Usamos un timeout encadenado (no setInterval) para garantizar que nunca
+    // haya dos GET solapados y dejamos 5 s entre consultas. La primera consulta
+    // sigue siendo inmediata para que el cajero vea el cambio de estado rápido.
+    let cancelled = false;
+    const poll = async () => {
+      await pollPointOnce();
+      if (!cancelled) pointPollRef.current = window.setTimeout(poll, 5000);
+    };
+    poll();
+
+    return () => {
+      cancelled = true;
+      if (pointPollRef.current) window.clearTimeout(pointPollRef.current);
+      pointPollRef.current = null;
+    };
   }, [pointOperation?.operation_id, pointOperation?.invoice_id, pollPointOnce]);
 
   const handleSetupPoint = async () => {
