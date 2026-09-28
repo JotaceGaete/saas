@@ -117,14 +117,14 @@ Deno.serve(async (req) => {
     // Una Point solo debe tener un intento Walinka activo a la vez. El browser
     // puede perder/reemplazar su operationId (refresh, pestaña vieja, estado
     // local desfasado), así que el bloqueo autoritativo vive aquí y no en la
-    // UI. No bloqueamos estados terminales ni 'action_required' (ese estado
-    // requiere intervención/recuperación por su propia operación).
+    // UI. 'action_required' también mantiene bloqueada la terminal: requiere
+    // resolver/recuperar esa misma operación antes de iniciar otro cobro.
     const { data: activeOperations, error: activeOperationError } = await ctx.admin
       .from('crm_pos_point_operations')
       .select('id, mp_order_id, mp_status, created_at')
       .eq('business_id', ctx.businessId)
       .eq('terminal_id', terminalId)
-      .in('mp_status', ['creating', 'created', 'at_terminal'])
+      .in('mp_status', ['creating', 'created', 'at_terminal', 'action_required'])
       .order('created_at', { ascending: false })
       .limit(1);
     if (activeOperationError) {
@@ -260,7 +260,7 @@ Deno.serve(async (req) => {
   const payload = {
     type: 'point',
     external_reference: operation.external_reference,
-    expiration_time: 'PT10M',
+    expiration_time: 'PT16M',
     transactions: { payments: [{ amount: String(operation.amount) }] },
     config: { point: { terminal_id: operation.terminal_id, print_on_terminal: 'no_ticket' } },
     description: 'Venta Walinka',
