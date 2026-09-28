@@ -5,7 +5,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, getPointTerminals, getPointTerminalPreference, selectPointTerminal, unlinkPointTerminal, startPointOauth, setupPointTerminal, createPointOrder, getPointOrder, cancelPointOrder } from '../../services/crmService';
+import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, getPointTerminals, getPointTerminalPreference, selectPointTerminal, unlinkPointTerminal, startPointOauth, getPointConnection, disconnectPointConnection, setupPointTerminal, createPointOrder, getPointOrder, cancelPointOrder } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { canUseFeature } from '../../config/planFeatures';
 import CrmThermalTicket from './components/CrmThermalTicket';
@@ -248,6 +248,7 @@ function CrmTerminalUI() {
   const [pointTerminals, setPointTerminals] = useState([]);
   const [pointTerminalId, setPointTerminalId] = useState('');
   const [pointPreference, setPointPreference] = useState(null);
+  const [pointConnection, setPointConnection] = useState(null);
   const [pointLoading, setPointLoading] = useState(false);
   const [pointError, setPointError] = useState(null);
   const [pointErrorReason, setPointErrorReason] = useState(null);
@@ -800,9 +801,10 @@ function CrmTerminalUI() {
 
   const loadPointTerminals = useCallback(async () => {
     setPointLoading(true); setPointError(null); setPointErrorReason(null);
-    const [terminalsResult, preferenceResult] = await Promise.all([
+    const [terminalsResult, preferenceResult, connectionResult] = await Promise.all([
       getPointTerminals(),
       getPointTerminalPreference(),
+      getPointConnection(),
     ]);
     setPointLoading(false);
     if (terminalsResult.error) {
@@ -815,6 +817,12 @@ function CrmTerminalUI() {
       setPointErrorReason(preferenceResult.error.reason || null);
       return;
     }
+    if (connectionResult.error) {
+      setPointError(connectionResult.error.message);
+      setPointErrorReason(connectionResult.error.reason || null);
+      return;
+    }
+    setPointConnection(connectionResult.data?.connection || null);
     const terminals = Array.isArray(terminalsResult.data?.terminals) ? terminalsResult.data.terminals : [];
     const preference = preferenceResult.data?.preference || null;
     setPointTerminals(terminals);
@@ -866,6 +874,22 @@ function CrmTerminalUI() {
     }
     window.location.assign(data.authorizationUrl);
   }, []);
+
+  const handleDisconnectPointConnection = useCallback(async () => {
+    if (pointOperation?.operation_id) return;
+    setPointLoading(true); setPointError(null); setPointErrorReason(null);
+    const { error } = await disconnectPointConnection();
+    setPointLoading(false);
+    if (error) {
+      setPointError(error.message);
+      setPointErrorReason(error.reason || null);
+      return;
+    }
+    setPointConnection(null);
+    setPointPreference(null);
+    setPointTerminalId('');
+    setPointTerminals([]);
+  }, [pointOperation]);
 
   useEffect(() => {
     if (checkoutStep === 'payment' && pointTerminals.length === 0 && !pointLoading && !pointError) loadPointTerminals();
@@ -1987,6 +2011,19 @@ function CrmTerminalUI() {
                               <button type="button" onClick={handleCancelPoint} disabled={pointLoading || pointOperation.status === 'processed'}
                                 className="w-full rounded-lg border border-gray-200 px-2 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40">
                                 Cancelar cobro
+                              </button>
+                            </div>
+                          )}
+                          {pointConnection && !pointOperation?.operation_id && (
+                            <div className="rounded-xl border border-gray-200 bg-white/70 px-3 py-2.5 flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Cuenta Point conectada</p>
+                                <p className="text-xs font-black text-gray-800 truncate">{pointConnection.provider_user_id || 'Mercado Pago'}</p>
+                                <p className="text-[10px] text-gray-500">Solo afecta cobros Point · no Checkout Pro</p>
+                              </div>
+                              <button type="button" onClick={handleDisconnectPointConnection} disabled={pointLoading}
+                                className="shrink-0 rounded-lg border border-red-200 bg-white px-2.5 py-2 text-[11px] font-bold text-red-600 hover:bg-red-50 disabled:opacity-40">
+                                Cambiar cuenta
                               </button>
                             </div>
                           )}
