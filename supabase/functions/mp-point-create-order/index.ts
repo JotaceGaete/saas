@@ -114,6 +114,34 @@ Deno.serve(async (req) => {
 
   let operation = existing;
   if (!operation) {
+    // Una Point solo debe tener un intento Walinka activo a la vez. El browser
+    // puede perder/reemplazar su operationId (refresh, pestaña vieja, estado
+    // local desfasado), así que el bloqueo autoritativo vive aquí y no en la
+    // UI. No bloqueamos estados terminales ni 'action_required' (ese estado
+    // requiere intervención/recuperación por su propia operación).
+    const { data: activeOperations, error: activeOperationError } = await ctx.admin
+      .from('crm_pos_point_operations')
+      .select('id, mp_order_id, mp_status, created_at')
+      .eq('business_id', ctx.businessId)
+      .eq('terminal_id', terminalId)
+      .in('mp_status', ['creating', 'created', 'at_terminal'])
+      .order('created_at', { ascending: false })
+      .limit(1);
+    if (activeOperationError) {
+      console.error('[mp-point-create-order] active operation lookup failed:', activeOperationError.message, { businessId: ctx.businessId, terminalId });
+      return pointJson({ error: 'Could not verify active Point operation', reason: 'POINT_ACTIVE_OPERATION_LOOKUP_FAILED' }, 500);
+    }
+    const activeOperation = activeOperations?.[0];
+    if (activeOperation) {
+      return pointJson({
+        error: 'There is already an active Point payment for this terminal',
+        reason: 'POINT_ACTIVE_OPERATION_EXISTS',
+        operation_id: activeOperation.id,
+        order_id: activeOperation.mp_order_id,
+        status: activeOperation.mp_status,
+      }, 409);
+    }
+
     if (!terminalPreference?.terminal_id || terminalPreference.terminal_id !== terminalId) {
       return pointJson({ error: 'Selected Point is not the active terminal', reason: 'POINT_TERMINAL_NOT_ACTIVE' }, 409);
     }
