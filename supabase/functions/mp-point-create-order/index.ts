@@ -88,6 +88,20 @@ Deno.serve(async (req) => {
   const ctx = await resolvePointContext((req.headers.get('authorization') ?? '').trim());
   if (!ctx.ok) return ctx.response;
 
+  // La selección del navegador no es autoridad. Para iniciar un cobro nuevo,
+  // la terminal debe ser exactamente la Point activa del negocio y haber
+  // completado la verificación física. Los reintentos de una operación ya
+  // persistida se resuelven más abajo por su idempotency key.
+  const { data: terminalPreference, error: terminalPreferenceError } = await ctx.admin
+    .from('crm_point_terminal_preferences')
+    .select('terminal_id, verification_status')
+    .eq('business_id', ctx.businessId)
+    .maybeSingle();
+  if (terminalPreferenceError) {
+    console.error('[mp-point-create-order] terminal preference lookup failed', terminalPreferenceError.message, { businessId: ctx.businessId });
+    return pointJson({ error: 'Could not verify active Point terminal', reason: 'POINT_TERMINAL_PREFERENCE_FAILED' }, 500);
+  }
+
   // Si la misma key ya existe, reutilizamos SIEMPRE el snapshot persistido.
   // Esto permite reintentar POST /v1/orders con el mismo X-Idempotency-Key
   // después de una respuesta de red ambigua sin cobrar dos veces.
@@ -100,6 +114,12 @@ Deno.serve(async (req) => {
 
   let operation = existing;
   if (!operation) {
+    if (!terminalPreference?.terminal_id || terminalPreference.terminal_id !== terminalId) {
+      return pointJson({ error: 'Selected Point is not the active terminal', reason: 'POINT_TERMINAL_NOT_ACTIVE' }, 409);
+    }
+    if (terminalPreference.verification_status !== 'verified') {
+      return pointJson({ error: 'Point terminal requires physical verification', reason: 'POINT_TERMINAL_NOT_VERIFIED' }, 409);
+    }
     // Validar referencias de producto/cliente contra el tenant. El TPV permite
     // precio editable y líneas manuales por diseño; por eso el servidor
     // recalcula el TOTAL desde las líneas recibidas, pero no sustituye el
