@@ -780,6 +780,26 @@ function CrmTerminalUI() {
     setPayments([{ id: `payment_${Date.now()}`, method, amount }]);
   };
 
+  // Pago dividido rápido: al activarlo partimos con el primer medio vacío
+  // para que el cajero escriba cuánto recibió; el segundo medio puede tomar
+  // el saldo restante con un toque.
+  const startSplitPayment = () => {
+    const firstMethod = payments[0]?.method || 'cash';
+    setPayments([{ id: `payment_${Date.now()}`, method: firstMethod, amount: '' }]);
+  };
+
+  const addPaymentForRemainingBalance = () => {
+    const remaining = Math.max(0, pendingBalance);
+    setPayments((prev) => [
+      ...prev,
+      {
+        id: `payment_${Date.now()}_${prev.length}`,
+        method: prev.some((payment) => payment.method === 'debit_card') ? 'cash' : 'debit_card',
+        amount: remaining > 0 ? String(remaining) : '',
+      },
+    ]);
+  };
+
   // ── TPV-CORE-3: flujo de checkout en dos etapas ───────────────────────────
   // Estado puramente de UI -- no crea ni modifica ningún registro. Nunca
   // borra carrito/cliente/descuento/notas/pagos/idempotency key/draft.
@@ -1857,59 +1877,87 @@ function CrmTerminalUI() {
                             </div>
                           )}
 
-                          <details className="rounded-xl border border-gray-200 bg-gray-50">
-                            <summary className="cursor-pointer list-none px-3 py-2.5 text-xs font-bold text-blue-700">
-                              Dividir pago entre varios medios
-                            </summary>
-                            <div className="space-y-2 border-t border-gray-200 p-3">
-                              <div className="flex items-center justify-between">
-                                <p className="text-[11px] font-semibold text-gray-500">Medios del pago</p>
+                          {payments.length === 1 && (
+                            <button
+                              type="button"
+                              onClick={startSplitPayment}
+                              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-left text-xs font-bold text-blue-700 hover:bg-blue-50"
+                            >
+                              <span className="flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-2">
+                                  <Icon name="Split" size={14} />
+                                  Dividir pago
+                                </span>
+                                <span className="text-[10px] font-semibold text-gray-500">2 o más medios</span>
+                              </span>
+                            </button>
+                          )}
+
+                          {payments.length > 1 || (payments.length === 1 && !parseMoneyInput(payments[0]?.amount)) ? (
+                            <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3 space-y-2.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <p className="text-xs font-black text-gray-800">Pago dividido</p>
+                                  <p className="text-[10px] font-semibold text-gray-500">Ingresa el primer monto; Walinka completa el saldo restante.</p>
+                                </div>
                                 <button
                                   type="button"
-                                  onClick={addPayment}
-                                  className="h-8 px-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1"
+                                  onClick={addPaymentForRemainingBalance}
+                                  disabled={pendingBalance <= 0}
+                                  className="shrink-0 h-8 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white text-xs font-bold flex items-center gap-1"
                                 >
                                   <Icon name="Plus" size={13} />
-                                  Agregar
+                                  Agregar saldo
                                 </button>
                               </div>
-                              <div className="space-y-1.5 max-h-[168px] overflow-y-auto pr-0.5">
-                                {payments.map((payment) => (
-                                  <div key={payment.id} className="flex items-center gap-1.5">
-                                    <select
-                                      value={payment.method}
-                                      onChange={(e) => updatePayment(payment.id, { method: e.target.value })}
-                                      className="w-[116px] border border-gray-200 rounded-lg px-2 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    >
-                                      {REAL_PAYMENT_METHODS.map((method) => (
-                                        <option key={method.value} value={method.value}>{method.label}</option>
-                                      ))}
-                                    </select>
-                                    <div className="relative flex-1 min-w-0">
-                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
-                                      <input
-                                        type="text"
-                                        inputMode="numeric"
-                                        value={fmtMoneyInput(payment.amount)}
-                                        onChange={(e) => updatePayment(payment.id, { amount: e.target.value.replace(/\D/g, '') })}
-                                        placeholder="Monto"
-                                        className="w-full pl-5 pr-2 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                                      />
+
+                              <div className="space-y-2">
+                                {payments.map((payment, index) => (
+                                  <div key={payment.id} className="rounded-xl border border-gray-200 bg-white p-2">
+                                    <div className="mb-1.5 flex items-center justify-between">
+                                      <span className="text-[10px] font-black uppercase tracking-wide text-gray-400">Pago {index + 1}</span>
+                                      {payments.length > 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => removePayment(payment.id)}
+                                          className="text-[10px] font-bold text-red-500 hover:text-red-700"
+                                        >
+                                          Quitar
+                                        </button>
+                                      )}
                                     </div>
-                                    <button
-                                      type="button"
-                                      onClick={() => removePayment(payment.id)}
-                                      title="Eliminar pago"
-                                      aria-label="Eliminar pago"
-                                      className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-500"
-                                    >
-                                      <Icon name="Trash2" size={13} />
-                                    </button>
+                                    <div className="flex items-center gap-2">
+                                      <select
+                                        value={payment.method}
+                                        onChange={(e) => updatePayment(payment.id, { method: e.target.value })}
+                                        className="w-[118px] rounded-lg border border-gray-200 bg-gray-50 px-2 py-2.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      >
+                                        {REAL_PAYMENT_METHODS.map((method) => (
+                                          <option key={method.value} value={method.value}>{method.label}</option>
+                                        ))}
+                                      </select>
+                                      <div className="relative min-w-0 flex-1">
+                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                                        <input
+                                          type="text"
+                                          inputMode="numeric"
+                                          value={fmtMoneyInput(payment.amount)}
+                                          onChange={(e) => updatePayment(payment.id, { amount: e.target.value.replace(/\D/g, '') })}
+                                          placeholder={index === 0 ? 'Primer monto' : 'Monto'}
+                                          className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-6 pr-2 text-sm font-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                      </div>
+                                    </div>
                                   </div>
                                 ))}
                               </div>
+
+                              <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2">
+                                <span className="text-xs font-bold text-gray-600">Falta por asignar</span>
+                                <span className={`text-sm font-black ${pendingBalance > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{fmt(pendingBalance, business?.currency)}</span>
+                              </div>
                             </div>
-                          </details>
+                          ) : null}
 
                           <button
                             type="button"
