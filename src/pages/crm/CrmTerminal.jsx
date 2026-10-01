@@ -1753,13 +1753,32 @@ function CrmTerminalUI() {
                               Revisa {cartStockIssues.size} producto{cartStockIssues.size === 1 ? '' : 's'} sin stock suficiente.
                             </p>
                           )}
+                          <div className="grid grid-cols-[auto_1fr] gap-2">
+                            <button
+                              type="button"
+                              onClick={handleHoldSale}
+                              disabled={cart.length === 0 || heldBusy}
+                              className="flex items-center justify-center gap-2 rounded-2xl border border-gray-700 px-3 py-3 text-sm font-bold text-gray-200 hover:bg-gray-900 disabled:opacity-40"
+                              title="Guardar esta venta y comenzar otra"
+                            >
+                              <Icon name="Pause" size={16} />
+                              En espera
+                            </button>
+                            <button
+                              onClick={handleGoToPayment}
+                              disabled={cart.length === 0 || hasStockIssues}
+                              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-base font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4 xl:text-lg min-h-[44px]"
+                            >
+                              <Icon name="Wallet" size={18} />
+                              Cobrar {fmt(total, business?.currency)}
+                            </button>
+                          </div>
                           <button
-                            onClick={handleGoToPayment}
-                            disabled={cart.length === 0 || hasStockIssues}
-                            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-base font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4 xl:text-lg min-h-[44px]"
+                            type="button"
+                            onClick={() => setHeldSalesOpen(true)}
+                            className="w-full text-center text-xs font-bold text-gray-400 hover:text-white"
                           >
-                            <Icon name="Wallet" size={18} />
-                            Cobrar {fmt(total, business?.currency)}
+                            Ventas en espera ({heldSales.length})
                           </button>
                         </div>
                       </>
