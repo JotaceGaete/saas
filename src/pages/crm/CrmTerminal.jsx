@@ -702,6 +702,8 @@ function CrmTerminalUI() {
 
       const restoredPayments = [{ id: `payment_${Date.now()}`, method: 'cash', amount: '' }];
       const restoredDiscount = Number(data.discount || 0) > 0 ? String(Number(data.discount)) : '';
+      // Es una venta retomada distinta de cualquier intento vacío/anterior.
+      saleIdempotencyKeyRef.current = null;
       const newIdempotencyKey = getOrCreateSaleIdempotencyKey();
 
       setCart(restoredItems);
@@ -741,6 +743,7 @@ function CrmTerminalUI() {
 
   const handleDiscardHeldSale = async (heldSaleId) => {
     if (!business?.id || heldBusy) return;
+    if (!window.confirm('¿Descartar esta venta en espera? Esta acción no se puede deshacer.')) return;
     setHeldBusy(true);
     setErrorMsg(null);
     const { error } = await discardHeldPosSale(business.id, heldSaleId);
