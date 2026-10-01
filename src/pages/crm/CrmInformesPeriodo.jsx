@@ -230,29 +230,39 @@ function SalesByDayChart({ dailySeries, currency }) {
   const data = dailySeries.map(d => ({ label: fmtDateShort(d.date), total: d.net }));
   const max = Math.max(...data.map(d => d.total), 0);
   if (max <= 0) return <EmptyRow>Sin ventas registradas en este período.</EmptyRow>;
-  const activeDays = data.filter(d => d.total > 0).length;
-  const singleDayRange = data.length === 1;
-  // Para rangos largos, recharts ya deja de mostrar todas las etiquetas del
-  // eje X (interval="preserveStartEnd" + auto) -- se prioriza granularidad
-  // diaria completa (ticket §5) antes que agregación semanal/mensual, que
-  // queda fuera de alcance de REPORTES-PERIODO-1 salvo que se demuestre un
-  // problema real de rendimiento.
+
+  // Estilo "Excel": cada día ocupa una columna estable y la barra es angosta.
+  // En rangos cortos el gráfico usa todo el ancho; en rangos largos puede
+  // desplazarse horizontalmente sin convertir una sola venta en un bloque.
+  const slotWidth = data.length <= 7 ? 92 : data.length <= 14 ? 64 : 46;
+  const chartWidth = Math.max(620, data.length * slotWidth);
+  const tickInterval = data.length <= 14 ? 0 : Math.ceil(data.length / 12) - 1;
+
   return (
-    <div style={{ height: 220 }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 4, right: singleDayRange ? 80 : 4, left: singleDayRange ? 80 : 4, bottom: 0 }} barCategoryGap={singleDayRange ? '70%' : '20%'}>
-          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#9ca3af' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={16} />
-          <YAxis hide />
-          <Tooltip
-            cursor={{ fill: 'rgba(17,24,39,0.04)' }}
-            formatter={(value) => [formatMoney(value, currency), 'Ventas netas']}
-            contentStyle={{ borderRadius: 10, fontSize: 12, border: '1px solid #e5e7eb' }}
-          />
-          <Bar dataKey="total" radius={[5, 5, 0, 0]} maxBarSize={singleDayRange ? 110 : 56}>
-            {data.map((d, i) => <Cell key={i} fill={d.total === max ? '#059669' : 'rgba(5,150,105,0.25)'} />)}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+    <div className="overflow-x-auto pb-1">
+      <div style={{ width: chartWidth, minWidth: '100%', height: 220 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 8, right: 12, left: 12, bottom: 0 }} barCategoryGap="42%">
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 9, fill: '#9ca3af' }}
+              axisLine={{ stroke: '#e5e7eb' }}
+              tickLine={false}
+              interval={tickInterval}
+              minTickGap={8}
+            />
+            <YAxis hide domain={[0, max * 1.12]} />
+            <Tooltip
+              cursor={{ fill: 'rgba(17,24,39,0.04)' }}
+              formatter={(value) => [formatMoney(value, currency), 'Ventas netas']}
+              contentStyle={{ borderRadius: 10, fontSize: 12, border: '1px solid #e5e7eb' }}
+            />
+            <Bar dataKey="total" radius={[4, 4, 0, 0]} maxBarSize={34}>
+              {data.map((d, i) => <Cell key={i} fill={d.total === max ? '#059669' : 'rgba(5,150,105,0.35)'} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
