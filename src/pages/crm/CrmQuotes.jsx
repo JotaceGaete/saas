@@ -155,7 +155,7 @@ export default function CrmQuotes() {
             {filtered.map(q => {
               const canEdit = EDITABLE_QUOTE_STATUSES.has(q.status) && !q.converted_to_invoice_id;
               return (
-              <div key={q.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
+              <div key={q.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow">
                 <div className="flex items-start justify-between gap-3 min-w-0">
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap mb-0.5">
@@ -172,26 +172,26 @@ export default function CrmQuotes() {
                   </div>
                 </div>
 
-                {/* Acciones */}
-                <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+                {/* Acciones compactas: misma jerarquía visual que Notas de venta. */}
+                <div className="flex flex-wrap items-center gap-2 mt-2.5">
                   {canEdit && (
                     <button
                       onClick={() => navigate(`/crm/presupuestos/${q.id}`)}
-                      className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium"
+                      className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium"
                     >
                       <Icon name="Pencil" size={13} />Editar
                     </button>
                   )}
                   <button
                     onClick={() => navigate(`/crm/presupuestos/${q.id}`)}
-                    className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+                    className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
                   >
                     <Icon name="Eye" size={13} />Ver / PDF
                   </button>
                   <button
                     onClick={() => handleDuplicate(q.id)}
                     disabled={!!busy}
-                    className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                   >
                     <Icon name="Copy" size={13} />Duplicar
                   </button>
@@ -199,7 +199,7 @@ export default function CrmQuotes() {
                     <button
                       onClick={() => handleStatus(q.id, 'enviado')}
                       disabled={!!busy}
-                      className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50"
+                      className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 disabled:opacity-50"
                     >
                       <Icon name="Send" size={13} />Marcar enviado
                     </button>
@@ -209,14 +209,14 @@ export default function CrmQuotes() {
                       <button
                         onClick={() => handleStatus(q.id, 'aceptado')}
                         disabled={!!busy}
-                        className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 disabled:opacity-50"
                       >
                         <Icon name="ThumbsUp" size={13} />Aceptado
                       </button>
                       <button
                         onClick={() => handleStatus(q.id, 'rechazado')}
                         disabled={!!busy}
-                        className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"
+                        className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"
                       >
                         <Icon name="ThumbsDown" size={13} />Rechazado
                       </button>
@@ -226,7 +226,7 @@ export default function CrmQuotes() {
                     <button
                       onClick={() => handleCreateInvoice(q)}
                       disabled={!!busy}
-                      className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 font-medium"
+                      className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 disabled:opacity-50 font-medium"
                     >
                       <Icon name="ArrowRightCircle" size={13} />Crear nota de venta
                     </button>
@@ -234,7 +234,7 @@ export default function CrmQuotes() {
                   {q.converted_to_invoice_id && (
                     <button
                       onClick={() => navigate(`/crm/facturas/${q.converted_to_invoice_id}`)}
-                      className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium"
+                      className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 font-medium"
                     >
                       <Icon name="CheckCircle2" size={13} />
                       Nota de venta creada{q.crm_invoices?.invoice_number != null ? ` · ${formatInvoiceNumber(q.crm_invoices.invoice_number)}` : ''}
