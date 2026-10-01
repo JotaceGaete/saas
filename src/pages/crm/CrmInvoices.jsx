@@ -123,7 +123,7 @@ export default function CrmInvoices() {
               const fullPaid = saldo <= 0 && pagado > 0;
               const partial  = saldo > 0 && pagado > 0;
               return (
-                <div key={inv.id} className="bg-white border border-gray-200 rounded-xl p-4 hover:shadow-sm transition-shadow">
+                <div key={inv.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow">
                   <div className="flex items-start justify-between gap-3 min-w-0">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap mb-0.5">
@@ -146,15 +146,16 @@ export default function CrmInvoices() {
                     </div>
                   </div>
 
-                  {/* Desglose de pago */}
-                  {pagado > 0 && (
-                    <div className="flex gap-4 mt-2 text-xs text-gray-500">
+                  {/* Solo mostramos el desglose cuando todavía queda saldo; en una venta pagada
+                      repetir "Pagado: total" no aporta información. */}
+                  {saldo > 0 && pagado > 0 && (
+                    <div className="flex gap-4 mt-1.5 text-xs text-gray-500">
                       <span>Pagado: <span className="font-medium text-green-700">{fmt(pagado)}</span></span>
-                      {saldo > 0 && <span>Saldo: <span className="font-medium text-yellow-700">{fmt(saldo)}</span></span>}
+                      <span>Saldo: <span className="font-medium text-yellow-700">{fmt(saldo)}</span></span>
                     </div>
                   )}
 
-                  <div className="flex flex-wrap gap-2 mt-3 pt-3 border-t border-gray-100">
+                  <div className="flex flex-wrap items-center gap-2 mt-2.5">
                     {inv.status === 'pendiente' && (
                       <button
                         onClick={() => navigate(`/crm/facturas/${inv.id}`)}
@@ -165,7 +166,7 @@ export default function CrmInvoices() {
                     )}
                     <button
                       onClick={() => navigate(`/crm/facturas/${inv.id}`)}
-                      className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+                      className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
                     >
                       <Icon name="Eye" size={13} />Ver / PDF
                     </button>
@@ -188,7 +189,7 @@ export default function CrmInvoices() {
                       </>
                     )}
                     {inv.status === 'pagada' && (
-                      <span className="inline-flex items-center gap-1.5 text-xs px-3 py-2 text-green-600">
+                      <span className="inline-flex items-center gap-1.5 text-xs px-2 py-1.5 text-green-600">
                         <Icon name="CheckCircle2" size={13} />Pagada {inv.paid_at ? `el ${new Date(inv.paid_at).toLocaleDateString('es-CL')}` : ''}
                       </span>
                     )}
