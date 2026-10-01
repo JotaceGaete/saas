@@ -2018,15 +2018,24 @@ function CrmTerminalUI() {
                 )}
               </div>
               {checkoutStep === 'sale' ? (
-                <button
-                  type="button"
-                  onClick={handleGoToPayment}
-                  disabled={cart.length === 0 || hasStockIssues}
-                  className="shrink-0 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-sm transition-colors flex items-center gap-2 min-h-[44px]"
-                >
-                  <Icon name="Wallet" size={16} />
-                  Cobrar
-                </button>
+                <div className="flex shrink-0 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setHeldSalesOpen(true)}
+                    className="px-3 py-3 rounded-xl border border-gray-700 text-gray-200 font-bold text-xs min-h-[44px]"
+                  >
+                    En espera ({heldSales.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleGoToPayment}
+                    disabled={cart.length === 0 || hasStockIssues}
+                    className="shrink-0 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-sm transition-colors flex items-center gap-2 min-h-[44px]"
+                  >
+                    <Icon name="Wallet" size={16} />
+                    Cobrar
+                  </button>
+                </div>
               ) : requiresCustomerForPending && !customerId ? (
                 <button
                   type="button"
