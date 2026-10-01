@@ -1825,7 +1825,7 @@ function CrmTerminalUI() {
                                     className={`flex min-h-[54px] items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors ${selected ? 'border-gray-950 bg-gray-950 text-white' : 'border-gray-200 bg-white text-gray-800 hover:border-gray-400 hover:bg-gray-50'}`}
                                   >
                                     <Icon name={method.icon} size={17} />
-                                    <span className="text-xs font-black">{method.label}</span>
+                                    <span className="flex-1 text-center text-[11px] font-black leading-tight xl:text-xs">{method.value === 'bank_transfer' ? 'Transfer.' : method.label}</span>
                                   </button>
                                 );
                               })}
