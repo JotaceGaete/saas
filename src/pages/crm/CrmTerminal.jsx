@@ -1513,7 +1513,7 @@ function CrmTerminalUI() {
                     Mobile: normal flow; fixed bottom bar handles cobrar.
                     Con carrito no vacío pasa primero (order-1) en mobile,
                     ver nota en la columna izquierda.                       */}
-                <div className={`w-full min-w-0 lg:sticky lg:top-4 lg:flex lg:h-[calc(100vh-5rem)] lg:flex-col ${cart.length > 0 ? 'order-1' : 'order-2'} lg:order-2`}>
+                <div className={`w-full min-w-0 lg:sticky lg:top-4 lg:flex lg:h-[calc(100vh-5rem)] lg:flex-col ${checkoutStep === 'payment' ? 'lg:overflow-y-auto lg:pr-1' : ''} ${cart.length > 0 ? 'order-1' : 'order-2'} lg:order-2`}>
 
                   {/* ── Zone 1: header ── flex-none ───────────────────────────
                       TPV-CORE-3: en 'sale' prioriza el total + cantidad de
@@ -1574,8 +1574,11 @@ function CrmTerminalUI() {
                       space regardless of how many items are in it.             */}
                   <div
                     ref={cartSectionRef}
-                    className="mt-2.5 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm
-                                  lg:flex-1 lg:min-h-[160px] lg:flex lg:flex-col"
+                    className={`mt-2.5 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:flex lg:flex-col ${
+                                  checkoutStep === 'payment'
+                                    ? 'lg:flex-none lg:max-h-[150px]'
+                                    : 'lg:flex-1 lg:min-h-[160px]'
+                                }`}
                   >
 
                     {/* Cart header — flex-none */}
@@ -1732,7 +1735,7 @@ function CrmTerminalUI() {
                       lógica de pagos se reimplementa, solo se reordena su
                       visibilidad) y agrega "Volver a la venta", que jamás
                       borra carrito/cliente/descuento/notas/pagos/key/draft.*/}
-                  <div className="flex flex-col gap-2 mt-2.5 lg:flex-none lg:shrink-0">
+                  <div className={`flex flex-col gap-2 mt-2.5 lg:flex-none lg:shrink-0 ${checkoutStep === 'payment' ? 'lg:pb-2' : ''}`}>
 
                     {checkoutStep === 'sale' && (
                       <>
