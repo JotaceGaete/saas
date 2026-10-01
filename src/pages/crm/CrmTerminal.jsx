@@ -1480,13 +1480,7 @@ function CrmTerminalUI() {
                               <p className="min-h-[32px] text-sm font-bold text-gray-900 line-clamp-2 leading-snug group-hover:text-blue-700">{p.name}</p>
                               <div className="mt-1.5 flex items-center justify-between gap-2">
                                 <p className="truncate text-base font-black text-blue-600">{fmt(p.price, business?.currency)}</p>
-                                <span className={`flex h-7 w-7 items-center justify-center rounded-full transition-colors ${
-                                  outOfStock
-                                    ? 'bg-gray-200 text-gray-400'
-                                    : 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white'
-                                }`}>
-                                  <Icon name="Plus" size={15} />
-                                </span>
+
                               </div>
                               {outOfStock ? (
                                 <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-red-500">Sin stock</p>
@@ -1525,50 +1519,23 @@ function CrmTerminalUI() {
                       completo (estado, items/pagado/pendiente) y, si
                       corresponde, el cliente seleccionado -- reutilizando
                       selectedCustomer, sin duplicar estado (sección 9).    */}
-                  <div className="rounded-2xl border border-gray-200 bg-white p-3.5 shadow-sm lg:flex-none">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[11px] font-black uppercase tracking-wide text-gray-400">
-                          {checkoutStep === 'payment' ? 'Cobrar' : 'Total venta'}
-                        </p>
-                        <p className="mt-1 truncate text-2xl font-black tracking-tight text-gray-950 xl:text-3xl">{fmt(total, business?.currency)}</p>
-                      </div>
-                      {checkoutStep === 'payment' && (
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-black ${pendingBalance > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                          {paymentStatusLabel}
-                        </span>
-                      )}
-                    </div>
-                    {checkoutStep === 'sale' ? (
-                      <div className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-gray-50 px-2.5 py-2">
-                        <Icon name="ShoppingCart" size={12} className="text-gray-400" />
-                        <span className="text-xs font-bold text-gray-600">{cartCount} {cartCount === 1 ? 'artículo' : 'artículos'}</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="mt-3 grid grid-cols-3 gap-1.5">
-                          <div className="rounded-xl bg-gray-50 px-2.5 py-2">
-                            <p className="text-[10px] font-bold uppercase text-gray-400">Items</p>
-                            <p className="text-lg font-black text-gray-900">{cartCount}</p>
-                          </div>
-                          <div className="rounded-xl bg-emerald-50 px-2.5 py-2">
-                            <p className="text-[10px] font-bold uppercase text-emerald-600">Pagado</p>
-                            <p className="truncate text-xs font-black text-emerald-800 xl:text-sm">{fmt(paidTotal, business?.currency)}</p>
-                          </div>
-                          <div className="rounded-xl bg-amber-50 px-2.5 py-2">
-                            <p className="text-[10px] font-bold uppercase text-amber-600">Pendiente</p>
-                            <p className="truncate text-xs font-black text-amber-800 xl:text-sm">{fmt(pendingBalance, business?.currency)}</p>
-                          </div>
+                  {checkoutStep === 'sale' ? (
+                    <div className="rounded-2xl border border-gray-200 bg-white p-3.5 shadow-sm lg:flex-none">
+                      <p className="text-[11px] font-black uppercase tracking-wide text-gray-400">Total venta</p>
+                      <div className="mt-1 flex items-end justify-between gap-3">
+                        <p className="truncate text-2xl font-black tracking-tight text-gray-950 xl:text-3xl">{fmt(total, business?.currency)}</p>
+                        <div className="inline-flex items-center gap-1.5 rounded-xl bg-gray-50 px-2.5 py-2">
+                          <Icon name="ShoppingCart" size={12} className="text-gray-400" />
+                          <span className="text-xs font-bold text-gray-600">{cartCount} {cartCount === 1 ? 'artículo' : 'artículos'}</span>
                         </div>
-                        {selectedCustomer && (
-                          <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
-                            <Icon name="UserRound" size={12} className="text-gray-400" />
-                            <span className="truncate">{selectedCustomer.name}{selectedCustomer.company ? ` · ${selectedCustomer.company}` : ''}</span>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
+                      </div>
+                    </div>
+                  ) : selectedCustomer ? (
+                    <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600 shadow-sm lg:flex-none">
+                      <Icon name="UserRound" size={13} className="text-gray-400" />
+                      <span className="truncate font-semibold">{selectedCustomer.name}{selectedCustomer.company ? ` · ${selectedCustomer.company}` : ''}</span>
+                    </div>
+                  ) : null}
 
                   <div className="hidden">
                     <div className="flex items-center justify-between mb-1.5">
@@ -2010,22 +1977,12 @@ function CrmTerminalUI() {
                         {/* Pago recibido — solo efectivo */}
                         {/* Totals + Confirmar venta — desktop only; mobile uses fixed bar */}
                         <div className="hidden lg:flex flex-col gap-2.5 rounded-2xl bg-gray-950 px-4 py-4 shadow-xl">
-                          <div className="space-y-1">
+                          {discountAmount > 0 && (
                             <div className="flex justify-between text-xs text-gray-400">
-                              <span>Subtotal</span>
-                              <span>{fmt(subtotal, business?.currency)}</span>
+                              <span>Descuento aplicado</span>
+                              <span className="font-bold text-red-400">-{fmt(discountAmount, business?.currency)}</span>
                             </div>
-                            {discountAmount > 0 && (
-                              <div className="flex justify-between text-xs text-red-400">
-                                <span>Descuento</span>
-                                <span>-{fmt(discountAmount, business?.currency)}</span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex justify-between items-end border-t border-gray-800 pt-3">
-                            <span className="text-sm font-bold text-gray-300">Total</span>
-                            <span className="truncate text-2xl font-black tracking-tight text-white xl:text-3xl">{fmt(total, business?.currency)}</span>
-                          </div>
+                          )}
                           {requiresCustomerForPending && !customerId ? (
                             <div className="flex gap-2">
                               <button
