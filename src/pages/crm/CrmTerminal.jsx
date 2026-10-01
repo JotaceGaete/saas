@@ -2056,6 +2056,64 @@ function CrmTerminalUI() {
 
       </main>
 
+      {heldSalesOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div>
+                <h2 className="font-black text-gray-900">Ventas en espera</h2>
+                <p className="text-xs text-gray-500">{heldSales.length} pendiente{heldSales.length === 1 ? '' : 's'}</p>
+              </div>
+              <button type="button" onClick={() => setHeldSalesOpen(false)} className="p-2 text-gray-400 hover:text-gray-700">
+                <Icon name="X" size={18} />
+              </button>
+            </div>
+            <div className="max-h-[60vh] space-y-2 overflow-y-auto p-4">
+              {heldSales.length === 0 ? (
+                <div className="py-10 text-center text-sm text-gray-500">No hay ventas en espera.</div>
+              ) : heldSales.map((sale) => (
+                <div key={sale.id} className="rounded-xl border border-gray-200 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-gray-900">
+                        {sale.label || sale.customer_name || 'Venta en espera'}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {sale.unit_count} {Number(sale.unit_count) === 1 ? 'artículo' : 'artículos'} · {fmt(Number(sale.total || 0), business?.currency)}
+                      </p>
+                      <p className="mt-1 text-[11px] text-gray-400">{new Date(sale.created_at).toLocaleString()}</p>
+                    </div>
+                    <div className="flex shrink-0 gap-1.5">
+                      <button
+                        type="button"
+                        disabled={heldBusy || cart.length > 0}
+                        onClick={() => handleResumeHeldSale(sale.id)}
+                        className="rounded-lg bg-gray-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+                      >
+                        Reanudar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={heldBusy}
+                        onClick={() => handleDiscardHeldSale(sale.id)}
+                        className="rounded-lg px-2 py-2 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-40"
+                      >
+                        Descartar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {cart.length > 0 && heldSales.length > 0 && (
+              <p className="border-t px-4 py-3 text-xs text-amber-700">
+                Termina o deja en espera la venta actual antes de reanudar otra.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Manual item modal */}
       {showManualModal && (
         <ManualItemModal
