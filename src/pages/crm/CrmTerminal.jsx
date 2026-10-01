@@ -2022,13 +2022,24 @@ function CrmTerminalUI() {
               </div>
               {checkoutStep === 'sale' ? (
                 <div className="flex shrink-0 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setHeldSalesOpen(true)}
-                    className="px-3 py-3 rounded-xl border border-gray-700 text-gray-200 font-bold text-xs min-h-[44px]"
-                  >
-                    En espera ({heldSales.length})
-                  </button>
+                  {cart.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={handleHoldSale}
+                      disabled={heldBusy}
+                      className="px-3 py-3 rounded-xl border border-gray-700 text-gray-200 font-bold text-xs min-h-[44px] disabled:opacity-40"
+                    >
+                      Dejar en espera
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setHeldSalesOpen(true)}
+                      className="px-3 py-3 rounded-xl border border-gray-700 text-gray-200 font-bold text-xs min-h-[44px]"
+                    >
+                      En espera ({heldSales.length})
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={handleGoToPayment}
