@@ -10,7 +10,10 @@
 CREATE TABLE public.crm_pos_held_sales (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   business_id UUID NOT NULL REFERENCES public.wa_businesses(id) ON DELETE CASCADE,
-  customer_id UUID NULL REFERENCES public.wa_customers(id) ON DELETE SET NULL,
+  -- Snapshot del ID: no FK deliberadamente. Si el cliente se elimina mientras
+  -- la venta espera, el TPV lo detecta al reanudar en vez de convertirla
+  -- silenciosamente a consumidor final.
+  customer_id UUID NULL,
   label TEXT NULL,
   discount NUMERIC NOT NULL DEFAULT 0 CHECK (discount >= 0),
   notes TEXT NULL,
@@ -38,7 +41,9 @@ CREATE TABLE public.crm_pos_held_sales (
 CREATE TABLE public.crm_pos_held_sale_items (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   held_sale_id UUID NOT NULL REFERENCES public.crm_pos_held_sales(id) ON DELETE CASCADE,
-  product_id UUID NULL REFERENCES public.wa_products(id) ON DELETE SET NULL,
+  -- Snapshot del ID: no FK deliberadamente. Un producto eliminado no debe
+  -- transformarse en línea manual y eludir la validación de stock al cobrar.
+  product_id UUID NULL,
   name TEXT NOT NULL,
   unit_price NUMERIC NOT NULL CHECK (unit_price >= 0),
   quantity INTEGER NOT NULL CHECK (quantity > 0),
@@ -236,16 +241,24 @@ BEGIN
     RAISE EXCEPTION 'Business not accessible' USING ERRCODE = '42501';
   END IF;
 
-  -- UPDATE condicional = compare-and-swap. Solo una caja puede pasar held→claimed.
+  -- UPDATE condicional = compare-and-swap. Solo una caja puede pasar
+  -- held→claimed. Un claim que quedó huérfano por cierre/crash del navegador
+  -- se puede recuperar después de 5 minutos; el flujo normal consume el claim
+  -- inmediatamente después de reconstruir el draft local.
   UPDATE public.crm_pos_held_sales
      SET status = 'claimed',
          claimed_by = v_user_id,
          claimed_at = now(),
          claim_token = v_token,
+         discarded_by = NULL,
+         discarded_at = NULL,
          updated_at = now()
    WHERE id = p_held_sale_id
      AND business_id = p_business_id
-     AND status = 'held'
+     AND (
+       status = 'held'
+       OR (status = 'claimed' AND claimed_at < now() - interval '5 minutes')
+     )
   RETURNING * INTO v_sale;
 
   IF NOT FOUND THEN
