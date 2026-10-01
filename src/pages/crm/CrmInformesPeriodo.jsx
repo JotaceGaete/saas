@@ -230,6 +230,8 @@ function SalesByDayChart({ dailySeries, currency }) {
   const data = dailySeries.map(d => ({ label: fmtDateShort(d.date), total: d.net }));
   const max = Math.max(...data.map(d => d.total), 0);
   if (max <= 0) return <EmptyRow>Sin ventas registradas en este período.</EmptyRow>;
+  const activeDays = data.filter(d => d.total > 0).length;
+  const singleDayRange = data.length === 1;
   // Para rangos largos, recharts ya deja de mostrar todas las etiquetas del
   // eje X (interval="preserveStartEnd" + auto) -- se prioriza granularidad
   // diaria completa (ticket §5) antes que agregación semanal/mensual, que
@@ -238,7 +240,7 @@ function SalesByDayChart({ dailySeries, currency }) {
   return (
     <div style={{ height: 220 }}>
       <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
+        <BarChart data={data} margin={{ top: 4, right: singleDayRange ? 80 : 4, left: singleDayRange ? 80 : 4, bottom: 0 }} barCategoryGap={singleDayRange ? '70%' : '20%'}>
           <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#9ca3af' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={16} />
           <YAxis hide />
           <Tooltip
@@ -246,7 +248,7 @@ function SalesByDayChart({ dailySeries, currency }) {
             formatter={(value) => [formatMoney(value, currency), 'Ventas netas']}
             contentStyle={{ borderRadius: 10, fontSize: 12, border: '1px solid #e5e7eb' }}
           />
-          <Bar dataKey="total" radius={[3, 3, 0, 0]}>
+          <Bar dataKey="total" radius={[5, 5, 0, 0]} maxBarSize={singleDayRange ? 72 : 56}>
             {data.map((d, i) => <Cell key={i} fill={d.total === max ? '#059669' : 'rgba(5,150,105,0.25)'} />)}
           </Bar>
         </BarChart>
@@ -458,13 +460,20 @@ export default function CrmInformesPeriodo() {
               {sales.available && sales.activityDays && (
                 <div className="mt-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
                   <div className="rounded-xl border border-gray-100 px-3 py-2">
-                    <p className="text-gray-400">Día con más ventas</p>
+                    <p className="text-gray-400">{sales.activityDays.daysWithSales === 1 ? 'Único día con ventas' : 'Día con más ventas'}</p>
                     <p className="mt-0.5 font-bold text-gray-800">{sales.activityDays.maxDay ? `${sales.activityDays.maxDay.dateLabel} · ${sales.activityDays.maxDay.formatted}` : '—'}</p>
                   </div>
-                  <div className="rounded-xl border border-gray-100 px-3 py-2">
-                    <p className="text-gray-400">Día con menos ventas</p>
-                    <p className="mt-0.5 font-bold text-gray-800">{sales.activityDays.minDay ? `${sales.activityDays.minDay.dateLabel} · ${sales.activityDays.minDay.formatted}` : '—'}</p>
-                  </div>
+                  {sales.activityDays.daysWithSales > 1 ? (
+                    <div className="rounded-xl border border-gray-100 px-3 py-2">
+                      <p className="text-gray-400">Día con menos ventas</p>
+                      <p className="mt-0.5 font-bold text-gray-800">{sales.activityDays.minDay ? `${sales.activityDays.minDay.dateLabel} · ${sales.activityDays.minDay.formatted}` : '—'}</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-gray-100 px-3 py-2">
+                      <p className="text-gray-400">Promedio por día con ventas</p>
+                      <p className="mt-0.5 font-bold text-gray-800">{sales.activityDays.maxDay?.formatted || '—'}</p>
+                    </div>
+                  )}
                   <div className="rounded-xl border border-gray-100 px-3 py-2">
                     <p className="text-gray-400">Días con ventas</p>
                     <p className="mt-0.5 font-bold text-gray-800">{sales.activityDays.daysWithSales}</p>
