@@ -772,6 +772,14 @@ function CrmTerminalUI() {
     });
   };
 
+  // TPV-CHECKOUT-UX-1: un toque selecciona el medio y completa el saldo.
+  // No cambia la lógica contable: solo prepara el mismo array payments que
+  // handleRegister/appliedPayments ya consumen.
+  const selectQuickPaymentMethod = (method) => {
+    const amount = String(Math.max(0, total));
+    setPayments([{ id: `payment_${Date.now()}`, method, amount }]);
+  };
+
   // ── TPV-CORE-3: flujo de checkout en dos etapas ───────────────────────────
   // Estado puramente de UI -- no crea ni modifica ningún registro. Nunca
   // borra carrito/cliente/descuento/notas/pagos/idempotency key/draft.
@@ -1793,8 +1801,112 @@ function CrmTerminalUI() {
                             estado/lógica de payments/cuenta corriente que
                             existía antes de TPV-CORE-3; solo cambió CUÁNDO
                             se muestra, no CÓMO funciona. */}
-                        <div className="rounded-2xl border border-gray-200 bg-white p-2.5 space-y-2">
-                          {/* Atajo: Venta a crédito */}
+                        <div className="rounded-2xl border border-gray-200 bg-white p-3 space-y-3">
+                          <div className="flex items-end justify-between gap-3">
+                            <div>
+                              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Total a cobrar</p>
+                              <p className="text-3xl font-black tracking-tight text-gray-950">{fmt(total, business?.currency)}</p>
+                            </div>
+                            <span className={`rounded-full px-2.5 py-1 text-xs font-black ${pendingBalance > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                              {paymentStatusLabel}
+                            </span>
+                          </div>
+
+                          <div>
+                            <p className="mb-2 text-xs font-bold text-gray-700">¿Cómo paga?</p>
+                            <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
+                              {REAL_PAYMENT_METHODS.map((method) => {
+                                const selected = payments.length === 1 && payments[0]?.method === method.value && parseMoneyInput(payments[0]?.amount) > 0;
+                                return (
+                                  <button
+                                    key={method.value}
+                                    type="button"
+                                    onClick={() => selectQuickPaymentMethod(method.value)}
+                                    className={`flex min-h-[54px] items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors ${selected ? 'border-gray-950 bg-gray-950 text-white' : 'border-gray-200 bg-white text-gray-800 hover:border-gray-400 hover:bg-gray-50'}`}
+                                  >
+                                    <Icon name={method.icon} size={17} />
+                                    <span className="text-xs font-black">{method.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {payments.length === 1 && payments[0]?.method === 'cash' && (
+                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                              <label className="mb-1.5 block text-xs font-bold text-emerald-900">Efectivo recibido</label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-emerald-700">$</span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={fmtMoneyInput(payments[0].amount)}
+                                  onChange={(e) => updatePayment(payments[0].id, { amount: e.target.value.replace(/\D/g, '') })}
+                                  className="w-full rounded-xl border border-emerald-200 bg-white py-3 pl-7 pr-3 text-lg font-black text-gray-950 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                  aria-label="Efectivo recibido"
+                                />
+                              </div>
+                              <div className="mt-2 flex items-center justify-between text-xs">
+                                <span className="font-semibold text-emerald-800">Vuelto</span>
+                                <span className="text-base font-black text-emerald-950">{fmt(change, business?.currency)}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          <details className="rounded-xl border border-gray-200 bg-gray-50">
+                            <summary className="cursor-pointer list-none px-3 py-2.5 text-xs font-bold text-blue-700">
+                              Dividir pago entre varios medios
+                            </summary>
+                            <div className="space-y-2 border-t border-gray-200 p-3">
+                              <div className="flex items-center justify-between">
+                                <p className="text-[11px] font-semibold text-gray-500">Medios del pago</p>
+                                <button
+                                  type="button"
+                                  onClick={addPayment}
+                                  className="h-8 px-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1"
+                                >
+                                  <Icon name="Plus" size={13} />
+                                  Agregar
+                                </button>
+                              </div>
+                              <div className="space-y-1.5 max-h-[168px] overflow-y-auto pr-0.5">
+                                {payments.map((payment) => (
+                                  <div key={payment.id} className="flex items-center gap-1.5">
+                                    <select
+                                      value={payment.method}
+                                      onChange={(e) => updatePayment(payment.id, { method: e.target.value })}
+                                      className="w-[116px] border border-gray-200 rounded-lg px-2 py-2 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                    >
+                                      {REAL_PAYMENT_METHODS.map((method) => (
+                                        <option key={method.value} value={method.value}>{method.label}</option>
+                                      ))}
+                                    </select>
+                                    <div className="relative flex-1 min-w-0">
+                                      <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
+                                      <input
+                                        type="text"
+                                        inputMode="numeric"
+                                        value={fmtMoneyInput(payment.amount)}
+                                        onChange={(e) => updatePayment(payment.id, { amount: e.target.value.replace(/\D/g, '') })}
+                                        placeholder="Monto"
+                                        className="w-full pl-5 pr-2 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                                      />
+                                    </div>
+                                    <button
+                                      type="button"
+                                      onClick={() => removePayment(payment.id)}
+                                      title="Eliminar pago"
+                                      aria-label="Eliminar pago"
+                                      className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-500"
+                                    >
+                                      <Icon name="Trash2" size={13} />
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          </details>
+
                           <button
                             type="button"
                             onClick={() => setPayments(prev => prev.map(p => ({ ...p, amount: '' })))}
@@ -1805,60 +1917,11 @@ function CrmTerminalUI() {
                             </span>
                             <span className="min-w-0">
                               <span className="block text-xs font-bold text-amber-800 leading-tight">Vender a cuenta corriente</span>
-                              <span className="block text-[10px] text-amber-600 leading-tight mt-0.5">Deja el total como pendiente · requiere cliente registrado</span>
+                              <span className="block text-[10px] text-amber-600 leading-tight mt-0.5">Deja el total pendiente · requiere cliente registrado</span>
                             </span>
                           </button>
 
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-xs font-bold text-gray-800">Pagos</p>
-                              <p className="text-[11px] text-gray-500">Total: {fmt(total, business?.currency)}</p>
-                            </div>
-                            <button
-                              onClick={addPayment}
-                              className="h-8 px-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1"
-                            >
-                              <Icon name="Plus" size={13} />
-                              Agregar
-                            </button>
-                          </div>
-
-                          <div className="space-y-1.5 max-h-[168px] overflow-y-auto pr-0.5">
-                            {payments.map((payment) => (
-                              <div key={payment.id} className="flex items-center gap-1.5">
-                                <select
-                                  value={payment.method}
-                                  onChange={(e) => updatePayment(payment.id, { method: e.target.value })}
-                                  className="w-[116px] border border-gray-200 rounded-lg px-2 py-2 text-xs bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                  {REAL_PAYMENT_METHODS.map((method) => (
-                                    <option key={method.value} value={method.value}>{method.label}</option>
-                                  ))}
-                                </select>
-                                <div className="relative flex-1 min-w-0">
-                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
-                                  <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    value={fmtMoneyInput(payment.amount)}
-                                    onChange={(e) => updatePayment(payment.id, { amount: e.target.value.replace(/\D/g, '') })}
-                                    placeholder="Monto"
-                                    className="w-full pl-5 pr-2 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-                                  />
-                                </div>
-                                <button
-                                  onClick={() => removePayment(payment.id)}
-                                  title="Eliminar pago"
-                                  aria-label="Eliminar pago"
-                                  className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-500"
-                                >
-                                  <Icon name="Trash2" size={13} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-1.5 pt-1">
+                          <div className="grid grid-cols-3 gap-1.5">
                             <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
                               <p className="text-[10px] text-emerald-700 font-semibold">Pagado</p>
                               <p className="text-xs font-bold text-emerald-800">{fmt(paidTotal, business?.currency)}</p>
@@ -1877,19 +1940,10 @@ function CrmTerminalUI() {
                             <p className="text-xs font-semibold text-red-600">Solo efectivo puede generar vuelto.</p>
                           )}
                           {requiresCustomerForPending && !customerId && (
-                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
                               <p className="text-xs font-semibold text-amber-800 leading-snug">
-                                Faltan <strong>{fmt(pendingBalance, business?.currency)}</strong> por pagar.
-                                Agrega otro medio de pago o selecciona un cliente para vender a cuenta corriente.
+                                Faltan <strong>{fmt(pendingBalance, business?.currency)}</strong> por pagar. Completa el pago o selecciona un cliente para dejar saldo en cuenta corriente.
                               </p>
-                              <button
-                                type="button"
-                                onClick={addPayment}
-                                className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-2.5 py-1.5 transition-colors"
-                              >
-                                <Icon name="Plus" size={12} />
-                                Agregar medio de pago
-                              </button>
                             </div>
                           )}
                         </div>
