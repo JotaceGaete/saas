@@ -330,7 +330,7 @@ export default function CrmPrintSettings() {
         <section aria-label="Impresión del TPV" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
 
           <div className="flex items-center justify-between gap-3">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Estado QZ Tray</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Estado de impresión</p>
             <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-700">
               <span className={`h-2.5 w-2.5 rounded-full ${status.dot}`} />
               {status.label}
@@ -341,7 +341,7 @@ export default function CrmPrintSettings() {
             <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
               <Icon name="AlertTriangle" size={14} className="mt-0.5 shrink-0" />
               <span>
-                No se detectó QZ Tray en este equipo. Verifica que la aplicación esté instalada y
+                No se detectó el servicio de impresión en este equipo. Verifica que esté instalado y
                 en ejecución, luego pulsa "Actualizar impresoras".
                 {printersError && <> ({printersError})</>}
               </span>
@@ -371,7 +371,7 @@ export default function CrmPrintSettings() {
             )}
             {qzStatus === 'connected' && printers.length === 0 && !savedPrinterMissing && (
               <p className="mt-1.5 text-xs text-slate-400">
-                QZ Tray está conectado pero no reporta impresoras instaladas en este equipo.
+                El servicio de impresión está conectado, pero no se encontraron impresoras instaladas en este equipo.
               </p>
             )}
           </div>
@@ -476,8 +476,7 @@ export default function CrmPrintSettings() {
           )}
 
           <p className="mt-5 text-xs text-slate-400">
-            Este ticket de prueba no está conectado al flujo de cobro del Terminal de ventas: es
-            solo para validar la conexión con tu impresora térmica.
+            Los cambios se guardan para este equipo. Imprime un ticket de prueba para confirmar que todo quedó listo.
           </p>
         </section>
       </DashboardLayoutContent>
