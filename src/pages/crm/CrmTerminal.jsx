@@ -1765,6 +1765,20 @@ function CrmTerminalUI() {
 
                         {/* CTA "Cobrar" — desktop only; mobile usa la barra fija
                             para no duplicar el mismo CTA dos veces en pantalla. */}
+                        {cart.length === 0 && heldSales.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setHeldSalesOpen(true)}
+                            className="hidden lg:flex w-full items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left transition-colors hover:bg-amber-100"
+                          >
+                            <span>
+                              <span className="block text-sm font-bold text-amber-900">Ventas en espera</span>
+                              <span className="block text-xs text-amber-700">Recupera una venta para continuar cobrando.</span>
+                            </span>
+                            <span className="rounded-full bg-amber-200 px-2.5 py-1 text-xs font-black text-amber-900">{heldSales.length}</span>
+                          </button>
+                        )}
+
                         {cart.length > 0 && (
                         <div className="hidden lg:flex flex-col gap-2.5 rounded-2xl bg-gray-950 px-4 py-4 shadow-xl">
                           <div className="flex justify-between items-end">
@@ -2191,7 +2205,7 @@ function CrmTerminalUI() {
                         type="button"
                         disabled={heldBusy || cart.length > 0}
                         onClick={() => handleResumeHeldSale(sale.id)}
-                        className="rounded-lg bg-gray-950 px-3 py-2 text-xs font-bold text-white disabled:opacity-40"
+                        className="rounded-lg bg-gray-950 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:opacity-100"
                       >
                         Reanudar
                       </button>
