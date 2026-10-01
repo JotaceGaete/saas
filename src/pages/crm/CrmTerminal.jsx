@@ -635,6 +635,120 @@ function CrmTerminalUI() {
     setTimeout(() => searchRef.current?.focus(), 50);
   };
 
+  const refreshHeldSales = useCallback(async () => {
+    if (!business?.id) return;
+    const { data, error } = await listHeldPosSales(business.id);
+    if (error) {
+      setErrorMsg(error.message);
+      return;
+    }
+    setHeldSales(data || []);
+  }, [business?.id]);
+
+  useEffect(() => {
+    if (!hasAccess) return;
+    refreshHeldSales();
+  }, [hasAccess, refreshHeldSales]);
+
+  const handleHoldSale = async () => {
+    if (!business?.id || cart.length === 0 || heldBusy || checkoutStep !== 'sale') return;
+    setHeldBusy(true);
+    setErrorMsg(null);
+    const { error } = await holdPosSale(business.id, {
+      customerId: customerId || null,
+      items: cart,
+      discount: discountAmount,
+      notes: notes || null,
+      label: selectedCustomer?.name || null,
+    });
+    if (error) {
+      setErrorMsg(error.message);
+      setHeldBusy(false);
+      return;
+    }
+    // El servidor confirmó el hold: recién ahora se libera esta caja.
+    resetForm();
+    await refreshHeldSales();
+    setHeldBusy(false);
+  };
+
+  const handleResumeHeldSale = async (heldSaleId) => {
+    if (!business?.id || heldBusy) return;
+    if (cart.length > 0) {
+      setErrorMsg('Deja en espera o termina la venta actual antes de recuperar otra.');
+      return;
+    }
+    setHeldBusy(true);
+    setErrorMsg(null);
+    const { data, error } = await claimHeldPosSale(business.id, heldSaleId);
+    if (error) {
+      setErrorMsg(error.message);
+      await refreshHeldSales();
+      setHeldBusy(false);
+      return;
+    }
+
+    const claimToken = data?.claim_token;
+    try {
+      const restoredItems = (data?.items || []).map((item, index) => ({
+        _key: item.product_id || `manual_held_${data.id}_${index}`,
+        product_id: item.product_id || null,
+        name: item.name,
+        unit_price: Number(item.unit_price),
+        quantity: Number(item.quantity),
+        note: item.note || null,
+      }));
+      if (restoredItems.length === 0) throw new Error('La venta en espera no contiene artículos.');
+
+      const restoredPayments = [{ id: `payment_${Date.now()}`, method: 'cash', amount: '' }];
+      const restoredDiscount = Number(data.discount || 0) > 0 ? String(Number(data.discount)) : '';
+      const newIdempotencyKey = getOrCreateSaleIdempotencyKey();
+
+      setCart(restoredItems);
+      setCustomerId(data.customer_id || '');
+      setDiscount(restoredDiscount);
+      setNotes(data.notes || '');
+      setPayments(restoredPayments);
+      setCheckoutStep('sale');
+
+      // Guardar protección local antes de eliminar el hold servidor.
+      if (draftKey) {
+        writePosTerminalDraft(draftKey, buildPosTerminalDraftSnapshot({
+          cart: restoredItems,
+          customerId: data.customer_id || '',
+          discount: restoredDiscount,
+          notes: data.notes || '',
+          payments: restoredPayments,
+          idempotencyKey: newIdempotencyKey,
+        }));
+      }
+
+      const consumed = await consumeClaimedPosSale(business.id, data.id, claimToken);
+      if (consumed.error) {
+        setErrorMsg('La venta fue recuperada, pero su registro en espera sigue protegido. No la recuperes desde otra caja.');
+      } else {
+        setHeldSales((prev) => prev.filter((sale) => sale.id !== data.id));
+      }
+      setHeldSalesOpen(false);
+    } catch (resumeError) {
+      if (claimToken) await releaseClaimedPosSale(business.id, heldSaleId, claimToken);
+      setErrorMsg(resumeError?.message || 'No se pudo recuperar la venta en espera.');
+      await refreshHeldSales();
+    } finally {
+      setHeldBusy(false);
+    }
+  };
+
+  const handleDiscardHeldSale = async (heldSaleId) => {
+    if (!business?.id || heldBusy) return;
+    setHeldBusy(true);
+    setErrorMsg(null);
+    const { error } = await discardHeldPosSale(business.id, heldSaleId);
+    if (error) setErrorMsg(error.message);
+    await refreshHeldSales();
+    setHeldBusy(false);
+  };
+
   const updatePayment = (id, updates) => {
     setPayments((prev) => prev.map((payment) => (
       payment.id === id ? { ...payment, ...updates } : payment
