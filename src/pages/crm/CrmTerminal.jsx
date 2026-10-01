@@ -790,6 +790,15 @@ function CrmTerminalUI() {
     // ya está disabled en la UI, este es el mismo guard defense-in-depth
     // que el resto del componente usa junto a cada disabled=.
     if (hasStockIssues) return;
+    // La venta normal entra lista para efectivo exacto: el cajero puede
+    // confirmar de inmediato o reemplazar el monto si recibió más dinero.
+    // Si ya existe una configuración de pago restaurada/editada, se conserva.
+    setPayments((prev) => {
+      const isFreshCash = prev.length === 1 && prev[0]?.method === 'cash' && !parseMoneyInput(prev[0]?.amount);
+      return isFreshCash
+        ? [{ ...prev[0], amount: String(Math.max(0, total)) }]
+        : prev;
+    });
     setCheckoutStep('payment');
   };
 
@@ -1802,18 +1811,13 @@ function CrmTerminalUI() {
                             existía antes de TPV-CORE-3; solo cambió CUÁNDO
                             se muestra, no CÓMO funciona. */}
                         <div className="rounded-2xl border border-gray-200 bg-white p-3 space-y-3">
-                          <div className="flex items-end justify-between gap-3">
-                            <div>
-                              <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Total a cobrar</p>
-                              <p className="text-3xl font-black tracking-tight text-gray-950">{fmt(total, business?.currency)}</p>
-                            </div>
-                            <span className={`rounded-full px-2.5 py-1 text-xs font-black ${pendingBalance > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                              {paymentStatusLabel}
-                            </span>
+                          <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Total a cobrar</p>
+                            <p className="text-3xl font-black tracking-tight text-gray-950">{fmt(total, business?.currency)}</p>
                           </div>
 
                           <div>
-                            <p className="mb-2 text-xs font-bold text-gray-700">¿Cómo paga?</p>
+                            <p className="mb-2 text-xs font-bold text-gray-700">Medio de pago</p>
                             <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
                               {REAL_PAYMENT_METHODS.map((method) => {
                                 const selected = payments.length === 1 && payments[0]?.method === method.value && parseMoneyInput(payments[0]?.amount) > 0;
