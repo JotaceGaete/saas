@@ -1736,7 +1736,8 @@ function CrmTerminalUI() {
 
                     {checkoutStep === 'sale' && (
                       <>
-                        {/* Discount + Notes — single compact row */}
+                        {/* Discount + Notes only become relevant once a sale exists. */}
+                        {cart.length > 0 && (
                         <div className="flex gap-2">
                           <div className="flex-1 relative">
                             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
@@ -1757,9 +1758,11 @@ function CrmTerminalUI() {
                             className="flex-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                           />
                         </div>
+                        )}
 
                         {/* CTA "Cobrar" — desktop only; mobile usa la barra fija
                             para no duplicar el mismo CTA dos veces en pantalla. */}
+                        {cart.length > 0 && (
                         <div className="hidden lg:flex flex-col gap-2.5 rounded-2xl bg-gray-950 px-4 py-4 shadow-xl">
                           <div className="flex justify-between items-end">
                             <span className="text-sm font-bold text-gray-300">Total</span>
@@ -1798,6 +1801,7 @@ function CrmTerminalUI() {
                             Ventas en espera ({heldSales.length})
                           </button>
                         </div>
+                        )}
                       </>
                     )}
 
