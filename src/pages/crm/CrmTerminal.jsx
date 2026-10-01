@@ -5,7 +5,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer } from '../../services/crmService';
+import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, holdPosSale, listHeldPosSales, claimHeldPosSale, releaseClaimedPosSale, consumeClaimedPosSale, discardHeldPosSale } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { canUseFeature } from '../../config/planFeatures';
 import CrmThermalTicket from './components/CrmThermalTicket';
@@ -241,6 +241,10 @@ function CrmTerminalUI() {
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+  // POS-HELD-SALES-1: ventas suspendidas deliberadamente por el cajero.
+  const [heldSales, setHeldSales] = useState([]);
+  const [heldSalesOpen, setHeldSalesOpen] = useState(false);
+  const [heldBusy, setHeldBusy] = useState(false);
   // TPV-CORE-3: paso del flujo de checkout -- puramente de interfaz, nunca
   // representa una venta registrada ni se persiste en el draft (ver
   // efecto de restauración más abajo: tras refresh siempre vuelve a
