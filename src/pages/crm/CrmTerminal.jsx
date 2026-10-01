@@ -65,14 +65,14 @@ function ProductThumb({ product }) {
       <img
         src={src}
         alt={product.name}
-        className="aspect-[5/4] w-full object-cover rounded-xl"
+        className="aspect-[4/3] w-full object-contain rounded-xl bg-gray-50"
         loading="lazy"
       />
     );
   }
   const initial = (product.name || '?')[0].toUpperCase();
   return (
-    <div className="aspect-[5/4] w-full rounded-xl bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center text-3xl font-black text-gray-300 select-none">
+    <div className="aspect-[4/3] w-full rounded-xl bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center text-3xl font-black text-gray-300 select-none">
       {initial}
     </div>
   );
@@ -1466,27 +1466,30 @@ function CrmTerminalUI() {
                             key={p.id}
                             onClick={() => { if (!outOfStock) addToCart(p); }}
                             disabled={outOfStock}
-                            className={`group flex flex-col gap-2.5 rounded-2xl border p-2.5 text-left shadow-sm transition-all ${
+                            className={`group flex h-full flex-col gap-2 rounded-2xl border p-2.5 text-left shadow-sm transition-all ${
                               outOfStock
                                 ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
                                 : 'border-gray-200 bg-white hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg active:scale-[0.98]'
                             }`}
                           >
                             <ProductThumb product={p} />
-                            <div className="min-w-0 px-1 pb-1">
-                              {p.category && (
-                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide truncate mb-1">{p.category}</p>
-                              )}
-                              <p className="min-h-[32px] text-sm font-bold text-gray-900 line-clamp-2 leading-snug group-hover:text-blue-700">{p.name}</p>
-                              <div className="mt-1.5 flex items-center justify-between gap-2">
-                                <p className="truncate text-base font-black text-blue-600">{fmt(p.price, business?.currency)}</p>
-
+                            <div className="flex min-h-[92px] min-w-0 flex-1 flex-col px-1 pb-1">
+                              <div className="min-h-[16px]">
+                                {p.category && (
+                                  <p className="truncate text-[10px] font-bold uppercase tracking-wide text-gray-400">{p.category}</p>
+                                )}
                               </div>
-                              {outOfStock ? (
-                                <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-red-500">Sin stock</p>
-                              ) : hasStockLabel && (
-                                <p className="mt-1 text-[10px] font-semibold text-gray-400">Stock: {p.stock_actual}</p>
-                              )}
+                              <p className="mt-0.5 min-h-[34px] text-sm font-bold leading-snug text-gray-900 line-clamp-2 group-hover:text-blue-700">{p.name}</p>
+                              <div className="mt-auto pt-2">
+                                <p className="truncate text-base font-black text-blue-600">{fmt(p.price, business?.currency)}</p>
+                                <div className="min-h-[15px]">
+                                  {outOfStock ? (
+                                    <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-red-500">Sin stock</p>
+                                  ) : hasStockLabel ? (
+                                    <p className="mt-0.5 text-[10px] font-semibold text-gray-400">Stock: {p.stock_actual}</p>
+                                  ) : null}
+                                </div>
+                              </div>
                             </div>
                           </button>
                         );
