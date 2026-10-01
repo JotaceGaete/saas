@@ -248,7 +248,7 @@ function SalesByDayChart({ dailySeries, currency }) {
             formatter={(value) => [formatMoney(value, currency), 'Ventas netas']}
             contentStyle={{ borderRadius: 10, fontSize: 12, border: '1px solid #e5e7eb' }}
           />
-          <Bar dataKey="total" radius={[5, 5, 0, 0]} maxBarSize={singleDayRange ? 72 : 56}>
+          <Bar dataKey="total" radius={[5, 5, 0, 0]} maxBarSize={singleDayRange ? 110 : 56}>
             {data.map((d, i) => <Cell key={i} fill={d.total === max ? '#059669' : 'rgba(5,150,105,0.25)'} />)}
           </Bar>
         </BarChart>
