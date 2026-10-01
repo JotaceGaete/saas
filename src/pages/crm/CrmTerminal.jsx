@@ -238,6 +238,7 @@ function CrmTerminalUI() {
   const [customerId, setCustomerId] = useState('');
   const [discount, setDiscount] = useState('');
   const [payments, setPayments] = useState([{ id: 'payment_1', method: 'cash', amount: '' }]);
+  const [splitPaymentMode, setSplitPaymentMode] = useState(false);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -628,6 +629,7 @@ function CrmTerminalUI() {
     setCustomerId('');
     setDiscount('');
     setPayments([{ id: `payment_${Date.now()}`, method: 'cash', amount: '' }]);
+    setSplitPaymentMode(false);
     setNotes('');
     setSearch('');
     setActiveCategory('');
@@ -777,6 +779,7 @@ function CrmTerminalUI() {
   // handleRegister/appliedPayments ya consumen.
   const selectQuickPaymentMethod = (method) => {
     const amount = String(Math.max(0, total));
+    setSplitPaymentMode(false);
     setPayments([{ id: `payment_${Date.now()}`, method, amount }]);
   };
 
@@ -785,11 +788,13 @@ function CrmTerminalUI() {
   // el saldo restante con un toque.
   const startSplitPayment = () => {
     const firstMethod = payments[0]?.method || 'cash';
+    setSplitPaymentMode(true);
     setPayments([{ id: `payment_${Date.now()}`, method: firstMethod, amount: '' }]);
   };
 
   const addPaymentForRemainingBalance = () => {
     const remaining = Math.max(0, pendingBalance);
+    setSplitPaymentMode(true);
     setPayments((prev) => [
       ...prev,
       {
@@ -819,10 +824,12 @@ function CrmTerminalUI() {
         ? [{ ...prev[0], amount: String(Math.max(0, total)) }]
         : prev;
     });
+    setSplitPaymentMode(false);
     setCheckoutStep('payment');
   };
 
   const handleBackToSale = () => {
+    setSplitPaymentMode(false);
     setCheckoutStep('sale');
   };
 
@@ -1877,7 +1884,7 @@ function CrmTerminalUI() {
                             </div>
                           )}
 
-                          {payments.length === 1 && (
+                          {!splitPaymentMode && payments.length === 1 && (
                             <button
                               type="button"
                               onClick={startSplitPayment}
@@ -1893,7 +1900,7 @@ function CrmTerminalUI() {
                             </button>
                           )}
 
-                          {payments.length > 1 || (payments.length === 1 && !parseMoneyInput(payments[0]?.amount)) ? (
+                          {splitPaymentMode ? (
                             <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3 space-y-2.5">
                               <div className="flex items-center justify-between gap-2">
                                 <div>
