@@ -1756,17 +1756,17 @@ function CrmTerminalUI() {
                               Revisa {cartStockIssues.size} producto{cartStockIssues.size === 1 ? '' : 's'} sin stock suficiente.
                             </p>
                           )}
-                          <div className="grid grid-cols-[auto_1fr] gap-2">
-                            <button
-                              type="button"
-                              onClick={handleHoldSale}
-                              disabled={cart.length === 0 || heldBusy}
-                              className="flex items-center justify-center gap-2 rounded-2xl border border-gray-700 px-3 py-3 text-sm font-bold text-gray-200 hover:bg-gray-900 disabled:opacity-40"
-                              title="Guardar esta venta y comenzar otra"
-                            >
-                              <Icon name="Pause" size={16} />
-                              En espera
-                            </button>
+                          <button
+                            type="button"
+                            onClick={handleHoldSale}
+                            disabled={cart.length === 0 || heldBusy}
+                            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-700 px-3 py-3 text-sm font-bold text-gray-200 hover:bg-gray-900 disabled:opacity-40"
+                            title="Guardar esta venta y comenzar otra"
+                          >
+                            <Icon name="Pause" size={16} />
+                            Dejar en espera
+                          </button>
+                          <div className="grid grid-cols-1 gap-2">
                             <button
                               onClick={handleGoToPayment}
                               disabled={cart.length === 0 || hasStockIssues}
