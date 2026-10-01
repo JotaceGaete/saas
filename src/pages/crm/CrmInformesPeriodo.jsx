@@ -102,6 +102,26 @@ function fmtDateShort(dateStr) {
   return new Date(`${dateStr}T12:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' });
 }
 
+function endOfMonthDateString(dateStr) {
+  const [year, month] = String(dateStr).split('-').map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+}
+
+function fillDailyChartSlots(dailySeries, fromDate, chartToDate) {
+  if (!fromDate || !chartToDate) return dailySeries || [];
+  const byDate = new Map((dailySeries || []).map(item => [item.date, item]));
+  const rows = [];
+  const cursor = new Date(`${fromDate}T12:00:00`);
+  const end = new Date(`${chartToDate}T12:00:00`);
+  while (cursor <= end) {
+    const date = cursor.toISOString().slice(0, 10);
+    rows.push(byDate.get(date) || { date, net: 0, future: true });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return rows;
+}
+
 function Section({ title, subtitle, icon, right, children }) {
   return (
     <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
@@ -225,9 +245,10 @@ function PeriodSelector({ presetKey, fromDate, toDate, onPreset, onCustomChange 
   );
 }
 
-function SalesByDayChart({ dailySeries, currency }) {
+function SalesByDayChart({ dailySeries, currency, fromDate, chartToDate }) {
   if (!dailySeries) return <UnavailableNotice>No pudimos obtener la evolución de ventas de este período.</UnavailableNotice>;
-  const data = dailySeries.map(d => ({ label: fmtDateShort(d.date), total: d.net }));
+  const series = fillDailyChartSlots(dailySeries, fromDate, chartToDate);
+  const data = series.map(d => ({ label: fmtDateShort(d.date), total: d.net, future: !!d.future }));
   const max = Math.max(...data.map(d => d.total), 0);
   if (max <= 0) return <EmptyRow>Sin ventas registradas en este período.</EmptyRow>;
 
@@ -254,7 +275,7 @@ function SalesByDayChart({ dailySeries, currency }) {
             <YAxis hide domain={[0, max * 1.12]} />
             <Tooltip
               cursor={{ fill: 'rgba(17,24,39,0.04)' }}
-              formatter={(value) => [formatMoney(value, currency), 'Ventas netas']}
+              formatter={(value, name, props) => props?.payload?.future ? ['Día futuro', ''] : [formatMoney(value, currency), 'Ventas netas']}
               contentStyle={{ borderRadius: 10, fontSize: 12, border: '1px solid #e5e7eb' }}
             />
             <Bar dataKey="total" radius={[4, 4, 0, 0]} maxBarSize={34}>
@@ -403,6 +424,10 @@ export default function CrmInformesPeriodo() {
 
   const expensesEntries = useMemo(() => (expenses?.available ? expenses.byCategory.map(c => ({ label: c.label, value: c.value || 0 })) : []), [expenses]);
   const methodEntries = useMemo(() => (collections?.available ? collections.byMethod.map(m => ({ label: m.label, value: m.value || 0 })) : []), [collections]);
+  const salesChartToDate = useMemo(
+    () => (presetKey === 'thisMonth' ? endOfMonthDateString(range.from) : range.to),
+    [presetKey, range.from, range.to],
+  );
 
   return (
     <DashboardAppShell>
@@ -466,7 +491,7 @@ export default function CrmInformesPeriodo() {
 
             {/* Ventas en el tiempo -------------------------------------------------- */}
             <Section title="Ventas por día" subtitle="Incluye días sin actividad ($0) para no distorsionar la evolución" icon="TrendingUp">
-              <SalesByDayChart dailySeries={sales.available ? sales.dailySeries : null} currency={currency} />
+              <SalesByDayChart dailySeries={sales.available ? sales.dailySeries : null} currency={currency} fromDate={range.from} chartToDate={salesChartToDate} />
               {sales.available && sales.activityDays && (
                 <div className="mt-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
                   <div className="rounded-xl border border-gray-100 px-3 py-2">
