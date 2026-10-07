@@ -28,6 +28,20 @@ Deno.serve(async (req) => {
   if (error) return pointJson({ error: 'Could not read Point operation' }, 500);
   if (!operation) return pointJson({ error: 'Point operation not found', reason: 'POINT_OPERATION_NOT_FOUND' }, 404);
   if (!operation.mp_order_id) {
+    // Una cancelación local puede haber quedado con cleanup pendiente. Como
+    // no existe order remota, el estado local 'canceled' sí es suficiente
+    // para reintentar únicamente la liberación idempotente de la reserva.
+    if (operation.mp_status === 'canceled') {
+      const { error: releaseError } = await ctx.admin.rpc('crm_point_release_stock', { p_operation_id: operation.id });
+      if (releaseError) {
+        console.error('[mp-point-get-order] local canceled cleanup failed:', releaseError.message, { businessId: ctx.businessId, operationId });
+        return pointJson({
+          error: 'Point operation is canceled but stock cleanup is pending',
+          reason: 'LOCAL_RELEASE_FAILED',
+          operation_id: operation.id, order_id: null, status: 'canceled',
+        }, 500);
+      }
+    }
     return pointJson({
       ok: true, operation_id: operation.id, order_id: null,
       status: operation.mp_status, status_detail: operation.mp_status_detail,
@@ -157,7 +171,14 @@ Deno.serve(async (req) => {
     finalized = !!invoiceId;
   } else if (['failed', 'expired', 'canceled', 'refunded'].includes(order.status)) {
     const { error: releaseError } = await ctx.admin.rpc('crm_point_release_stock', { p_operation_id: operation.id });
-    if (releaseError) console.error('[mp-point-get-order] stock release failed:', releaseError.message, { businessId: ctx.businessId, operationId });
+    if (releaseError) {
+      console.error('[mp-point-get-order] stock release failed:', releaseError.message, { businessId: ctx.businessId, operationId });
+      return pointJson({
+        error: 'Point order reached a terminal state but stock cleanup is pending',
+        reason: 'LOCAL_RELEASE_FAILED',
+        operation_id: operation.id, order_id: order.id, status: order.status,
+      }, 500);
+    }
   }
 
   return pointJson({
