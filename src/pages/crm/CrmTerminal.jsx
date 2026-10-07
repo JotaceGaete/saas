@@ -1108,6 +1108,20 @@ function CrmTerminalUI() {
     if (error && !data) { setPointError(error.message); return; }
     const next = data || {};
     setPointOperation(prev => ({ ...prev, ...next }));
+    // Supabase Functions surfaces non-2xx responses as { data, error }. A 202
+    // from mp-point-get-order is intentionally recoverable: the payment may
+    // already be processed while the local sale finalizer is still pending.
+    // Keep the same operation/idempotency keys and continue polling, but make
+    // the pending recovery state visible to the cashier.
+    if (error) {
+      if (error.reason === 'POINT_FINALIZATION_PENDING') {
+        setPointError('Pago aprobado. Walinka está terminando de registrar la venta; no vuelvas a cobrar.');
+      } else {
+        setPointError(error.message || 'No pudimos confirmar el estado del cobro. Walinka seguirá consultándolo.');
+      }
+    } else {
+      setPointError(null);
+    }
     if (next.invoice_id) { finishPointUi(next); return; }
     if (['failed','expired','canceled','refunded'].includes(next.status)) {
       if (pointStorageKey) localStorage.removeItem(pointStorageKey);
