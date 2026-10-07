@@ -124,7 +124,8 @@ Deno.serve(async (req) => {
       .select('id, mp_order_id, mp_status, created_at')
       .eq('business_id', ctx.businessId)
       .eq('terminal_id', terminalId)
-      .in('mp_status', ['creating', 'created', 'at_terminal', 'action_required'])
+      .in('mp_status', ['creating', 'created', 'at_terminal', 'action_required', 'processed'])
+      .is('crm_invoice_id', null)
       .order('created_at', { ascending: false })
       .limit(1);
     if (activeOperationError) {
