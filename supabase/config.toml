@@ -157,3 +157,13 @@ verify_jwt = false
 
 [functions.mp-point-webhook]
 verify_jwt = false
+
+
+# Point: CORS preflight sin JWT; el handler valida el JWT de usuario internamente.
+[functions.mp-point-connection]
+verify_jwt = false
+
+
+# Point: CORS preflight sin JWT; el handler valida el JWT de usuario internamente.
+[functions.mp-point-terminal-preference]
+verify_jwt = false
