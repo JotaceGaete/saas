@@ -263,7 +263,7 @@ Deno.serve(async (req) => {
     expiration_time: 'PT16M',
     transactions: { payments: [{ amount: String(operation.amount) }] },
     config: {
-      point: { terminal_id: operation.terminal_id, print_on_terminal: 'no_ticket' },
+      point: { terminal_id: operation.terminal_id, print_on_terminal: 'seller_ticket' },
       payment_method: { default_type: 'credit_card' },
     },
     description: 'Venta Walinka',
