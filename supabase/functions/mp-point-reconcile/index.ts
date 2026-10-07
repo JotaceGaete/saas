@@ -85,6 +85,11 @@ Deno.serve(async (req) => {
         console.warn('[mp-point-reconcile] connection unavailable', { operationId: op.id, businessId: op.business_id });
         continue;
       }
+      if (connection.token_expires_at && Date.parse(connection.token_expires_at) <= Date.now()) {
+        result.deferred++;
+        console.warn('[mp-point-reconcile] connection expired', { operationId: op.id, businessId: op.business_id });
+        continue;
+      }
 
       let mpResponse: Response;
       try {
