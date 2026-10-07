@@ -1113,16 +1113,26 @@ function CrmTerminalUI() {
     // already be processed while the local sale finalizer is still pending.
     // Keep the same operation/idempotency keys and continue polling, but make
     // the pending recovery state visible to the cashier.
+    // Una invoice confirmada gana incluso si el transporte envolvió la
+    // respuesta con error: la venta ya existe y es seguro cerrar la UI.
+    if (next.invoice_id) { finishPointUi(next); return; }
+
+    // Cualquier non-2xx es recuperable desde la perspectiva del cajero:
+    // conservar operationId + claves idempotentes y seguir consultando. En
+    // particular LOCAL_RELEASE_FAILED puede traer status='canceled'; NO se
+    // debe habilitar un cobro nuevo hasta que el backend confirme cleanup.
     if (error) {
       if (error.reason === 'POINT_FINALIZATION_PENDING') {
         setPointError('Pago aprobado. Walinka está terminando de registrar la venta; no vuelvas a cobrar.');
+      } else if (error.reason === 'LOCAL_RELEASE_FAILED') {
+        setPointError('El cobro terminó, pero Walinka aún está liberando la reserva de stock. Espera antes de intentar nuevamente.');
       } else {
         setPointError(error.message || 'No pudimos confirmar el estado del cobro. Walinka seguirá consultándolo.');
       }
-    } else {
-      setPointError(null);
+      return;
     }
-    if (next.invoice_id) { finishPointUi(next); return; }
+    setPointError(null);
+
     if (['failed','expired','canceled','refunded'].includes(next.status)) {
       if (pointStorageKey) localStorage.removeItem(pointStorageKey);
       // Un estado terminal significa que este intento de cobro ya no puede
