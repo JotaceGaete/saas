@@ -3,7 +3,7 @@
 // extraemos data.id como hint, localizamos una operación conocida y hacemos
 // GET /v1/orders/{id} con el OAuth DEL comercio antes de persistir/finalizar.
 
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
 import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
 import { MP_ORDERS_URL, MP_ALLOWED_STATUSES, sanitizePointOrder } from '../_shared/mpPoint.ts';
 
@@ -46,11 +46,19 @@ Deno.serve(async(req)=>{
   if(!conn?.access_token) return ignored('mp_not_connected');
 
   let res:Response;
-  try{res=await fetch(`${MP_ORDERS_URL}/${encodeURIComponent(orderId)}`,{headers:{Authorization:`Bearer ${conn.access_token}`,'Content-Type':'application/json'}});}
+  try{res=await fetch(`${MP_ORDERS_URL}/${encodeURIComponent(orderId)}`,{
+    headers:{Authorization:`Bearer ${conn.access_token}`,'Content-Type':'application/json'},
+    signal:AbortSignal.timeout(5000),
+  });}
   catch{return json({ok:false,error:'mp_fetch_failed'},502);}
   const raw=await res.text();
   if(!res.ok){
-    if(res.status===401||res.status===404) return ignored('order_not_found_for_business');
+    // 401 no significa "orden inexistente": normalmente implica credencial
+    // inválida/expirada. Devolver error hace visible el problema y permite
+    // retry del webhook; 404 sí puede ignorarse para un hint que no pertenece
+    // a este comercio.
+    if(res.status===404) return ignored('order_not_found_for_business');
+    if(res.status===401) return json({ok:false,error:'mp_auth_failed'},502);
     return json({ok:false,error:'mp_api_error'},502);
   }
 
@@ -76,7 +84,12 @@ Deno.serve(async(req)=>{
     }
   }else if(['failed','expired','canceled','refunded'].includes(order.status)){
     const {error:releaseError}=await admin.rpc('crm_point_release_stock',{p_operation_id:op.id});
-    if(releaseError) console.error('[mp-point-webhook] stock release failed:',releaseError.message,{operationId:op.id});
+    if(releaseError){
+      console.error('[mp-point-webhook] stock release failed:',releaseError.message,{operationId:op.id});
+      // No confirmar el webhook como exitoso si el cleanup local quedó
+      // incompleto. El RPC es idempotente y un retry es seguro.
+      return json({ok:false,error:'stock_release_failed'},500);
+    }
   }
 
   console.log('[mp-point-webhook] order_synced',{operationId:op.id,businessId:op.business_id,status:order.status});
