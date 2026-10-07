@@ -113,6 +113,17 @@ Deno.serve(async (req) => {
   }).eq('id', operation.id);
 
   if (order.status === 'canceled') {
+    // Una llamada previa pudo confirmar la cancelación remota pero fallar al
+    // liberar la reserva local. Reintentar siempre: el RPC es idempotente.
+    const { error: releaseError } = await ctx.admin.rpc('crm_point_release_stock', { p_operation_id: operation.id });
+    if (releaseError) {
+      console.error('[mp-point-cancel-order] canceled cleanup failed:', releaseError.message, { businessId: ctx.businessId, operationId });
+      return pointJson({
+        error: 'Point order is canceled but stock cleanup is pending',
+        reason: 'LOCAL_RELEASE_FAILED',
+        operation_id: operation.id, order_id: order.id, status: 'canceled',
+      }, 500);
+    }
     return pointJson({ ok: true, changed: false, operation_id: operation.id, order_id: order.id, status: 'canceled' }, 200);
   }
   if (order.status !== 'created' && order.status !== 'at_terminal') {
@@ -183,6 +194,11 @@ Deno.serve(async (req) => {
   const { error: releaseError } = await ctx.admin.rpc('crm_point_release_stock', { p_operation_id: operation.id });
   if (releaseError) {
     console.error('[mp-point-cancel-order] stock release failed:', releaseError.message, { businessId: ctx.businessId, operationId });
+    return pointJson({
+      error: 'Point order was canceled but stock cleanup is pending',
+      reason: 'LOCAL_RELEASE_FAILED',
+      operation_id: operation.id, order_id: operation.mp_order_id, status: 'canceled',
+    }, 500);
   }
 
   return pointJson({
