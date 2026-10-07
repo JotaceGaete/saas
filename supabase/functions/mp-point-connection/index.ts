@@ -62,18 +62,21 @@ Deno.serve(async(req)=>{
   // ese ledger histórico. Una operación local en 'creating' sí puede estar
   // en una ventana ambigua de creación, por lo que sigue bloqueando.
   const {data:active,error:activeError}=await admin.from('crm_pos_point_operations')
-    .select('id,mp_status,mp_order_id,created_at')
+    .select('id,mp_status,mp_order_id,crm_invoice_id,created_at')
     .eq('business_id',businessId)
-    .in('mp_status',['creating','created','at_terminal','action_required'])
+    .in('mp_status',['creating','created','at_terminal','action_required','processed'])
+    .is('crm_invoice_id',null)
     .order('created_at',{ascending:false})
     .limit(20);
   if(activeError) return jsonResponse({error:'Could not verify active Point operations'},500);
 
-  const ambiguousCreating=(active??[]).find((op:Record<string,unknown>)=>op.mp_status==='creating');
-  if(ambiguousCreating) return jsonResponse({
-    error:'Hay un cobro Point en creación. Cancélalo o recupéralo antes de cambiar la cuenta.',
+  const blockingOperation=(active??[]).find((op:Record<string,unknown>)=>op.mp_status==='creating'||op.mp_status==='processed');
+  if(blockingOperation) return jsonResponse({
+    error:blockingOperation.mp_status==='processed'
+      ? 'Hay un pago Point aprobado pendiente de registrar. Recupéralo antes de cambiar la cuenta.'
+      : 'Hay un cobro Point en creación. Cancélalo o recupéralo antes de cambiar la cuenta.',
     reason:'POINT_OPERATION_ACTIVE',
-    operation_id:ambiguousCreating.id,
+    operation_id:blockingOperation.id,
   },409);
 
   // Las órdenes con id remoto se reconciliarán/cancelarán desde el TPV antes
