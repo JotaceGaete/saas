@@ -119,6 +119,7 @@ Deno.serve(async (req) => {
         mp_status: order.status,
         mp_status_detail: order.status_detail,
         mp_payment_id: order.payment_id,
+        updated_at: new Date().toISOString(),
       };
       if (order.status === 'processed' && !op.processed_at) update.processed_at = new Date().toISOString();
 
