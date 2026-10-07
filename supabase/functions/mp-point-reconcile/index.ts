@@ -54,27 +54,18 @@ Deno.serve(async (req) => {
 
   // Camino de reparación: si una operación ya quedó terminal pero una
   // liberación anterior falló, la reserva sigue siendo la prueba durable de
-  // que falta cleanup. No recorremos todos los terminales históricos.
-  const { data: reservationRows, error: reservationError } = await admin
-    .from('crm_pos_point_stock_reservations')
-    .select('operation_id')
+  // que falta cleanup. El INNER JOIN evita recorrer terminales históricos
+  // que ya no tienen nada pendiente y evita starvation por reservas activas.
+  const { data: terminalCleanupOperations, error: cleanupError } = await admin
+    .from('crm_pos_point_operations')
+    .select(`${operationSelect},crm_pos_point_stock_reservations!inner(operation_id)`)
+    .is('crm_invoice_id', null)
+    .not('mp_order_id', 'is', null)
+    .in('mp_status', ['failed', 'expired', 'canceled', 'refunded'])
+    .order('updated_at', { ascending: true })
     .limit(BATCH_SIZE);
 
-  if (reservationError) return json({ error: 'Reservation lookup failed' }, 500);
-
-  const reservedOperationIds = [...new Set((reservationRows ?? []).map((row) => row.operation_id).filter(Boolean))];
-  let terminalCleanupOperations: typeof activeOperations = [];
-  if (reservedOperationIds.length > 0) {
-    const { data, error } = await admin
-      .from('crm_pos_point_operations')
-      .select(operationSelect)
-      .in('id', reservedOperationIds)
-      .is('crm_invoice_id', null)
-      .not('mp_order_id', 'is', null)
-      .in('mp_status', ['failed', 'expired', 'canceled', 'refunded']);
-    if (error) return json({ error: 'Cleanup lookup failed' }, 500);
-    terminalCleanupOperations = data ?? [];
-  }
+  if (cleanupError) return json({ error: 'Cleanup lookup failed' }, 500);
 
   const deduped = new Map<string, (NonNullable<typeof activeOperations>)[number]>();
   for (const op of [...(activeOperations ?? []), ...(terminalCleanupOperations ?? [])]) deduped.set(op.id, op);
