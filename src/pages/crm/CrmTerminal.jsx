@@ -2128,6 +2128,183 @@ function CrmTerminalUI() {
 
                     {checkoutStep === 'payment' && (
                       <>
+                        {/* POINT-SMART-2-7 — Point integrado. Separado de
+                            "Mercado Pago manual": en esta fase cobra el total
+                            completo y el backend crea la venta solo al recibir
+                            processed desde Mercado Pago. */}
+                        <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-3 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-yellow-300">
+                                <Icon name="Smartphone" size={16} className="text-gray-900" />
+                              </span>
+                              <div>
+                                <p className="text-xs font-black text-gray-900">Mercado Pago Point</p>
+                                <p className="text-[10px] text-gray-600">Cobro integrado · total {fmt(total, business?.currency)}</p>
+                              </div>
+                            </div>
+                            <button type="button" onClick={loadPointTerminals} disabled={pointLoading || !!pointOperation?.operation_id}
+                              className="rounded-lg px-2 py-1 text-[10px] font-bold text-gray-700 hover:bg-yellow-100 disabled:opacity-40">
+                              Actualizar
+                            </button>
+                          </div>
+
+                          {!pointOperation?.operation_id ? (
+                            <>
+                              {pointTerminals.length > 0 ? (
+                                <div className="space-y-2">
+                                  {pointPreference?.terminal_id && (
+                                    <div className="rounded-xl border border-gray-900/10 bg-white px-3 py-2.5">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Point actual</p>
+                                          <p className="break-all text-[11px] font-black text-gray-900">{pointPreference.terminal_id}</p>
+                                          <p className="mt-1 text-[10px] text-gray-600">
+                                            {pointPreference.verification_status === 'verified'
+                                              ? 'Verificada para cobros integrados'
+                                              : 'Pendiente de verificación física'}
+                                          </p>
+                                        </div>
+                                        <button type="button" onClick={handleUnlinkPointTerminal} disabled={pointLoading}
+                                          className="shrink-0 rounded-lg border border-gray-200 px-2 py-1 text-[10px] font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-40">
+                                          Desvincular
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {!pointPreference?.terminal_id && (
+                                    <p className="text-[10px] font-semibold text-gray-600">
+                                      Elige la Point física que usará Walinka. No seleccionaremos una automáticamente.
+                                    </p>
+                                  )}
+                                  <div className="space-y-1.5">
+                                    {pointTerminals.map((terminal) => {
+                                      const selected = terminal.id === pointPreference?.terminal_id;
+                                      const mode = terminal.operating_mode || 'UNDEFINED';
+                                      return (
+                                        <div key={terminal.id}
+                                          className={`w-full rounded-xl border px-3 py-2.5 text-left ${
+                                            selected ? 'border-gray-900 bg-white ring-2 ring-gray-900/10' : 'border-yellow-200 bg-white/70'
+                                          }`}>
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0">
+                                              <p className="break-all text-[11px] font-black text-gray-900">{terminal.id}</p>
+                                              <p className="mt-1 text-[10px] text-gray-600">
+                                                POS {terminal.pos_id || 'sin asignar'} · Tienda {terminal.store_id || 'sin asignar'}
+                                              </p>
+                                            </div>
+                                            <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-black ${
+                                              mode === 'PDV' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                                            }`}>{mode}</span>
+                                          </div>
+                                          <button type="button" onClick={() => handleSelectPointTerminal(terminal.id)}
+                                            disabled={pointLoading || selected}
+                                            className="mt-2 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[10px] font-bold text-gray-800 hover:bg-gray-50 disabled:opacity-50">
+                                            {selected ? '✓ Point actual' : pointPreference?.terminal_id ? 'Cambiar a esta Point' : 'Usar esta Point'}
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  {pointTerminalId && pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode !== 'PDV' && (
+                                    <button type="button" onClick={handleSetupPoint} disabled={pointLoading}
+                                      className="w-full rounded-xl bg-gray-900 px-3 py-2.5 text-xs font-bold text-white disabled:opacity-50">
+                                      Activar PDV en la Point actual
+                                    </button>
+                                  )}
+                                  {pointTerminalId &&
+                                    pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode === 'PDV' &&
+                                    pointPreference?.verification_status !== 'verified' && (
+                                    <div className="rounded-xl border border-amber-200 bg-white/80 p-3 space-y-2">
+                                      <p className="text-[11px] font-bold text-gray-800">
+                                        Confirma en la Point que muestra “Tu point está vinculado al punto de venta”.
+                                      </p>
+                                      <p className="text-[10px] text-gray-500">
+                                        Walinka volverá a comprobar con Mercado Pago que esta misma terminal sigue en modo PDV antes de habilitar cobros.
+                                      </p>
+                                      <button type="button" onClick={handleVerifyPointTerminal} disabled={pointLoading}
+                                        className="w-full rounded-xl bg-gray-900 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50">
+                                        Ya está vinculada · verificar
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-gray-600">
+                                  {pointLoading ? 'Buscando terminales Point…' : 'No encontramos una terminal Point en la cuenta conectada.'}
+                                </p>
+                              )}
+                              <button type="button" onClick={handlePointCharge}
+                                disabled={pointLoading || !pointTerminalId || pointPreference?.verification_status !== 'verified' || pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode !== 'PDV' || total <= 0}
+                                className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-300 px-3 py-2.5 text-sm font-black text-gray-950 hover:bg-yellow-200 disabled:bg-yellow-100 disabled:text-gray-400">
+                                {pointLoading ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Zap" size={15} />}
+                                Enviar {fmt(total, business?.currency)} a la Point
+                              </button>
+                            </>
+                          ) : (
+                            <div className="rounded-xl bg-white border border-yellow-200 p-3 space-y-2">
+                              <div className="flex items-center gap-2">
+                                <Icon name={pointOperation.status === 'processed' ? 'BadgeCheck' : 'Loader2'} size={16}
+                                  className={pointOperation.status === 'processed' ? 'text-emerald-600' : 'animate-spin text-yellow-600'} />
+                                <div>
+                                  <p className="text-xs font-black text-gray-900">
+                                    {pointOperation.status === 'recovering' ? 'Recuperando cobro…'
+                                      : pointOperation.status === 'at_terminal' ? 'Esperando al cliente en la Point…'
+                                      : pointOperation.status === 'action_required' ? 'Revisa la pantalla de la Point'
+                                      : pointOperation.status === 'processed' ? 'Pago aprobado · registrando venta…'
+                                      : 'Enviando cobro a la Point…'}
+                                  </p>
+                                  <p className="text-[10px] text-gray-500">Estado: {pointOperation.status || 'consultando'}</p>
+                                </div>
+                              </div>
+                              <button type="button" onClick={handleCancelPoint} disabled={pointCanceling || pointOperation.status === 'processed'}
+                                className="w-full rounded-lg border border-gray-200 px-2 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+                                {pointCanceling ? 'Cancelando…' : 'Cancelar cobro'}
+                              </button>
+                            </div>
+                          )}
+                          {!pointOperation?.operation_id && pointLastResult && (
+                            <div className="rounded-xl border border-gray-200 bg-white/80 px-3 py-2.5">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Último cobro Point</p>
+                                  <p className="text-xs font-black text-gray-800">Estado: {pointLastResult.status}</p>
+                                  {pointLastResult.payment_status_detail && (
+                                    <p className="mt-0.5 text-[10px] text-gray-500">Detalle: {pointLastResult.payment_status_detail}</p>
+                                  )}
+                                  {pointLastResult.order_id && (
+                                    <p className="mt-0.5 break-all text-[9px] text-gray-400">Order: {pointLastResult.order_id}</p>
+                                  )}
+                                </div>
+                                <button type="button" onClick={() => setPointLastResult(null)}
+                                  className="shrink-0 rounded-lg border border-gray-200 px-2 py-1 text-[10px] font-bold text-gray-500 hover:bg-gray-50">
+                                  Ocultar
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          {pointConnection && !pointOperation?.operation_id && (
+                            <div className="rounded-xl border border-gray-200 bg-white/70 px-3 py-2.5 flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Cuenta Point conectada</p>
+                                <p className="text-xs font-black text-gray-800 truncate">{pointConnection.provider_user_id || 'Mercado Pago'}</p>
+                                <p className="text-[10px] text-gray-500">Solo afecta cobros Point · no Checkout Pro</p>
+                              </div>
+                              <button type="button" onClick={handleDisconnectPointConnection} disabled={pointLoading}
+                                className="shrink-0 rounded-lg border border-red-200 bg-white px-2.5 py-2 text-[11px] font-bold text-red-600 hover:bg-red-50 disabled:opacity-40">
+                                Cambiar cuenta
+                              </button>
+                            </div>
+                          )}
+                          {pointErrorReason === 'MP_POINT_NOT_CONNECTED' && !pointOperation?.operation_id && (
+                            <button type="button" onClick={handleConnectPoint} disabled={pointLoading}
+                              className="w-full rounded-xl bg-gray-900 px-3 py-2.5 text-xs font-black text-white hover:bg-gray-800 disabled:opacity-50">
+                              Conectar Mercado Pago Point
+                            </button>
+                          )}
+                          {pointError && <p className="rounded-lg bg-white/70 px-2.5 py-2 text-[11px] font-semibold text-red-600">{pointError}</p>}
+                        </div>
+
                         {/* Payment method — reutiliza exactamente el mismo
                             estado/lógica de payments/cuenta corriente que
                             existía antes de TPV-CORE-3; solo cambió CUÁNDO
