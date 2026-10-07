@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, adminKey);
 
   const staleBefore = new Date(Date.now() - STALE_MINUTES * 60_000).toISOString();
-  const operationSelect = 'id,business_id,mp_order_id,external_reference,mp_status,crm_invoice_id,processed_at';
+  const operationSelect = 'id,business_id,mp_order_id,external_reference,mp_status,crm_invoice_id,processed_at,amount';
 
   // Camino normal: operaciones activas que dejaron de recibir polling/webhook.
   const { data: activeOperations, error: activeError } = await admin
@@ -113,7 +113,8 @@ Deno.serve(async (req) => {
         order.id !== op.mp_order_id ||
         order.external_reference !== op.external_reference ||
         !order.status ||
-        !MP_ALLOWED_STATUSES.has(order.status)
+        !MP_ALLOWED_STATUSES.has(order.status) ||
+        order.amount === null || Number(order.amount) !== Number(op.amount)
       ) {
         result.failed++;
         console.error('[mp-point-reconcile] correlation/status mismatch', { operationId: op.id });
@@ -123,9 +124,9 @@ Deno.serve(async (req) => {
       const update: Record<string, unknown> = {
         mp_status: order.status,
         mp_status_detail: order.status_detail,
-        mp_payment_id: order.payment_id,
-        updated_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
       };
+      if (order.payment_id) update.mp_payment_id = order.payment_id;
       if (order.status === 'processed' && !op.processed_at) update.processed_at = new Date().toISOString();
 
       const { error: syncError } = await admin.from('crm_pos_point_operations').update(update).eq('id', op.id);
