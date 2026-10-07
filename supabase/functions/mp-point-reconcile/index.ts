@@ -7,7 +7,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
 import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
 import { MP_ALLOWED_STATUSES, MP_ORDERS_URL, sanitizePointOrder } from '../_shared/mpPoint.ts';
 
-const BATCH_SIZE = 20;
+const BATCH_SIZE = 10;
 const STALE_MINUTES = 5;
 const TERMINAL_RELEASE_STATUSES = new Set(['failed', 'expired', 'canceled', 'refunded']);
 
@@ -37,9 +37,12 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, adminKey);
 
   const staleBefore = new Date(Date.now() - STALE_MINUTES * 60_000).toISOString();
-  const { data: operations, error: listError } = await admin
+  const operationSelect = 'id,business_id,mp_order_id,external_reference,mp_status,crm_invoice_id,processed_at';
+
+  // Camino normal: operaciones activas que dejaron de recibir polling/webhook.
+  const { data: activeOperations, error: activeError } = await admin
     .from('crm_pos_point_operations')
-    .select('id,business_id,mp_order_id,external_reference,mp_status,crm_invoice_id,processed_at')
+    .select(operationSelect)
     .is('crm_invoice_id', null)
     .not('mp_order_id', 'is', null)
     .in('mp_status', ['created', 'at_terminal', 'action_required', 'processed'])
@@ -47,7 +50,35 @@ Deno.serve(async (req) => {
     .order('updated_at', { ascending: true })
     .limit(BATCH_SIZE);
 
-  if (listError) return json({ error: 'Operation lookup failed' }, 500);
+  if (activeError) return json({ error: 'Operation lookup failed' }, 500);
+
+  // Camino de reparación: si una operación ya quedó terminal pero una
+  // liberación anterior falló, la reserva sigue siendo la prueba durable de
+  // que falta cleanup. No recorremos todos los terminales históricos.
+  const { data: reservationRows, error: reservationError } = await admin
+    .from('crm_pos_point_stock_reservations')
+    .select('operation_id')
+    .limit(BATCH_SIZE);
+
+  if (reservationError) return json({ error: 'Reservation lookup failed' }, 500);
+
+  const reservedOperationIds = [...new Set((reservationRows ?? []).map((row) => row.operation_id).filter(Boolean))];
+  let terminalCleanupOperations: typeof activeOperations = [];
+  if (reservedOperationIds.length > 0) {
+    const { data, error } = await admin
+      .from('crm_pos_point_operations')
+      .select(operationSelect)
+      .in('id', reservedOperationIds)
+      .is('crm_invoice_id', null)
+      .not('mp_order_id', 'is', null)
+      .in('mp_status', ['failed', 'expired', 'canceled', 'refunded']);
+    if (error) return json({ error: 'Cleanup lookup failed' }, 500);
+    terminalCleanupOperations = data ?? [];
+  }
+
+  const deduped = new Map<string, (NonNullable<typeof activeOperations>)[number]>();
+  for (const op of [...(activeOperations ?? []), ...(terminalCleanupOperations ?? [])]) deduped.set(op.id, op);
+  const operations = [...deduped.values()].slice(0, BATCH_SIZE);
 
   const result = { examined: 0, synced: 0, finalized: 0, released: 0, deferred: 0, failed: 0 };
 
@@ -68,6 +99,7 @@ Deno.serve(async (req) => {
       try {
         mpResponse = await fetch(`${MP_ORDERS_URL}/${encodeURIComponent(op.mp_order_id)}`, {
           headers: { Authorization: `Bearer ${connection.access_token}`, 'Content-Type': 'application/json' },
+          signal: AbortSignal.timeout(5000),
         });
       } catch {
         result.deferred++;
