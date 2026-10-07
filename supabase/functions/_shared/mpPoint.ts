@@ -1,5 +1,5 @@
 // Shared server-side helpers for Mercado Pago Point (POINT-SMART-2).
-import { createClient } from 'npm:@supabase/supabase-js@2.117.3';
+import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
 import { getSupabasePublishableKeyOrEmpty } from './supabasePublishableKey.ts';
 import { getSupabaseAdminKeyOrEmpty } from './supabaseAdminKey.ts';
 
