@@ -37,7 +37,7 @@ Deno.serve(async (req) => {
   const admin = createClient(supabaseUrl, adminKey);
 
   const staleBefore = new Date(Date.now() - STALE_MINUTES * 60_000).toISOString();
-  const operationSelect = 'id,business_id,mp_order_id,external_reference,mp_status,crm_invoice_id,processed_at,amount';
+  const operationSelect = 'id,business_id,mp_order_id,external_reference,mp_status,crm_invoice_id,processed_at,amount,create_idempotency_key,terminal_id,created_at';
 
   // Camino normal: operaciones activas que dejaron de recibir polling/webhook.
   const { data: activeOperations, error: activeError } = await admin
@@ -51,6 +51,23 @@ Deno.serve(async (req) => {
     .limit(BATCH_SIZE);
 
   if (activeError) return json({ error: 'Operation lookup failed' }, 500);
+
+  // Recuperación de órdenes ambiguas: el POST original puede haber llegado a MP
+  // aunque la respuesta se haya perdido. Reintentar ÚNICAMENTE con la misma
+  // clave persistida, referencia, importe y terminal; jamás inventar una orden
+  // nueva ni liberar stock si la respuesta continúa siendo incierta.
+  const { data: ambiguousOperations, error: ambiguousError } = await admin
+    .from('crm_pos_point_operations')
+    .select(operationSelect)
+    .is('crm_invoice_id', null)
+    .is('mp_order_id', null)
+    .eq('mp_status', 'creating')
+    .lt('updated_at', staleBefore)
+    .order('updated_at', { ascending: true })
+    .limit(BATCH_SIZE);
+
+  if (ambiguousError) return json({ error: 'Ambiguous operation lookup failed' }, 500);
+
 
   // Camino de reparación: si una operación ya quedó terminal pero una
   // liberación anterior falló, la reserva sigue siendo la prueba durable de
@@ -68,7 +85,7 @@ Deno.serve(async (req) => {
   if (cleanupError) return json({ error: 'Cleanup lookup failed' }, 500);
 
   const deduped = new Map<string, (NonNullable<typeof activeOperations>)[number]>();
-  for (const op of [...(activeOperations ?? []), ...(terminalCleanupOperations ?? [])]) deduped.set(op.id, op);
+  for (const op of [...(activeOperations ?? []), ...(terminalCleanupOperations ?? []), ...(ambiguousOperations ?? [])]) deduped.set(op.id, op);
   const operations = [...deduped.values()].slice(0, BATCH_SIZE);
 
   const result = { examined: 0, synced: 0, finalized: 0, released: 0, deferred: 0, failed: 0 };
@@ -89,6 +106,73 @@ Deno.serve(async (req) => {
         result.deferred++;
         console.warn('[mp-point-reconcile] connection expired', { operationId: op.id, businessId: op.business_id });
         continue;
+      }
+
+      if (!op.mp_order_id) {
+        // La creación original puede haber sido aceptada: nunca cancelar por
+        // ausencia de id. Recuperamos mediante la MISMA idempotency key.
+        if (!op.create_idempotency_key || !op.terminal_id || !op.external_reference) {
+          result.failed++;
+          continue;
+        }
+        // No reemitir órdenes expiradas: fuera de la ventana de la orden
+        // original, la idempotencia remota puede no seguir garantizada.
+        const createdAt = Date.parse(op.created_at);
+        if (!Number.isFinite(createdAt) || Date.now() - createdAt > 10 * 60_000) {
+          result.deferred++;
+          console.warn('[mp-point-reconcile] ambiguous order requires manual investigation', { operationId: op.id });
+          continue;
+        }
+        let retryResponse: Response;
+        try {
+          retryResponse = await fetch(MP_ORDERS_URL, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${connection.access_token}`,
+              'Content-Type': 'application/json',
+              'X-Idempotency-Key': String(op.create_idempotency_key),
+            },
+            body: JSON.stringify({
+              type: 'point',
+              external_reference: op.external_reference,
+              expiration_time: 'PT16M',
+              transactions: { payments: [{ amount: String(op.amount) }] },
+              config: {
+                point: { terminal_id: op.terminal_id, print_on_terminal: 'seller_ticket' },
+                payment_method: { default_type: 'credit_card' },
+              },
+              description: 'Venta Walinka',
+            }),
+            signal: AbortSignal.timeout(5000),
+          });
+        } catch {
+          result.deferred++;
+          continue;
+        }
+        if (!retryResponse.ok) {
+          result.deferred++;
+          continue;
+        }
+        let recovered;
+        try { recovered = sanitizePointOrder(await retryResponse.json()); }
+        catch { result.deferred++; continue; }
+        if (!recovered.id || recovered.external_reference !== op.external_reference ||
+            !recovered.status || !MP_ALLOWED_STATUSES.has(recovered.status) ||
+            recovered.amount === null || Number(recovered.amount) !== Number(op.amount)) {
+          result.failed++;
+          continue;
+        }
+        const { data: linked, error: linkError } = await admin
+          .from('crm_pos_point_operations')
+          .update({ mp_order_id: recovered.id })
+          .eq('id', op.id)
+          .is('mp_order_id', null)
+          .select('id');
+        if (linkError || !linked?.length) {
+          result.deferred++;
+          continue;
+        }
+        op.mp_order_id = recovered.id;
       }
 
       let mpResponse: Response;
