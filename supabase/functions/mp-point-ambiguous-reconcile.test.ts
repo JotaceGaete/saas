@@ -17,6 +17,15 @@ describe('Point — unattended recovery after ambiguous create (regression)', ()
     expect(reconcile).toContain('external_reference');
   });
 
+  it('retries with the original persisted key and checks remote correlation', () => {
+    expect(reconcile).toContain("'X-Idempotency-Key': String(op.create_idempotency_key)");
+    expect(reconcile).toContain('external_reference: op.external_reference');
+    expect(reconcile).toContain('terminal_id: op.terminal_id');
+    expect(reconcile).toContain('recovered.external_reference !== op.external_reference');
+    expect(reconcile).toContain('Number(recovered.amount) !== Number(op.amount)');
+    expect(reconcile).toContain('10 * 60_000');
+  });
+
   it('must not release stock solely because an order id is missing', () => {
     expect(reconcile).not.toMatch(/!op\.mp_order_id[\s\S]{0,160}crm_point_release_stock/);
   });
