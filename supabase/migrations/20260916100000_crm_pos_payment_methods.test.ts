@@ -22,8 +22,8 @@ const previousFnSource = previousFnMatch ? previousFnMatch[0] : '';
 
 const stripComments = (src: string) =>
   src
-    .split('\n')
-    .map((line) => line.replace(/--.*$/, '').replace(/\s+$/, ''))
+    .split(/\r?\n/)
+    .map((line) => line.replace(/--.*$/, '').trimEnd())
     .filter((line) => line.trim() !== '')
     .join('\n');
 
