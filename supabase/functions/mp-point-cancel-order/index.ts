@@ -42,58 +42,19 @@ Deno.serve(async (req) => {
     .select('*').eq('id', operationId).eq('business_id', ctx.businessId).maybeSingle();
   if (error) return pointJson({ error: 'Could not read Point operation' }, 500);
   if (!operation) return pointJson({ error: 'Point operation not found', reason: 'POINT_OPERATION_NOT_FOUND' }, 404);
-  // Si el POST de creación a MP fue rechazado de forma definitiva, puede quedar
-  // una operación local en 'creating' sin mp_order_id y con stock reservado.
-  // En ese caso no existe una order remota que cancelar: abandonamos únicamente
-  // la operación local y liberamos su reserva. No aplicar esta salida a otros
-  // estados, porque una operación ambigua debe recuperarse/verificarse, no
-  // asumirse cancelada.
+  // Una operación sin mp_order_id puede representar una creación ambigua:
+  // Mercado Pago pudo haber aceptado el POST aunque la respuesta se perdiera.
+  // No hay prueba durable de rechazo definitivo que permita distinguir ambos
+  // casos. Nunca marcarla canceled ni liberar stock solo por mp_status=creating.
+  // Recuperar mediante mp-point-create-order con la MISMA createIdempotencyKey;
+  // una vez persistido mp_order_id, cancelar usando el estado remoto verificado.
   if (!operation.mp_order_id) {
-    if (operation.mp_status !== 'creating') {
-      return pointJson({
-        error: 'Point operation without order cannot be canceled from its current state',
-        reason: 'ORDER_NOT_CREATED',
-        operation_id: operation.id,
-        status: operation.mp_status,
-      }, 409);
-    }
-
-    const { data: canceledLocal, error: cancelLocalError } = await ctx.admin
-      .from('crm_pos_point_operations')
-      .update({ mp_status: 'canceled', mp_status_detail: 'local_create_aborted' })
-      .eq('id', operation.id)
-      .eq('business_id', ctx.businessId)
-      .eq('mp_status', 'creating')
-      .is('mp_order_id', null)
-      .select('id')
-      .maybeSingle();
-
-    if (cancelLocalError) {
-      console.error('[mp-point-cancel-order] local cancel failed:', cancelLocalError.message, { businessId: ctx.businessId, operationId });
-      return pointJson({ error: 'Could not cancel local Point operation', reason: 'LOCAL_CANCEL_FAILED' }, 500);
-    }
-
-    // Una llamada concurrente/repetida puede haber cambiado el estado entre el
-    // SELECT inicial y el UPDATE condicional. No liberar reservas a ciegas.
-    if (!canceledLocal) {
-      return pointJson({ error: 'Point operation changed while canceling; refresh its status', reason: 'LOCAL_CANCEL_RACE' }, 409);
-    }
-
-    const { error: releaseError } = await ctx.admin.rpc('crm_point_release_stock', { p_operation_id: operation.id });
-    if (releaseError) {
-      console.error('[mp-point-cancel-order] local stock release failed:', releaseError.message, { businessId: ctx.businessId, operationId });
-      return pointJson({
-        error: 'Point operation was canceled but stock reservation cleanup failed',
-        reason: 'LOCAL_RELEASE_FAILED',
-        operation_id: operation.id,
-        status: 'canceled',
-      }, 500);
-    }
-
     return pointJson({
-      ok: true, changed: true, operation_id: operation.id,
-      order_id: null, status: 'canceled',
-    }, 200);
+      error: 'Point order creation is unresolved; recover the original order before canceling',
+      reason: 'MP_CREATE_UNRESOLVED',
+      operation_id: operation.id,
+      status: operation.mp_status,
+    }, 409);
   }
 
   // Antes de cancelar, reconsultar siempre MP. Nunca decidir con estado local
