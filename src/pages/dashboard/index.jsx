@@ -170,15 +170,15 @@ export default function Dashboard() {
         getPendingOrdersCount(business?.id),
         getWeeklyOrdersCount(business?.id),
       ]);
-      setProducts(productsResponse?.data || []);
+      if (!productsResponse?.error) setProducts(productsResponse?.data || []);
       if (ordersResponse?.error) {
         console.error('[Dashboard] getOrders error:', ordersResponse?.error?.message || ordersResponse?.error);
-        setOrders([]);
+        // Preserve last valid orders when the backend times out.
       } else {
         setOrders(ordersResponse?.data || []);
       }
-      setPendingOrdersCount(pendingRes?.data ?? 0);
-      setWeeklyOrdersCount(weeklyRes?.data ?? 0);
+      if (!pendingRes?.error) setPendingOrdersCount(pendingRes?.data ?? 0);
+      if (!weeklyRes?.error) setWeeklyOrdersCount(weeklyRes?.data ?? 0);
       lastDashboardFetchAt.current = Date.now();
     } catch (err) {
       console.error('Dashboard load error:', err);
@@ -198,13 +198,13 @@ export default function Dashboard() {
         getBusinessVisitStats(business?.id),
         getConversionFunnelStats(business?.id, funnelRange),
       ]);
-      setOrdersByDay(dayRes?.data || []);
-      setTopProducts(topRes?.data || []);
+      if (!dayRes?.error) setOrdersByDay(dayRes?.data || []);
+      if (!topRes?.error) setTopProducts(topRes?.data || []);
       if (revRes?.error) console.error('[Dashboard] getMonthlyRevenue:', revRes.error?.message || revRes.error);
       if (funnelRes?.error) console.error('[Dashboard] getConversionFunnelStats:', funnelRes.error?.message || funnelRes.error);
-      setMonthlyRevenue(revRes?.data || null);
-      setVisitStats(visitRes?.data ?? null);
-      setConversionFunnel(funnelRes?.data ?? null);
+      if (!revRes?.error) setMonthlyRevenue(revRes?.data || null);
+      if (!visitRes?.error) setVisitStats(visitRes?.data ?? null);
+      if (!funnelRes?.error) setConversionFunnel(funnelRes?.data ?? null);
       lastAnalyticsFetchAt.current = Date.now();
     } catch (err) {
       console.error('Analytics load error:', err);
@@ -249,7 +249,7 @@ export default function Dashboard() {
     setPlanUsageLoading(true);
     try {
       const res = await getPlanUsage(business?.id);
-      setPlanUsage(res?.data ?? null);
+      if (!res?.error) setPlanUsage(res?.data ?? null);
       lastPlanUsageFetchAt.current = Date.now();
     } catch (err) {
       console.error('[PlanUsage] error:', err);
