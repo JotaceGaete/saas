@@ -343,12 +343,13 @@ export default function Dashboard() {
 
     const onOrderUpdated = async () => {
       await expireDeliveredOrders(business?.id);
-      const [{ data: ordersData }, pendingRes] = await Promise.all([
+      const [ordersRes, pendingRes] = await Promise.all([
         getOrders(business?.id),
         getPendingOrdersCount(business?.id),
       ]);
-      if (ordersData) setOrders(ordersData);
-      setPendingOrdersCount(pendingRes?.data ?? 0);
+      // A failed request must never reset the live order counter to zero.
+      if (!ordersRes?.error && ordersRes?.data) setOrders(ordersRes.data);
+      if (!pendingRes?.error) setPendingOrdersCount(pendingRes?.data ?? 0);
       scheduleDebouncedRefresh();
     };
 
