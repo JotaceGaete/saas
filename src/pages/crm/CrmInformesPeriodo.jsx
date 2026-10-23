@@ -102,6 +102,26 @@ function fmtDateShort(dateStr) {
   return new Date(`${dateStr}T12:00:00`).toLocaleDateString('es-CL', { day: 'numeric', month: 'short' });
 }
 
+function endOfMonthDateString(dateStr) {
+  const [year, month] = String(dateStr).split('-').map(Number);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  return `${year}-${String(month).padStart(2, '0')}-${String(lastDay).padStart(2, '0')}`;
+}
+
+function fillDailyChartSlots(dailySeries, fromDate, chartToDate) {
+  if (!fromDate || !chartToDate) return dailySeries || [];
+  const byDate = new Map((dailySeries || []).map(item => [item.date, item]));
+  const rows = [];
+  const cursor = new Date(`${fromDate}T12:00:00`);
+  const end = new Date(`${chartToDate}T12:00:00`);
+  while (cursor <= end) {
+    const date = cursor.toISOString().slice(0, 10);
+    rows.push(byDate.get(date) || { date, net: 0, future: true });
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return rows;
+}
+
 function Section({ title, subtitle, icon, right, children }) {
   return (
     <section className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
@@ -225,32 +245,45 @@ function PeriodSelector({ presetKey, fromDate, toDate, onPreset, onCustomChange 
   );
 }
 
-function SalesByDayChart({ dailySeries, currency }) {
+function SalesByDayChart({ dailySeries, currency, fromDate, chartToDate }) {
   if (!dailySeries) return <UnavailableNotice>No pudimos obtener la evolución de ventas de este período.</UnavailableNotice>;
-  const data = dailySeries.map(d => ({ label: fmtDateShort(d.date), total: d.net }));
+  const series = fillDailyChartSlots(dailySeries, fromDate, chartToDate);
+  const data = series.map(d => ({ label: fmtDateShort(d.date), total: d.net, future: !!d.future }));
   const max = Math.max(...data.map(d => d.total), 0);
   if (max <= 0) return <EmptyRow>Sin ventas registradas en este período.</EmptyRow>;
-  // Para rangos largos, recharts ya deja de mostrar todas las etiquetas del
-  // eje X (interval="preserveStartEnd" + auto) -- se prioriza granularidad
-  // diaria completa (ticket §5) antes que agregación semanal/mensual, que
-  // queda fuera de alcance de REPORTES-PERIODO-1 salvo que se demuestre un
-  // problema real de rendimiento.
+
+  // Estilo "Excel": cada día ocupa una columna estable y la barra es angosta.
+  // En rangos cortos el gráfico usa todo el ancho; en rangos largos puede
+  // desplazarse horizontalmente sin convertir una sola venta en un bloque.
+  const slotWidth = data.length <= 7 ? 92 : data.length <= 14 ? 64 : 46;
+  const chartWidth = Math.max(620, data.length * slotWidth);
+  const tickInterval = data.length <= 14 ? 0 : Math.ceil(data.length / 12) - 1;
+
   return (
-    <div style={{ height: 220 }}>
-      <ResponsiveContainer width="100%" height="100%">
-        <BarChart data={data} margin={{ top: 4, right: 4, left: 4, bottom: 0 }}>
-          <XAxis dataKey="label" tick={{ fontSize: 9, fill: '#9ca3af' }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={16} />
-          <YAxis hide />
-          <Tooltip
-            cursor={{ fill: 'rgba(17,24,39,0.04)' }}
-            formatter={(value) => [formatMoney(value, currency), 'Ventas netas']}
-            contentStyle={{ borderRadius: 10, fontSize: 12, border: '1px solid #e5e7eb' }}
-          />
-          <Bar dataKey="total" radius={[3, 3, 0, 0]}>
-            {data.map((d, i) => <Cell key={i} fill={d.total === max ? '#059669' : 'rgba(5,150,105,0.25)'} />)}
-          </Bar>
-        </BarChart>
-      </ResponsiveContainer>
+    <div className="overflow-x-auto pb-1">
+      <div style={{ width: chartWidth, minWidth: '100%', height: 220 }}>
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 8, right: 12, left: 12, bottom: 0 }} barCategoryGap="42%">
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 9, fill: '#9ca3af' }}
+              axisLine={{ stroke: '#e5e7eb' }}
+              tickLine={false}
+              interval={tickInterval}
+              minTickGap={8}
+            />
+            <YAxis hide domain={[0, max * 1.12]} />
+            <Tooltip
+              cursor={{ fill: 'rgba(17,24,39,0.04)' }}
+              formatter={(value, name, props) => props?.payload?.future ? ['Día futuro', ''] : [formatMoney(value, currency), 'Ventas netas']}
+              contentStyle={{ borderRadius: 10, fontSize: 12, border: '1px solid #e5e7eb' }}
+            />
+            <Bar dataKey="total" radius={[4, 4, 0, 0]} maxBarSize={34}>
+              {data.map((d, i) => <Cell key={i} fill={d.total === max ? '#059669' : 'rgba(5,150,105,0.35)'} />)}
+            </Bar>
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
     </div>
   );
 }
@@ -391,6 +424,10 @@ export default function CrmInformesPeriodo() {
 
   const expensesEntries = useMemo(() => (expenses?.available ? expenses.byCategory.map(c => ({ label: c.label, value: c.value || 0 })) : []), [expenses]);
   const methodEntries = useMemo(() => (collections?.available ? collections.byMethod.map(m => ({ label: m.label, value: m.value || 0 })) : []), [collections]);
+  const salesChartToDate = useMemo(
+    () => (presetKey === 'thisMonth' ? endOfMonthDateString(range.from) : range.to),
+    [presetKey, range.from, range.to],
+  );
 
   return (
     <DashboardAppShell>
@@ -454,17 +491,24 @@ export default function CrmInformesPeriodo() {
 
             {/* Ventas en el tiempo -------------------------------------------------- */}
             <Section title="Ventas por día" subtitle="Incluye días sin actividad ($0) para no distorsionar la evolución" icon="TrendingUp">
-              <SalesByDayChart dailySeries={sales.available ? sales.dailySeries : null} currency={currency} />
+              <SalesByDayChart dailySeries={sales.available ? sales.dailySeries : null} currency={currency} fromDate={range.from} chartToDate={salesChartToDate} />
               {sales.available && sales.activityDays && (
                 <div className="mt-4 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4">
                   <div className="rounded-xl border border-gray-100 px-3 py-2">
-                    <p className="text-gray-400">Día con más ventas</p>
+                    <p className="text-gray-400">{sales.activityDays.daysWithSales === 1 ? 'Único día con ventas' : 'Día con más ventas'}</p>
                     <p className="mt-0.5 font-bold text-gray-800">{sales.activityDays.maxDay ? `${sales.activityDays.maxDay.dateLabel} · ${sales.activityDays.maxDay.formatted}` : '—'}</p>
                   </div>
-                  <div className="rounded-xl border border-gray-100 px-3 py-2">
-                    <p className="text-gray-400">Día con menos ventas</p>
-                    <p className="mt-0.5 font-bold text-gray-800">{sales.activityDays.minDay ? `${sales.activityDays.minDay.dateLabel} · ${sales.activityDays.minDay.formatted}` : '—'}</p>
-                  </div>
+                  {sales.activityDays.daysWithSales > 1 ? (
+                    <div className="rounded-xl border border-gray-100 px-3 py-2">
+                      <p className="text-gray-400">Día con menos ventas</p>
+                      <p className="mt-0.5 font-bold text-gray-800">{sales.activityDays.minDay ? `${sales.activityDays.minDay.dateLabel} · ${sales.activityDays.minDay.formatted}` : '—'}</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-gray-100 px-3 py-2">
+                      <p className="text-gray-400">Promedio por día con ventas</p>
+                      <p className="mt-0.5 font-bold text-gray-800">{sales.activityDays.maxDay?.formatted || '—'}</p>
+                    </div>
+                  )}
                   <div className="rounded-xl border border-gray-100 px-3 py-2">
                     <p className="text-gray-400">Días con ventas</p>
                     <p className="mt-0.5 font-bold text-gray-800">{sales.activityDays.daysWithSales}</p>

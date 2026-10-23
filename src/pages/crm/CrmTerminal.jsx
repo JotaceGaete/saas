@@ -5,7 +5,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer } from '../../services/crmService';
+import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, holdPosSale, listHeldPosSales, claimHeldPosSale, releaseClaimedPosSale, consumeClaimedPosSale, discardHeldPosSale, getPointTerminals, getPointTerminalPreference, selectPointTerminal, unlinkPointTerminal, verifyPointTerminal, startPointOauth, getPointConnection, disconnectPointConnection, setupPointTerminal, createPointOrder, getPointOrder, cancelPointOrder } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { canUseFeature } from '../../config/planFeatures';
 import CrmThermalTicket from './components/CrmThermalTicket';
@@ -65,14 +65,14 @@ function ProductThumb({ product }) {
       <img
         src={src}
         alt={product.name}
-        className="aspect-[5/4] w-full object-cover rounded-xl"
+        className="aspect-[4/3] w-full object-contain rounded-xl bg-gray-50"
         loading="lazy"
       />
     );
   }
   const initial = (product.name || '?')[0].toUpperCase();
   return (
-    <div className="aspect-[5/4] w-full rounded-xl bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center text-3xl font-black text-gray-300 select-none">
+    <div className="aspect-[4/3] w-full rounded-xl bg-gradient-to-br from-gray-100 to-gray-50 flex items-center justify-center text-3xl font-black text-gray-300 select-none">
       {initial}
     </div>
   );
@@ -238,9 +238,35 @@ function CrmTerminalUI() {
   const [customerId, setCustomerId] = useState('');
   const [discount, setDiscount] = useState('');
   const [payments, setPayments] = useState([{ id: 'payment_1', method: 'cash', amount: '' }]);
+  const [splitPaymentMode, setSplitPaymentMode] = useState(false);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
+  // POS-HELD-SALES-1: ventas suspendidas deliberadamente por el cajero.
+  const [heldSales, setHeldSales] = useState([]);
+  const [heldSalesOpen, setHeldSalesOpen] = useState(false);
+  const [heldBusy, setHeldBusy] = useState(false);
+  // POINT-SMART-2-7: el flujo integrado es deliberadamente separado del
+  // medio "Mercado Pago manual". Fase 1 cobra el TOTAL completo por Point;
+  // pagos mixtos con Point quedan fuera hasta modelarlos explícitamente.
+  const [pointTerminals, setPointTerminals] = useState([]);
+  const [pointTerminalId, setPointTerminalId] = useState('');
+  const [pointPreference, setPointPreference] = useState(null);
+  const [pointConnection, setPointConnection] = useState(null);
+  const [pointLoading, setPointLoading] = useState(false);
+  const [pointError, setPointError] = useState(null);
+  const [pointErrorReason, setPointErrorReason] = useState(null);
+  const [pointOperation, setPointOperation] = useState(null);
+  // Conserva el último resultado terminal solo para diagnóstico/UX. No es una
+  // operación activa y nunca bloquea un cobro nuevo; permite ver cómo terminó
+  // el intento anterior sin crear otra order Point.
+  const [pointLastResult, setPointLastResult] = useState(null);
+  const [pointCanceling, setPointCanceling] = useState(false);
+  const pointPollRef = useRef(null);
+  const pointCreateKeyRef = useRef(null);
+  const pointStorageKey = useMemo(() => business?.id ? `walinka:point-active:${business.id}` : null, [business?.id]);
+
+
   // TPV-CORE-3: paso del flujo de checkout -- puramente de interfaz, nunca
   // representa una venta registrada ni se persiste en el draft (ver
   // efecto de restauración más abajo: tras refresh siempre vuelve a
@@ -624,11 +650,129 @@ function CrmTerminalUI() {
     setCustomerId('');
     setDiscount('');
     setPayments([{ id: `payment_${Date.now()}`, method: 'cash', amount: '' }]);
+    setSplitPaymentMode(false);
     setNotes('');
     setSearch('');
     setActiveCategory('');
     setErrorMsg(null);
     setTimeout(() => searchRef.current?.focus(), 50);
+  };
+
+  const refreshHeldSales = useCallback(async () => {
+    if (!business?.id) return;
+    const { data, error } = await listHeldPosSales(business.id);
+    if (error) {
+      setErrorMsg(error.message);
+      return;
+    }
+    setHeldSales(data || []);
+  }, [business?.id]);
+
+  useEffect(() => {
+    if (!hasAccess) return;
+    refreshHeldSales();
+  }, [hasAccess, refreshHeldSales]);
+
+  const handleHoldSale = async () => {
+    if (!business?.id || cart.length === 0 || heldBusy || checkoutStep !== 'sale') return;
+    setHeldBusy(true);
+    setErrorMsg(null);
+    const { error } = await holdPosSale(business.id, {
+      customerId: customerId || null,
+      items: cart,
+      discount: discountAmount,
+      notes: notes || null,
+      label: selectedCustomer?.name || null,
+    });
+    if (error) {
+      setErrorMsg(error.message);
+      setHeldBusy(false);
+      return;
+    }
+    // El servidor confirmó el hold: recién ahora se libera esta caja.
+    resetForm();
+    await refreshHeldSales();
+    setHeldBusy(false);
+  };
+
+  const handleResumeHeldSale = async (heldSaleId) => {
+    if (!business?.id || heldBusy) return;
+    if (cart.length > 0) {
+      setErrorMsg('Deja en espera o termina la venta actual antes de recuperar otra.');
+      return;
+    }
+    setHeldBusy(true);
+    setErrorMsg(null);
+    const { data, error } = await claimHeldPosSale(business.id, heldSaleId);
+    if (error) {
+      setErrorMsg(error.message);
+      await refreshHeldSales();
+      setHeldBusy(false);
+      return;
+    }
+
+    const claimToken = data?.claim_token;
+    try {
+      const restoredItems = (data?.items || []).map((item, index) => ({
+        _key: item.product_id || `manual_held_${data.id}_${index}`,
+        product_id: item.product_id || null,
+        name: item.name,
+        unit_price: Number(item.unit_price),
+        quantity: Number(item.quantity),
+        note: item.note || null,
+      }));
+      if (restoredItems.length === 0) throw new Error('La venta en espera no contiene artículos.');
+
+      const restoredPayments = [{ id: `payment_${Date.now()}`, method: 'cash', amount: '' }];
+      const restoredDiscount = Number(data.discount || 0) > 0 ? String(Number(data.discount)) : '';
+      // Es una venta retomada distinta de cualquier intento vacío/anterior.
+      saleIdempotencyKeyRef.current = null;
+      const newIdempotencyKey = getOrCreateSaleIdempotencyKey();
+
+      setCart(restoredItems);
+      setCustomerId(data.customer_id || '');
+      setDiscount(restoredDiscount);
+      setNotes(data.notes || '');
+      setPayments(restoredPayments);
+      setCheckoutStep('sale');
+
+      // Guardar protección local antes de eliminar el hold servidor.
+      if (draftKey) {
+        writePosTerminalDraft(draftKey, buildPosTerminalDraftSnapshot({
+          cart: restoredItems,
+          customerId: data.customer_id || '',
+          discount: restoredDiscount,
+          notes: data.notes || '',
+          payments: restoredPayments,
+          idempotencyKey: newIdempotencyKey,
+        }));
+      }
+
+      const consumed = await consumeClaimedPosSale(business.id, data.id, claimToken);
+      if (consumed.error) {
+        setErrorMsg('La venta fue recuperada, pero su registro en espera sigue protegido. No la recuperes desde otra caja.');
+      } else {
+        setHeldSales((prev) => prev.filter((sale) => sale.id !== data.id));
+      }
+      setHeldSalesOpen(false);
+    } catch (resumeError) {
+      if (claimToken) await releaseClaimedPosSale(business.id, heldSaleId, claimToken);
+      setErrorMsg(resumeError?.message || 'No se pudo recuperar la venta en espera.');
+      await refreshHeldSales();
+    } finally {
+      setHeldBusy(false);
+    }
+  };
+
+  const handleDiscardHeldSale = async (heldSaleId) => {
+    if (!business?.id || heldBusy) return;
+    if (!window.confirm('¿Descartar esta venta en espera? Esta acción no se puede deshacer.')) return;
+    setHeldBusy(true);
+    setErrorMsg(null);
+    const { error } = await discardHeldPosSale(business.id, heldSaleId);
+    if (error) setErrorMsg(error.message);
+    await refreshHeldSales();
+    setHeldBusy(false);
   };
 
   const updatePayment = (id, updates) => {
@@ -651,6 +795,37 @@ function CrmTerminalUI() {
     });
   };
 
+  // TPV-CHECKOUT-UX-1: un toque selecciona el medio y completa el saldo.
+  // No cambia la lógica contable: solo prepara el mismo array payments que
+  // handleRegister/appliedPayments ya consumen.
+  const selectQuickPaymentMethod = (method) => {
+    const amount = String(Math.max(0, total));
+    setSplitPaymentMode(false);
+    setPayments([{ id: `payment_${Date.now()}`, method, amount }]);
+  };
+
+  // Pago dividido rápido: al activarlo partimos con el primer medio vacío
+  // para que el cajero escriba cuánto recibió; el segundo medio puede tomar
+  // el saldo restante con un toque.
+  const startSplitPayment = () => {
+    const firstMethod = payments[0]?.method || 'cash';
+    setSplitPaymentMode(true);
+    setPayments([{ id: `payment_${Date.now()}`, method: firstMethod, amount: '' }]);
+  };
+
+  const addPaymentForRemainingBalance = () => {
+    const remaining = Math.max(0, pendingBalance);
+    setSplitPaymentMode(true);
+    setPayments((prev) => [
+      ...prev,
+      {
+        id: `payment_${Date.now()}_${prev.length}`,
+        method: prev.some((payment) => payment.method === 'debit_card') ? 'cash' : 'debit_card',
+        amount: remaining > 0 ? String(remaining) : '',
+      },
+    ]);
+  };
+
   // ── TPV-CORE-3: flujo de checkout en dos etapas ───────────────────────────
   // Estado puramente de UI -- no crea ni modifica ningún registro. Nunca
   // borra carrito/cliente/descuento/notas/pagos/idempotency key/draft.
@@ -661,10 +836,21 @@ function CrmTerminalUI() {
     // ya está disabled en la UI, este es el mismo guard defense-in-depth
     // que el resto del componente usa junto a cada disabled=.
     if (hasStockIssues) return;
+    // La venta normal entra lista para efectivo exacto: el cajero puede
+    // confirmar de inmediato o reemplazar el monto si recibió más dinero.
+    // Si ya existe una configuración de pago restaurada/editada, se conserva.
+    setPayments((prev) => {
+      const isFreshCash = prev.length === 1 && prev[0]?.method === 'cash' && !parseMoneyInput(prev[0]?.amount);
+      return isFreshCash
+        ? [{ ...prev[0], amount: String(Math.max(0, total)) }]
+        : prev;
+    });
+    setSplitPaymentMode(false);
     setCheckoutStep('payment');
   };
 
   const handleBackToSale = () => {
+    setSplitPaymentMode(false);
     setCheckoutStep('sale');
   };
 
@@ -778,6 +964,313 @@ function CrmTerminalUI() {
     // este flush por un cancel() o se pierde el último cambio sin guardar.
     draftDebouncerRef.current.flush(() => persistDraftNowRef.current());
   }, []);
+
+  const loadPointTerminals = useCallback(async () => {
+    setPointLoading(true); setPointError(null); setPointErrorReason(null);
+    const [terminalsResult, preferenceResult, connectionResult] = await Promise.all([
+      getPointTerminals(),
+      getPointTerminalPreference(),
+      getPointConnection(),
+    ]);
+    setPointLoading(false);
+    if (terminalsResult.error) {
+      setPointError(terminalsResult.error.message);
+      setPointErrorReason(terminalsResult.error.reason || null);
+      return;
+    }
+    if (preferenceResult.error) {
+      setPointError(preferenceResult.error.message);
+      setPointErrorReason(preferenceResult.error.reason || null);
+      return;
+    }
+    if (connectionResult.error) {
+      setPointError(connectionResult.error.message);
+      setPointErrorReason(connectionResult.error.reason || null);
+      return;
+    }
+    setPointConnection(connectionResult.data?.connection || null);
+    const terminals = Array.isArray(terminalsResult.data?.terminals) ? terminalsResult.data.terminals : [];
+    const preference = preferenceResult.data?.preference || null;
+    setPointTerminals(terminals);
+    setPointPreference(preference);
+    // Nunca elegir una terminal por ser la primera o por informar PDV.
+    // Solo la preferencia persistida y explícita del comercio es la Point activa.
+    setPointTerminalId(
+      preference?.terminal_id && terminals.some(t => t.id === preference.terminal_id)
+        ? preference.terminal_id
+        : ''
+    );
+  }, []);
+
+  const handleSelectPointTerminal = async (terminalId) => {
+    if (pointOperation?.operation_id) return;
+    setPointLoading(true); setPointError(null); setPointErrorReason(null);
+    const { data, error } = await selectPointTerminal(terminalId);
+    setPointLoading(false);
+    if (error) {
+      setPointError(error.message);
+      setPointErrorReason(error.reason || null);
+      return;
+    }
+    setPointPreference(data?.preference || { terminal_id: terminalId, verification_status: 'pending' });
+    setPointTerminalId(terminalId);
+  };
+
+  const handleVerifyPointTerminal = async () => {
+    if (!pointTerminalId || pointOperation?.operation_id) return;
+    setPointLoading(true); setPointError(null); setPointErrorReason(null);
+    const { data, error } = await verifyPointTerminal(pointTerminalId);
+    setPointLoading(false);
+    if (error) {
+      setPointError(error.message);
+      setPointErrorReason(error.reason || null);
+      return;
+    }
+    setPointPreference(data?.preference || null);
+  };
+
+  const handleUnlinkPointTerminal = async () => {
+    if (pointOperation?.operation_id) return;
+    setPointLoading(true); setPointError(null); setPointErrorReason(null);
+    const { error } = await unlinkPointTerminal();
+    setPointLoading(false);
+    if (error) {
+      setPointError(error.message);
+      setPointErrorReason(error.reason || null);
+      return;
+    }
+    setPointPreference(null);
+    setPointTerminalId('');
+  };
+
+  const handleConnectPoint = useCallback(async () => {
+    setPointLoading(true); setPointError(null); setPointErrorReason(null);
+    const { data, error } = await startPointOauth();
+    setPointLoading(false);
+    if (error || !data?.authorizationUrl) {
+      setPointError(error?.message || 'No pudimos iniciar la conexión con Mercado Pago Point.');
+      return;
+    }
+    window.location.assign(data.authorizationUrl);
+  }, []);
+
+  const handleDisconnectPointConnection = useCallback(async () => {
+    if (pointOperation?.operation_id) return;
+    setPointLoading(true); setPointError(null); setPointErrorReason(null);
+    const { error } = await disconnectPointConnection();
+    setPointLoading(false);
+    if (error) {
+      setPointError(error.message);
+      setPointErrorReason(error.reason || null);
+      return;
+    }
+    setPointConnection(null);
+    setPointPreference(null);
+    setPointTerminalId('');
+    setPointTerminals([]);
+  }, [pointOperation]);
+
+  useEffect(() => {
+    if (checkoutStep === 'payment' && pointTerminals.length === 0 && !pointLoading && !pointError) loadPointTerminals();
+  }, [checkoutStep, pointTerminals.length, pointLoading, pointError, loadPointTerminals]);
+
+  // Recuperación después de refresh/cierre de pestaña: solo guardamos el
+  // operationId. El estado authoritative se vuelve a pedir al backend.
+  useEffect(() => {
+    if (!pointStorageKey || pointOperation) return;
+    try {
+      const operationId = localStorage.getItem(pointStorageKey);
+      if (operationId) setPointOperation({ operation_id: operationId, status: 'recovering' });
+    } catch { /* localStorage no es autoridad */ }
+  }, [pointStorageKey, pointOperation]);
+
+  const finishPointUi = useCallback((data) => {
+    if (!data?.invoice_id) return;
+    const saleSnapshot = {
+      items: [...cart], customer: selectedCustomer, paymentMethod: 'mercado_pago',
+      payments: [{ method: 'mercado_pago', amount: total }],
+      discountAmount, subtotal, total, amountReceived: null, change: null,
+      initialPaymentAmount: null, initialPaymentMethod: null, pendingBalance: 0,
+      paymentStatus: 'Pagada', notes: notes || null, createdAt: new Date().toISOString(),
+    };
+    draftDebouncerRef.current.cancel();
+    if (draftKey) removePosTerminalDraft(draftKey);
+    if (pointStorageKey) localStorage.removeItem(pointStorageKey);
+    setPointOperation(null);
+    setTicketData({ sale: data.sale || { id: data.invoice_id }, ...saleSnapshot });
+    refreshProducts();
+  }, [cart, selectedCustomer, total, discountAmount, subtotal, notes, draftKey, pointStorageKey]);
+
+  const pollPointOnce = useCallback(async () => {
+    const operationId = pointOperation?.operation_id;
+    if (!operationId) return;
+    const { data, error } = await getPointOrder(operationId);
+    if (error && !data) { setPointError(error.message); return; }
+    const next = data || {};
+    setPointOperation(prev => ({ ...prev, ...next }));
+    // Supabase Functions surfaces non-2xx responses as { data, error }. A 202
+    // from mp-point-get-order is intentionally recoverable: the payment may
+    // already be processed while the local sale finalizer is still pending.
+    // Keep the same operation/idempotency keys and continue polling, but make
+    // the pending recovery state visible to the cashier.
+    // Una invoice confirmada gana incluso si el transporte envolvió la
+    // respuesta con error: la venta ya existe y es seguro cerrar la UI.
+    if (next.invoice_id) { finishPointUi(next); return; }
+
+    // Cualquier non-2xx es recuperable desde la perspectiva del cajero:
+    // conservar operationId + claves idempotentes y seguir consultando. En
+    // particular LOCAL_RELEASE_FAILED puede traer status='canceled'; NO se
+    // debe habilitar un cobro nuevo hasta que el backend confirme cleanup.
+    if (error) {
+      if (error.reason === 'POINT_FINALIZATION_PENDING') {
+        setPointError('Pago aprobado. Walinka está terminando de registrar la venta; no vuelvas a cobrar.');
+      } else if (error.reason === 'LOCAL_RELEASE_FAILED') {
+        setPointError('El cobro terminó, pero Walinka aún está liberando la reserva de stock. Espera antes de intentar nuevamente.');
+      } else {
+        setPointError(error.message || 'No pudimos confirmar el estado del cobro. Walinka seguirá consultándolo.');
+      }
+      return;
+    }
+    setPointError(null);
+
+    if (['failed','expired','canceled','refunded'].includes(next.status)) {
+      if (pointStorageKey) localStorage.removeItem(pointStorageKey);
+      // Un estado terminal significa que este intento de cobro ya no puede
+      // convertirse en venta. Liberamos la operación de la UI y renovamos
+      // AMBAS claves para que un nuevo intento sea una operación/venta nueva.
+      // Mientras el estado sea ambiguo (created/at_terminal/action_required)
+      // jamás hacemos esto: allí se conserva la idempotencia original.
+      setPointLastResult({
+        operation_id: operationId,
+        order_id: next.order_id || null,
+        status: next.status,
+        status_detail: next.status_detail || null,
+        payment_status: next.payment_status || null,
+        payment_status_detail: next.payment_status_detail || null,
+      });
+      setPointOperation(null);
+      pointCreateKeyRef.current = null;
+      saleIdempotencyKeyRef.current = null;
+      setPointError(next.status === 'expired' ? 'El cobro Point venció. Puedes intentar nuevamente.' : `El cobro Point terminó como ${next.status}. Puedes intentar nuevamente.`);
+      refreshProducts();
+    }
+  }, [pointOperation?.operation_id, pointStorageKey, finishPointUi]);
+
+  useEffect(() => {
+    if (!pointOperation?.operation_id || pointOperation?.invoice_id) return;
+
+    // Point Orders puede aplicar rate limiting si consultamos demasiado rápido.
+    // Usamos un timeout encadenado (no setInterval) para garantizar que nunca
+    // haya dos GET solapados y dejamos 5 s entre consultas. La primera consulta
+    // sigue siendo inmediata para que el cajero vea el cambio de estado rápido.
+    let cancelled = false;
+    const poll = async () => {
+      await pollPointOnce();
+      if (!cancelled) pointPollRef.current = window.setTimeout(poll, 5000);
+    };
+    poll();
+
+    return () => {
+      cancelled = true;
+      if (pointPollRef.current) window.clearTimeout(pointPollRef.current);
+      pointPollRef.current = null;
+    };
+  }, [pointOperation?.operation_id, pointOperation?.invoice_id, pollPointOnce]);
+
+  const handleSetupPoint = async () => {
+    if (!pointTerminalId) return;
+    setPointLoading(true); setPointError(null);
+    const { data, error } = await setupPointTerminal(pointTerminalId);
+    setPointLoading(false);
+    if (error) { setPointError(error.message); return; }
+    await loadPointTerminals();
+    if (data?.restart_required) setPointError('Modo PDV activado. Reinicia físicamente la Point antes de cobrar.');
+  };
+
+  const handlePointCharge = async () => {
+    if (submitLockRef.current || pointOperation?.operation_id) return;
+    if (!pointTerminalId || cart.length === 0 || total <= 0) return;
+    if (pointPreference?.terminal_id !== pointTerminalId) {
+      setPointError('Selecciona explícitamente la Point que usará este negocio.');
+      return;
+    }
+    if (pointPreference?.verification_status !== 'verified') {
+      setPointError('Esta Point todavía está pendiente de verificación física.');
+      return;
+    }
+    const terminal = pointTerminals.find(t => t.id === pointTerminalId);
+    if (terminal?.operating_mode !== 'PDV') { setPointError('Activa el modo PDV antes de cobrar.'); return; }
+
+    submitLockRef.current = true; setPointLoading(true); setPointError(null);
+    try {
+      const { data: openSession } = await getOpenCashSession(business.id);
+      if (!openSession) { setPointError('Debes abrir caja antes de cobrar con Point.'); return; }
+      // El nacimiento de una operación Point define un par inseparable de
+      // claves. Si no existe createKey NO estamos reintentando una llamada
+      // ambigua: es un cobro Point nuevo. En ese momento reemplazamos también
+      // la sale key aunque el borrador del TPV haya restaurado una antigua.
+      // Una vez creada pointCreateKeyRef, los reintentos de red conservan
+      // ambas claves exactamente iguales.
+      if (!pointCreateKeyRef.current) {
+        pointCreateKeyRef.current = crypto.randomUUID();
+        saleIdempotencyKeyRef.current = crypto.randomUUID();
+      }
+      const { data, error } = await createPointOrder({
+        terminalId: pointTerminalId, items: cart, customerId: customerId || null,
+        discount: discountAmount, notes: notes || null,
+        createIdempotencyKey: pointCreateKeyRef.current,
+        saleIdempotencyKey: saleIdempotencyKeyRef.current,
+      });
+      if (data?.operation_id) {
+        setPointOperation(data);
+        if (pointStorageKey) localStorage.setItem(pointStorageKey, data.operation_id);
+      }
+      if (error) setPointError(error.message);
+    } finally {
+      submitLockRef.current = false; setPointLoading(false);
+    }
+  };
+
+  const handleCancelPoint = async () => {
+    const operationId = pointOperation?.operation_id;
+    if (!operationId || pointCanceling || pointOperation?.status === 'processed') return;
+    // Cancelar es una acción independiente del loading usado por polling,
+    // terminal discovery y setup. Si el polling mantiene pointLoading o una
+    // consulta se solapa, el cajero igual debe poder solicitar la cancelación.
+    setPointCanceling(true); setPointError(null);
+    try {
+      const { data, error } = await cancelPointOrder(operationId);
+      if (error) {
+        setPointError(error.message || 'No pudimos confirmar la cancelación. Walinka seguirá consultando el mismo cobro.');
+        return;
+      }
+      if (data?.status === 'canceled') {
+        if (pointStorageKey) localStorage.removeItem(pointStorageKey);
+        setPointLastResult({
+          operation_id: operationId,
+          order_id: data?.order_id || null,
+          status: 'canceled',
+          status_detail: data?.status_detail || null,
+          payment_status: data?.payment_status || null,
+          payment_status_detail: data?.payment_status_detail || null,
+        });
+        setPointOperation(null);
+        // La operación cancelada nunca puede finalizar una venta. Un nuevo
+        // cobro debe tener nuevas create/sale idempotency keys; reutilizar la
+        // sale key chocaría correctamente con el UNIQUE de operaciones Point.
+        pointCreateKeyRef.current = null;
+        saleIdempotencyKeyRef.current = null;
+        refreshProducts();
+      } else {
+        // Una respuesta 202/estado aún no terminal NO habilita otro cobro.
+        // Conservamos operationId e idempotencia y dejamos que polling
+        // reconcilie el resultado authoritative.
+        setPointError('Mercado Pago recibió la cancelación, pero todavía no confirmó el estado final.');
+      }
+    } finally {
+      setPointCanceling(false);
+    }
+  };
 
   const handleRegister = async () => {
     // Lock síncrono -- ver comentario junto a la declaración de
@@ -1301,33 +1794,30 @@ function CrmTerminalUI() {
                             key={p.id}
                             onClick={() => { if (!outOfStock) addToCart(p); }}
                             disabled={outOfStock}
-                            className={`group flex flex-col gap-2.5 rounded-2xl border p-2.5 text-left shadow-sm transition-all ${
+                            className={`group flex h-full flex-col gap-2 rounded-2xl border p-2.5 text-left shadow-sm transition-all ${
                               outOfStock
                                 ? 'border-gray-100 bg-gray-50 opacity-60 cursor-not-allowed'
                                 : 'border-gray-200 bg-white hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-lg active:scale-[0.98]'
                             }`}
                           >
                             <ProductThumb product={p} />
-                            <div className="min-w-0 px-1 pb-1">
-                              {p.category && (
-                                <p className="text-[10px] text-gray-400 font-bold uppercase tracking-wide truncate mb-1">{p.category}</p>
-                              )}
-                              <p className="min-h-[32px] text-sm font-bold text-gray-900 line-clamp-2 leading-snug group-hover:text-blue-700">{p.name}</p>
-                              <div className="mt-1.5 flex items-center justify-between gap-2">
-                                <p className="truncate text-base font-black text-blue-600">{fmt(p.price, business?.currency)}</p>
-                                <span className={`flex h-7 w-7 items-center justify-center rounded-full transition-colors ${
-                                  outOfStock
-                                    ? 'bg-gray-200 text-gray-400'
-                                    : 'bg-blue-50 text-blue-600 group-hover:bg-blue-600 group-hover:text-white'
-                                }`}>
-                                  <Icon name="Plus" size={15} />
-                                </span>
+                            <div className="flex min-h-[92px] min-w-0 flex-1 flex-col px-1 pb-1">
+                              <div className="min-h-[16px]">
+                                {p.category && (
+                                  <p className="truncate text-[10px] font-bold uppercase tracking-wide text-gray-400">{p.category}</p>
+                                )}
                               </div>
-                              {outOfStock ? (
-                                <p className="mt-1 text-[10px] font-bold uppercase tracking-wide text-red-500">Sin stock</p>
-                              ) : hasStockLabel && (
-                                <p className="mt-1 text-[10px] font-semibold text-gray-400">Stock: {p.stock_actual}</p>
-                              )}
+                              <p className="mt-0.5 min-h-[34px] text-sm font-bold leading-snug text-gray-900 line-clamp-2 group-hover:text-blue-700">{p.name}</p>
+                              <div className="mt-auto pt-2">
+                                <p className="truncate text-base font-black text-blue-600">{fmt(p.price, business?.currency)}</p>
+                                <div className="min-h-[15px]">
+                                  {outOfStock ? (
+                                    <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wide text-red-500">Sin stock</p>
+                                  ) : hasStockLabel ? (
+                                    <p className="mt-0.5 text-[10px] font-semibold text-gray-400">Stock: {p.stock_actual}</p>
+                                  ) : null}
+                                </div>
+                              </div>
                             </div>
                           </button>
                         );
@@ -1351,7 +1841,7 @@ function CrmTerminalUI() {
                     Mobile: normal flow; fixed bottom bar handles cobrar.
                     Con carrito no vacío pasa primero (order-1) en mobile,
                     ver nota en la columna izquierda.                       */}
-                <div className={`w-full min-w-0 lg:sticky lg:top-4 lg:flex lg:h-[calc(100vh-5rem)] lg:flex-col ${cart.length > 0 ? 'order-1' : 'order-2'} lg:order-2`}>
+                <div className={`w-full min-w-0 lg:sticky lg:top-4 lg:flex lg:h-[calc(100vh-5rem)] lg:flex-col ${checkoutStep === 'payment' ? 'lg:overflow-y-auto lg:pr-1' : ''} ${cart.length > 0 ? 'order-1' : 'order-2'} lg:order-2`}>
 
                   {/* ── Zone 1: header ── flex-none ───────────────────────────
                       TPV-CORE-3: en 'sale' prioriza el total + cantidad de
@@ -1360,50 +1850,23 @@ function CrmTerminalUI() {
                       completo (estado, items/pagado/pendiente) y, si
                       corresponde, el cliente seleccionado -- reutilizando
                       selectedCustomer, sin duplicar estado (sección 9).    */}
-                  <div className="rounded-2xl border border-gray-200 bg-white p-3.5 shadow-sm lg:flex-none">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <p className="text-[11px] font-black uppercase tracking-wide text-gray-400">
-                          {checkoutStep === 'payment' ? 'Cobrar' : 'Total venta'}
-                        </p>
-                        <p className="mt-1 truncate text-2xl font-black tracking-tight text-gray-950 xl:text-3xl">{fmt(total, business?.currency)}</p>
-                      </div>
-                      {checkoutStep === 'payment' && (
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-black ${pendingBalance > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
-                          {paymentStatusLabel}
-                        </span>
-                      )}
-                    </div>
-                    {checkoutStep === 'sale' ? (
-                      <div className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-gray-50 px-2.5 py-2">
-                        <Icon name="ShoppingCart" size={12} className="text-gray-400" />
-                        <span className="text-xs font-bold text-gray-600">{cartCount} {cartCount === 1 ? 'artículo' : 'artículos'}</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="mt-3 grid grid-cols-3 gap-1.5">
-                          <div className="rounded-xl bg-gray-50 px-2.5 py-2">
-                            <p className="text-[10px] font-bold uppercase text-gray-400">Items</p>
-                            <p className="text-lg font-black text-gray-900">{cartCount}</p>
-                          </div>
-                          <div className="rounded-xl bg-emerald-50 px-2.5 py-2">
-                            <p className="text-[10px] font-bold uppercase text-emerald-600">Pagado</p>
-                            <p className="truncate text-xs font-black text-emerald-800 xl:text-sm">{fmt(paidTotal, business?.currency)}</p>
-                          </div>
-                          <div className="rounded-xl bg-amber-50 px-2.5 py-2">
-                            <p className="text-[10px] font-bold uppercase text-amber-600">Pendiente</p>
-                            <p className="truncate text-xs font-black text-amber-800 xl:text-sm">{fmt(pendingBalance, business?.currency)}</p>
-                          </div>
+                  {checkoutStep === 'sale' ? (
+                    <div className="rounded-2xl border border-gray-200 bg-white p-3.5 shadow-sm lg:flex-none">
+                      <p className="text-[11px] font-black uppercase tracking-wide text-gray-400">Total venta</p>
+                      <div className="mt-1 flex items-end justify-between gap-3">
+                        <p className="truncate text-2xl font-black tracking-tight text-gray-950 xl:text-3xl">{fmt(total, business?.currency)}</p>
+                        <div className="inline-flex items-center gap-1.5 rounded-xl bg-gray-50 px-2.5 py-2">
+                          <Icon name="ShoppingCart" size={12} className="text-gray-400" />
+                          <span className="text-xs font-bold text-gray-600">{cartCount} {cartCount === 1 ? 'artículo' : 'artículos'}</span>
                         </div>
-                        {selectedCustomer && (
-                          <div className="mt-2 flex items-center gap-1.5 text-xs text-gray-500">
-                            <Icon name="UserRound" size={12} className="text-gray-400" />
-                            <span className="truncate">{selectedCustomer.name}{selectedCustomer.company ? ` · ${selectedCustomer.company}` : ''}</span>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
+                      </div>
+                    </div>
+                  ) : selectedCustomer ? (
+                    <div className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600 shadow-sm lg:flex-none">
+                      <Icon name="UserRound" size={13} className="text-gray-400" />
+                      <span className="truncate font-semibold">{selectedCustomer.name}{selectedCustomer.company ? ` · ${selectedCustomer.company}` : ''}</span>
+                    </div>
+                  ) : null}
 
                   <div className="hidden">
                     <div className="flex items-center justify-between mb-1.5">
@@ -1439,8 +1902,11 @@ function CrmTerminalUI() {
                       space regardless of how many items are in it.             */}
                   <div
                     ref={cartSectionRef}
-                    className="mt-2.5 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm
-                                  lg:flex-1 lg:min-h-[160px] lg:flex lg:flex-col"
+                    className={`mt-2.5 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:flex lg:flex-col ${
+                                  checkoutStep === 'payment'
+                                    ? 'lg:flex-none lg:max-h-[150px]'
+                                    : 'lg:flex-1 lg:min-h-[160px]'
+                                }`}
                   >
 
                     {/* Cart header — flex-none */}
@@ -1597,11 +2063,12 @@ function CrmTerminalUI() {
                       lógica de pagos se reimplementa, solo se reordena su
                       visibilidad) y agrega "Volver a la venta", que jamás
                       borra carrito/cliente/descuento/notas/pagos/key/draft.*/}
-                  <div className="flex flex-col gap-2 mt-2.5 lg:flex-none lg:shrink-0">
+                  <div className={`flex flex-col gap-2 mt-2.5 lg:flex-none lg:shrink-0 ${checkoutStep === 'payment' ? 'lg:pb-2' : ''}`}>
 
                     {checkoutStep === 'sale' && (
                       <>
-                        {/* Discount + Notes — single compact row */}
+                        {/* Discount + Notes only become relevant once a sale exists. */}
+                        {cart.length > 0 && (
                         <div className="flex gap-2">
                           <div className="flex-1 relative">
                             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
@@ -1622,9 +2089,25 @@ function CrmTerminalUI() {
                             className="flex-1 px-2.5 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                           />
                         </div>
+                        )}
 
                         {/* CTA "Cobrar" — desktop only; mobile usa la barra fija
                             para no duplicar el mismo CTA dos veces en pantalla. */}
+                        {cart.length === 0 && heldSales.length > 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setHeldSalesOpen(true)}
+                            className="hidden lg:flex w-full items-center justify-between rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-left transition-colors hover:bg-amber-100"
+                          >
+                            <span>
+                              <span className="block text-sm font-bold text-amber-900">Ventas en espera</span>
+                              <span className="block text-xs text-amber-700">Recupera una venta para continuar cobrando.</span>
+                            </span>
+                            <span className="rounded-full bg-amber-200 px-2.5 py-1 text-xs font-black text-amber-900">{heldSales.length}</span>
+                          </button>
+                        )}
+
+                        {cart.length > 0 && (
                         <div className="hidden lg:flex flex-col gap-2.5 rounded-2xl bg-gray-950 px-4 py-4 shadow-xl">
                           <div className="flex justify-between items-end">
                             <span className="text-sm font-bold text-gray-300">Total</span>
@@ -1636,25 +2119,349 @@ function CrmTerminalUI() {
                             </p>
                           )}
                           <button
-                            onClick={handleGoToPayment}
-                            disabled={cart.length === 0 || hasStockIssues}
-                            className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-base font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4 xl:text-lg min-h-[44px]"
+                            type="button"
+                            onClick={handleHoldSale}
+                            disabled={cart.length === 0 || heldBusy}
+                            className="flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-700 px-3 py-3 text-sm font-bold text-gray-200 hover:bg-gray-900 disabled:opacity-40"
+                            title="Guardar esta venta y comenzar otra"
                           >
-                            <Icon name="Wallet" size={18} />
-                            Cobrar {fmt(total, business?.currency)}
+                            <Icon name="Pause" size={16} />
+                            Dejar en espera
+                          </button>
+                          <div className="grid grid-cols-1 gap-2">
+                            <button
+                              onClick={handleGoToPayment}
+                              disabled={cart.length === 0 || hasStockIssues}
+                              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-emerald-500 py-3.5 text-base font-black text-white shadow-lg shadow-emerald-950/30 transition-all hover:-translate-y-0.5 hover:bg-emerald-400 disabled:translate-y-0 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4 xl:text-lg min-h-[44px]"
+                            >
+                              <Icon name="Wallet" size={18} />
+                              Cobrar {fmt(total, business?.currency)}
+                            </button>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setHeldSalesOpen(true)}
+                            className="w-full text-center text-xs font-bold text-gray-400 hover:text-white"
+                          >
+                            Ventas en espera ({heldSales.length})
                           </button>
                         </div>
+                        )}
                       </>
                     )}
 
                     {checkoutStep === 'payment' && (
                       <>
+                        {/* POINT-SMART-2-7 — Point integrado. Separado de
+                            "Mercado Pago manual": en esta fase cobra el total
+                            completo y el backend crea la venta solo al recibir
+                            processed desde Mercado Pago. */}
+                        <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-3 space-y-2">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2">
+                              <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-yellow-300">
+                                <Icon name="Smartphone" size={16} className="text-gray-900" />
+                              </span>
+                              <div>
+                                <p className="text-xs font-black text-gray-900">Mercado Pago Point</p>
+                                <p className="text-[10px] text-gray-600">Cobro integrado · total {fmt(total, business?.currency)}</p>
+                              </div>
+                            </div>
+                            <button type="button" onClick={loadPointTerminals} disabled={pointLoading || !!pointOperation?.operation_id}
+                              className="rounded-lg px-2 py-1 text-[10px] font-bold text-gray-700 hover:bg-yellow-100 disabled:opacity-40">
+                              Actualizar
+                            </button>
+                          </div>
+
+                          {!pointOperation?.operation_id ? (
+                            <>
+                              {pointTerminals.length > 0 ? (
+                                <div className="space-y-2">
+                                  {pointPreference?.terminal_id && (
+                                    <div className="rounded-xl border border-gray-900/10 bg-white px-3 py-2.5">
+                                      <div className="flex items-center justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Point actual</p>
+                                          <p className="break-all text-[11px] font-black text-gray-900">{pointPreference.terminal_id}</p>
+                                          <p className="mt-1 text-[10px] text-gray-600">
+                                            {pointPreference.verification_status === 'verified'
+                                              ? 'Verificada para cobros integrados'
+                                              : 'Pendiente de verificación física'}
+                                          </p>
+                                        </div>
+                                        <button type="button" onClick={handleUnlinkPointTerminal} disabled={pointLoading}
+                                          className="shrink-0 rounded-lg border border-gray-200 px-2 py-1 text-[10px] font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-40">
+                                          Desvincular
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {!pointPreference?.terminal_id && (
+                                    <p className="text-[10px] font-semibold text-gray-600">
+                                      Elige la Point física que usará Walinka. No seleccionaremos una automáticamente.
+                                    </p>
+                                  )}
+                                  <div className="space-y-1.5">
+                                    {pointTerminals.map((terminal) => {
+                                      const selected = terminal.id === pointPreference?.terminal_id;
+                                      const mode = terminal.operating_mode || 'UNDEFINED';
+                                      return (
+                                        <div key={terminal.id}
+                                          className={`w-full rounded-xl border px-3 py-2.5 text-left ${
+                                            selected ? 'border-gray-900 bg-white ring-2 ring-gray-900/10' : 'border-yellow-200 bg-white/70'
+                                          }`}>
+                                          <div className="flex items-start justify-between gap-2">
+                                            <div className="min-w-0">
+                                              <p className="break-all text-[11px] font-black text-gray-900">{terminal.id}</p>
+                                              <p className="mt-1 text-[10px] text-gray-600">
+                                                POS {terminal.pos_id || 'sin asignar'} · Tienda {terminal.store_id || 'sin asignar'}
+                                              </p>
+                                            </div>
+                                            <span className={`shrink-0 rounded-full px-2 py-1 text-[9px] font-black ${
+                                              mode === 'PDV' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                                            }`}>{mode}</span>
+                                          </div>
+                                          <button type="button" onClick={() => handleSelectPointTerminal(terminal.id)}
+                                            disabled={pointLoading || selected}
+                                            className="mt-2 rounded-lg border border-gray-200 px-2.5 py-1.5 text-[10px] font-bold text-gray-800 hover:bg-gray-50 disabled:opacity-50">
+                                            {selected ? '✓ Point actual' : pointPreference?.terminal_id ? 'Cambiar a esta Point' : 'Usar esta Point'}
+                                          </button>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  {pointTerminalId && pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode !== 'PDV' && (
+                                    <button type="button" onClick={handleSetupPoint} disabled={pointLoading}
+                                      className="w-full rounded-xl bg-gray-900 px-3 py-2.5 text-xs font-bold text-white disabled:opacity-50">
+                                      Activar PDV en la Point actual
+                                    </button>
+                                  )}
+                                  {pointTerminalId &&
+                                    pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode === 'PDV' &&
+                                    pointPreference?.verification_status !== 'verified' && (
+                                    <div className="rounded-xl border border-amber-200 bg-white/80 p-3 space-y-2">
+                                      <p className="text-[11px] font-bold text-gray-800">
+                                        Confirma en la Point que muestra “Tu point está vinculado al punto de venta”.
+                                      </p>
+                                      <p className="text-[10px] text-gray-500">
+                                        Walinka volverá a comprobar con Mercado Pago que esta misma terminal sigue en modo PDV antes de habilitar cobros.
+                                      </p>
+                                      <button type="button" onClick={handleVerifyPointTerminal} disabled={pointLoading}
+                                        className="w-full rounded-xl bg-gray-900 px-3 py-2.5 text-xs font-black text-white disabled:opacity-50">
+                                        Ya está vinculada · verificar
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              ) : (
+                                <p className="text-[11px] text-gray-600">
+                                  {pointLoading ? 'Buscando terminales Point…' : 'No encontramos una terminal Point en la cuenta conectada.'}
+                                </p>
+                              )}
+                              <button type="button" onClick={handlePointCharge}
+                                disabled={pointLoading || !pointTerminalId || pointPreference?.verification_status !== 'verified' || pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode !== 'PDV' || total <= 0}
+                                className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-300 px-3 py-2.5 text-sm font-black text-gray-950 hover:bg-yellow-200 disabled:bg-yellow-100 disabled:text-gray-400">
+                                {pointLoading ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Zap" size={15} />}
+                                Enviar {fmt(total, business?.currency)} a la Point
+                              </button>
+                            </>
+                          ) : (
+                            <div className="rounded-xl bg-white border border-yellow-200 p-3 space-y-2">
+                              <div className="flex items-center gap-2">
+                                <Icon name={pointOperation.status === 'processed' ? 'BadgeCheck' : 'Loader2'} size={16}
+                                  className={pointOperation.status === 'processed' ? 'text-emerald-600' : 'animate-spin text-yellow-600'} />
+                                <div>
+                                  <p className="text-xs font-black text-gray-900">
+                                    {pointOperation.status === 'recovering' ? 'Recuperando cobro…'
+                                      : pointOperation.status === 'at_terminal' ? 'Esperando al cliente en la Point…'
+                                      : pointOperation.status === 'action_required' ? 'Revisa la pantalla de la Point'
+                                      : pointOperation.status === 'processed' ? 'Pago aprobado · registrando venta…'
+                                      : 'Enviando cobro a la Point…'}
+                                  </p>
+                                  <p className="text-[10px] text-gray-500">Estado: {pointOperation.status || 'consultando'}</p>
+                                </div>
+                              </div>
+                              <button type="button" onClick={handleCancelPoint} disabled={pointCanceling || pointOperation.status === 'processed'}
+                                className="w-full rounded-lg border border-gray-200 px-2 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40">
+                                {pointCanceling ? 'Cancelando…' : 'Cancelar cobro'}
+                              </button>
+                            </div>
+                          )}
+                          {!pointOperation?.operation_id && pointLastResult && (
+                            <div className="rounded-xl border border-gray-200 bg-white/80 px-3 py-2.5">
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Último cobro Point</p>
+                                  <p className="text-xs font-black text-gray-800">Estado: {pointLastResult.status}</p>
+                                  {pointLastResult.payment_status_detail && (
+                                    <p className="mt-0.5 text-[10px] text-gray-500">Detalle: {pointLastResult.payment_status_detail}</p>
+                                  )}
+                                  {pointLastResult.order_id && (
+                                    <p className="mt-0.5 break-all text-[9px] text-gray-400">Order: {pointLastResult.order_id}</p>
+                                  )}
+                                </div>
+                                <button type="button" onClick={() => setPointLastResult(null)}
+                                  className="shrink-0 rounded-lg border border-gray-200 px-2 py-1 text-[10px] font-bold text-gray-500 hover:bg-gray-50">
+                                  Ocultar
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                          {pointConnection && !pointOperation?.operation_id && (
+                            <div className="rounded-xl border border-gray-200 bg-white/70 px-3 py-2.5 flex items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Cuenta Point conectada</p>
+                                <p className="text-xs font-black text-gray-800 truncate">{pointConnection.provider_user_id || 'Mercado Pago'}</p>
+                                <p className="text-[10px] text-gray-500">Solo afecta cobros Point · no Checkout Pro</p>
+                              </div>
+                              <button type="button" onClick={handleDisconnectPointConnection} disabled={pointLoading}
+                                className="shrink-0 rounded-lg border border-red-200 bg-white px-2.5 py-2 text-[11px] font-bold text-red-600 hover:bg-red-50 disabled:opacity-40">
+                                Cambiar cuenta
+                              </button>
+                            </div>
+                          )}
+                          {pointErrorReason === 'MP_POINT_NOT_CONNECTED' && !pointOperation?.operation_id && (
+                            <button type="button" onClick={handleConnectPoint} disabled={pointLoading}
+                              className="w-full rounded-xl bg-gray-900 px-3 py-2.5 text-xs font-black text-white hover:bg-gray-800 disabled:opacity-50">
+                              Conectar Mercado Pago Point
+                            </button>
+                          )}
+                          {pointError && <p className="rounded-lg bg-white/70 px-2.5 py-2 text-[11px] font-semibold text-red-600">{pointError}</p>}
+                        </div>
+
                         {/* Payment method — reutiliza exactamente el mismo
                             estado/lógica de payments/cuenta corriente que
                             existía antes de TPV-CORE-3; solo cambió CUÁNDO
                             se muestra, no CÓMO funciona. */}
-                        <div className="rounded-2xl border border-gray-200 bg-white p-2.5 space-y-2">
-                          {/* Atajo: Venta a crédito */}
+                        <div className="rounded-2xl border border-gray-200 bg-white p-3 space-y-3">
+                          <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Total a cobrar</p>
+                            <p className="text-3xl font-black tracking-tight text-gray-950">{fmt(total, business?.currency)}</p>
+                          </div>
+
+                          <div>
+                            <p className="mb-2 text-xs font-bold text-gray-700">Medio de pago</p>
+                            <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
+                              {REAL_PAYMENT_METHODS.map((method) => {
+                                const selected = payments.length === 1 && payments[0]?.method === method.value && parseMoneyInput(payments[0]?.amount) > 0;
+                                return (
+                                  <button
+                                    key={method.value}
+                                    type="button"
+                                    onClick={() => selectQuickPaymentMethod(method.value)}
+                                    className={`flex min-h-[54px] items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors ${selected ? 'border-gray-950 bg-gray-950 text-white' : 'border-gray-200 bg-white text-gray-800 hover:border-gray-400 hover:bg-gray-50'}`}
+                                  >
+                                    <Icon name={method.icon} size={17} />
+                                    <span className="flex-1 text-center text-[11px] font-black leading-tight xl:text-xs">{method.value === 'bank_transfer' ? 'Transfer.' : method.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+
+                          {payments.length === 1 && payments[0]?.method === 'cash' && (
+                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                              <label className="mb-1.5 block text-xs font-bold text-emerald-900">Efectivo recibido</label>
+                              <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm font-bold text-emerald-700">$</span>
+                                <input
+                                  type="text"
+                                  inputMode="numeric"
+                                  value={fmtMoneyInput(payments[0].amount)}
+                                  onChange={(e) => updatePayment(payments[0].id, { amount: e.target.value.replace(/\D/g, '') })}
+                                  className="w-full rounded-xl border border-emerald-200 bg-white py-3 pl-7 pr-3 text-lg font-black text-gray-950 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                                  aria-label="Efectivo recibido"
+                                />
+                              </div>
+                              <div className="mt-2 flex items-center justify-between text-xs">
+                                <span className="font-semibold text-emerald-800">Vuelto</span>
+                                <span className="text-base font-black text-emerald-950">{fmt(change, business?.currency)}</span>
+                              </div>
+                            </div>
+                          )}
+
+                          {!splitPaymentMode && payments.length === 1 && (
+                            <button
+                              type="button"
+                              onClick={startSplitPayment}
+                              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-left text-xs font-bold text-blue-700 hover:bg-blue-50"
+                            >
+                              <span className="flex items-center justify-between gap-2">
+                                <span className="flex items-center gap-2">
+                                  <Icon name="Split" size={14} />
+                                  Dividir pago
+                                </span>
+                                <span className="text-[10px] font-semibold text-gray-500">2 o más medios</span>
+                              </span>
+                            </button>
+                          )}
+
+                          {splitPaymentMode ? (
+                            <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-3 space-y-2.5">
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <p className="text-xs font-black text-gray-800">Pago dividido</p>
+                                  <p className="text-[10px] font-semibold text-gray-500">Ingresa el primer monto; Walinka completa el saldo restante.</p>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={addPaymentForRemainingBalance}
+                                  disabled={pendingBalance <= 0}
+                                  className="shrink-0 h-8 px-2.5 rounded-lg bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white text-xs font-bold flex items-center gap-1"
+                                >
+                                  <Icon name="Plus" size={13} />
+                                  Agregar saldo
+                                </button>
+                              </div>
+
+                              <div className="space-y-2">
+                                {payments.map((payment, index) => (
+                                  <div key={payment.id} className="rounded-xl border border-gray-200 bg-white p-2">
+                                    <div className="mb-1.5 flex items-center justify-between">
+                                      <span className="text-[10px] font-black uppercase tracking-wide text-gray-400">Pago {index + 1}</span>
+                                      {payments.length > 1 && (
+                                        <button
+                                          type="button"
+                                          onClick={() => removePayment(payment.id)}
+                                          className="text-[10px] font-bold text-red-500 hover:text-red-700"
+                                        >
+                                          Quitar
+                                        </button>
+                                      )}
+                                    </div>
+                                    <div className="flex items-center gap-2">
+                                      <select
+                                        value={payment.method}
+                                        onChange={(e) => updatePayment(payment.id, { method: e.target.value })}
+                                        className="w-[118px] rounded-lg border border-gray-200 bg-gray-50 px-2 py-2.5 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                      >
+                                        {REAL_PAYMENT_METHODS.map((method) => (
+                                          <option key={method.value} value={method.value}>{method.label}</option>
+                                        ))}
+                                      </select>
+                                      <div className="relative min-w-0 flex-1">
+                                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs">$</span>
+                                        <input
+                                          type="text"
+                                          inputMode="numeric"
+                                          value={fmtMoneyInput(payment.amount)}
+                                          onChange={(e) => updatePayment(payment.id, { amount: e.target.value.replace(/\D/g, '') })}
+                                          placeholder={index === 0 ? 'Primer monto' : 'Monto'}
+                                          className="w-full rounded-lg border border-gray-200 bg-gray-50 py-2.5 pl-6 pr-2 text-sm font-black focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+
+                              <div className="flex items-center justify-between rounded-lg bg-white px-3 py-2">
+                                <span className="text-xs font-bold text-gray-600">Falta por asignar</span>
+                                <span className={`text-sm font-black ${pendingBalance > 0 ? 'text-amber-700' : 'text-emerald-700'}`}>{fmt(pendingBalance, business?.currency)}</span>
+                              </div>
+                            </div>
+                          ) : null}
+
                           <button
                             type="button"
                             onClick={() => setPayments(prev => prev.map(p => ({ ...p, amount: '' })))}
@@ -1665,60 +2472,11 @@ function CrmTerminalUI() {
                             </span>
                             <span className="min-w-0">
                               <span className="block text-xs font-bold text-amber-800 leading-tight">Vender a cuenta corriente</span>
-                              <span className="block text-[10px] text-amber-600 leading-tight mt-0.5">Deja el total como pendiente · requiere cliente registrado</span>
+                              <span className="block text-[10px] text-amber-600 leading-tight mt-0.5">Deja el total pendiente · requiere cliente registrado</span>
                             </span>
                           </button>
 
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-xs font-bold text-gray-800">Pagos</p>
-                              <p className="text-[11px] text-gray-500">Total: {fmt(total, business?.currency)}</p>
-                            </div>
-                            <button
-                              onClick={addPayment}
-                              className="h-8 px-2.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs font-semibold flex items-center gap-1"
-                            >
-                              <Icon name="Plus" size={13} />
-                              Agregar
-                            </button>
-                          </div>
-
-                          <div className="space-y-1.5 max-h-[168px] overflow-y-auto pr-0.5">
-                            {payments.map((payment) => (
-                              <div key={payment.id} className="flex items-center gap-1.5">
-                                <select
-                                  value={payment.method}
-                                  onChange={(e) => updatePayment(payment.id, { method: e.target.value })}
-                                  className="w-[116px] border border-gray-200 rounded-lg px-2 py-2 text-xs bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                >
-                                  {REAL_PAYMENT_METHODS.map((method) => (
-                                    <option key={method.value} value={method.value}>{method.label}</option>
-                                  ))}
-                                </select>
-                                <div className="relative flex-1 min-w-0">
-                                  <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">$</span>
-                                  <input
-                                    type="text"
-                                    inputMode="numeric"
-                                    value={fmtMoneyInput(payment.amount)}
-                                    onChange={(e) => updatePayment(payment.id, { amount: e.target.value.replace(/\D/g, '') })}
-                                    placeholder="Monto"
-                                    className="w-full pl-5 pr-2 py-2 border border-gray-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
-                                  />
-                                </div>
-                                <button
-                                  onClick={() => removePayment(payment.id)}
-                                  title="Eliminar pago"
-                                  aria-label="Eliminar pago"
-                                  className="w-8 h-8 rounded-lg bg-red-50 hover:bg-red-100 flex items-center justify-center text-red-500"
-                                >
-                                  <Icon name="Trash2" size={13} />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-
-                          <div className="grid grid-cols-3 gap-1.5 pt-1">
+                          <div className="grid grid-cols-3 gap-1.5">
                             <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
                               <p className="text-[10px] text-emerald-700 font-semibold">Pagado</p>
                               <p className="text-xs font-bold text-emerald-800">{fmt(paidTotal, business?.currency)}</p>
@@ -1737,19 +2495,10 @@ function CrmTerminalUI() {
                             <p className="text-xs font-semibold text-red-600">Solo efectivo puede generar vuelto.</p>
                           )}
                           {requiresCustomerForPending && !customerId && (
-                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 space-y-2">
+                            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5">
                               <p className="text-xs font-semibold text-amber-800 leading-snug">
-                                Faltan <strong>{fmt(pendingBalance, business?.currency)}</strong> por pagar.
-                                Agrega otro medio de pago o selecciona un cliente para vender a cuenta corriente.
+                                Faltan <strong>{fmt(pendingBalance, business?.currency)}</strong> por pagar. Completa el pago o selecciona un cliente para dejar saldo en cuenta corriente.
                               </p>
-                              <button
-                                type="button"
-                                onClick={addPayment}
-                                className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg px-2.5 py-1.5 transition-colors"
-                              >
-                                <Icon name="Plus" size={12} />
-                                Agregar medio de pago
-                              </button>
                             </div>
                           )}
                         </div>
@@ -1757,22 +2506,12 @@ function CrmTerminalUI() {
                         {/* Pago recibido — solo efectivo */}
                         {/* Totals + Confirmar venta — desktop only; mobile uses fixed bar */}
                         <div className="hidden lg:flex flex-col gap-2.5 rounded-2xl bg-gray-950 px-4 py-4 shadow-xl">
-                          <div className="space-y-1">
+                          {discountAmount > 0 && (
                             <div className="flex justify-between text-xs text-gray-400">
-                              <span>Subtotal</span>
-                              <span>{fmt(subtotal, business?.currency)}</span>
+                              <span>Descuento aplicado</span>
+                              <span className="font-bold text-red-400">-{fmt(discountAmount, business?.currency)}</span>
                             </div>
-                            {discountAmount > 0 && (
-                              <div className="flex justify-between text-xs text-red-400">
-                                <span>Descuento</span>
-                                <span>-{fmt(discountAmount, business?.currency)}</span>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex justify-between items-end border-t border-gray-800 pt-3">
-                            <span className="text-sm font-bold text-gray-300">Total</span>
-                            <span className="truncate text-2xl font-black tracking-tight text-white xl:text-3xl">{fmt(total, business?.currency)}</span>
-                          </div>
+                          )}
                           {requiresCustomerForPending && !customerId ? (
                             <div className="flex gap-2">
                               <button
@@ -1881,15 +2620,35 @@ function CrmTerminalUI() {
                 )}
               </div>
               {checkoutStep === 'sale' ? (
-                <button
-                  type="button"
-                  onClick={handleGoToPayment}
-                  disabled={cart.length === 0 || hasStockIssues}
-                  className="shrink-0 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-sm transition-colors flex items-center gap-2 min-h-[44px]"
-                >
-                  <Icon name="Wallet" size={16} />
-                  Cobrar
-                </button>
+                <div className="flex shrink-0 gap-2">
+                  {cart.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={handleHoldSale}
+                      disabled={heldBusy}
+                      className="px-3 py-3 rounded-xl border border-gray-700 text-gray-200 font-bold text-xs min-h-[44px] disabled:opacity-40"
+                    >
+                      Dejar en espera
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setHeldSalesOpen(true)}
+                      className="px-3 py-3 rounded-xl border border-gray-700 text-gray-200 font-bold text-xs min-h-[44px]"
+                    >
+                      En espera ({heldSales.length})
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={handleGoToPayment}
+                    disabled={cart.length === 0 || hasStockIssues}
+                    className="shrink-0 px-4 py-3 rounded-xl bg-emerald-500 hover:bg-emerald-400 disabled:bg-gray-700 disabled:text-gray-500 text-white font-bold text-sm transition-colors flex items-center gap-2 min-h-[44px]"
+                  >
+                    <Icon name="Wallet" size={16} />
+                    Cobrar
+                  </button>
+                </div>
               ) : requiresCustomerForPending && !customerId ? (
                 <button
                   type="button"
@@ -1918,6 +2677,64 @@ function CrmTerminalUI() {
         )}
 
       </main>
+
+      {heldSalesOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b px-5 py-4">
+              <div>
+                <h2 className="font-black text-gray-900">Ventas en espera</h2>
+                <p className="text-xs text-gray-500">{heldSales.length} pendiente{heldSales.length === 1 ? '' : 's'}</p>
+              </div>
+              <button type="button" onClick={() => setHeldSalesOpen(false)} className="p-2 text-gray-400 hover:text-gray-700">
+                <Icon name="X" size={18} />
+              </button>
+            </div>
+            <div className="max-h-[60vh] space-y-2 overflow-y-auto p-4">
+              {heldSales.length === 0 ? (
+                <div className="py-10 text-center text-sm text-gray-500">No hay ventas en espera.</div>
+              ) : heldSales.map((sale) => (
+                <div key={sale.id} className="rounded-xl border border-gray-200 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-black text-gray-900">
+                        {sale.label || sale.customer_name || 'Venta en espera'}
+                      </p>
+                      <p className="mt-1 text-xs text-gray-500">
+                        {sale.unit_count} {Number(sale.unit_count) === 1 ? 'artículo' : 'artículos'} · {fmt(Number(sale.total || 0), business?.currency)}
+                      </p>
+                      <p className="mt-1 text-[11px] text-gray-400">{new Date(sale.created_at).toLocaleString()}</p>
+                    </div>
+                    <div className="flex shrink-0 gap-1.5">
+                      <button
+                        type="button"
+                        disabled={heldBusy || cart.length > 0}
+                        onClick={() => handleResumeHeldSale(sale.id)}
+                        className="rounded-lg bg-gray-950 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:bg-gray-300 disabled:opacity-100"
+                      >
+                        Reanudar
+                      </button>
+                      <button
+                        type="button"
+                        disabled={heldBusy}
+                        onClick={() => handleDiscardHeldSale(sale.id)}
+                        className="rounded-lg px-2 py-2 text-xs font-bold text-red-600 hover:bg-red-50 disabled:opacity-40"
+                      >
+                        Descartar
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {cart.length > 0 && heldSales.length > 0 && (
+              <p className="border-t px-4 py-3 text-xs text-amber-700">
+                Termina o deja en espera la venta actual antes de reanudar otra.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Manual item modal */}
       {showManualModal && (
