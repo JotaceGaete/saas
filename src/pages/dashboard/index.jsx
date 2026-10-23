@@ -113,8 +113,11 @@ export default function Dashboard() {
   // Guards: timestamps de la última carga de cada sección.
   // Evitan re-fetches redundantes en visibilitychange y eventos Realtime.
   const lastDashboardFetchAt = useRef(0);
+  const dashboardInFlight = useRef(false);
   const lastAnalyticsFetchAt = useRef(0);
+  const analyticsInFlight = useRef(false);
   const lastPlanUsageFetchAt = useRef(0);
+  const planUsageInFlight = useRef(false);
   const lastAiInsightFetchAt = useRef(0);
   // Debounce timer para eventos Realtime frecuentes (INSERT/UPDATE ráfaga)
   const realtimeDebounceTimer = useRef(null);
@@ -160,7 +163,8 @@ export default function Dashboard() {
   }, [user, business, businessLoading, refreshBusiness]);
 
   const loadDashboardData = useCallback(async () => {
-    if (!business?.id) return;
+    if (!business?.id || dashboardInFlight.current) return;
+    dashboardInFlight.current = true;
     setDataLoading(true);
     try {
       await expireDeliveredOrders(business?.id);
@@ -183,12 +187,14 @@ export default function Dashboard() {
     } catch (err) {
       console.error('Dashboard load error:', err);
     } finally {
+      dashboardInFlight.current = false;
       setDataLoading(false);
     }
   }, [business?.id]);
 
   const loadAnalytics = useCallback(async () => {
-    if (!business?.id) return;
+    if (!business?.id || analyticsInFlight.current) return;
+    analyticsInFlight.current = true;
     setAnalyticsLoading(true);
     try {
       const [dayRes, topRes, revRes, visitRes, funnelRes] = await Promise.all([
@@ -209,6 +215,7 @@ export default function Dashboard() {
     } catch (err) {
       console.error('Analytics load error:', err);
     } finally {
+      analyticsInFlight.current = false;
       setAnalyticsLoading(false);
     }
   }, [business?.id, funnelRange]);
@@ -245,7 +252,8 @@ export default function Dashboard() {
   }, [business?.id, sessionReady, user?.id]);
 
   const loadPlanUsage = useCallback(async () => {
-    if (!business?.id) return;
+    if (!business?.id || planUsageInFlight.current) return;
+    planUsageInFlight.current = true;
     setPlanUsageLoading(true);
     try {
       const res = await getPlanUsage(business?.id);
@@ -254,6 +262,7 @@ export default function Dashboard() {
     } catch (err) {
       console.error('[PlanUsage] error:', err);
     } finally {
+      planUsageInFlight.current = false;
       setPlanUsageLoading(false);
     }
   }, [business?.id]);
