@@ -63,3 +63,23 @@ END;
 $$;
 REVOKE ALL ON FUNCTION public.crm_cancel_pos_sale(uuid,text) FROM PUBLIC;
 GRANT EXECUTE ON FUNCTION public.crm_cancel_pos_sale(uuid,text) TO authenticated;
+
+-- Database enforcement: client-side guards alone can be bypassed.
+CREATE OR REPLACE FUNCTION public.crm_guard_point_payment_void()
+RETURNS trigger LANGUAGE plpgsql SET search_path TO 'public' AS $$
+BEGIN
+  IF OLD.voided_at IS NULL AND NEW.voided_at IS NOT NULL
+    AND EXISTS (
+      SELECT 1 FROM public.crm_pos_point_operations o
+      WHERE o.crm_invoice_id=OLD.invoice_id AND o.mp_status='processed'
+    )
+  THEN
+    RAISE EXCEPTION 'POINT_REFUND_REQUIRED: No se puede anular en caja un cobro Point acreditado sin devolución.';
+  END IF;
+  RETURN NEW;
+END;
+$$;
+DROP TRIGGER IF EXISTS crm_guard_point_payment_void_trigger ON public.crm_payments;
+CREATE TRIGGER crm_guard_point_payment_void_trigger
+BEFORE UPDATE OF voided_at ON public.crm_payments
+FOR EACH ROW EXECUTE FUNCTION public.crm_guard_point_payment_void();
