@@ -1872,6 +1872,31 @@ export async function getCashDayPayments(businessId, date = getLocalDateString()
 }
 
 export async function voidCrmPayment(paymentId, { voidReason, voidedBy = null } = {}) {
+  // Anular un registro de caja NO devuelve dinero a la tarjeta.
+  // Prohibir la anulación local de un Point acreditado hasta disponer de
+  // un flujo de devolución confirmado por Mercado Pago.
+  const { data: payment, error: paymentError } = await supabase
+    .from('crm_payments')
+    .select('id, invoice_id, voided_at')
+    .eq('id', paymentId)
+    .single();
+  if (paymentError) return { data: null, error: paymentError };
+  if (payment.voided_at) return { data: payment, error: null };
+  if (payment.invoice_id) {
+    const { data: pointOperations, error: pointError } = await supabase
+      .from('crm_pos_point_operations')
+      .select('id')
+      .eq('crm_invoice_id', payment.invoice_id)
+      .eq('mp_status', 'processed')
+      .limit(1);
+    if (pointError) return { data: null, error: pointError };
+    if (pointOperations?.length) {
+      return {
+        data: null,
+        error: { message: 'Este cobro fue acreditado por Mercado Pago Point. Anularlo en caja no devuelve el dinero. Primero debe existir una devolución confirmada en Mercado Pago; esta operación no está habilitada desde caja.' },
+      };
+    }
+  }
   const { data, error } = await supabase
     .from('crm_payments')
     .update({
