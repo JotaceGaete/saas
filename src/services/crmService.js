@@ -1871,6 +1871,19 @@ export async function getCashDayPayments(businessId, date = getLocalDateString()
   };
 }
 
+// Cancelación completa de venta TPV: factura, pagos y stock en una transacción.
+// No sustituye una devolución Mercado Pago Point.
+export async function cancelPosSale(invoiceId, reason) {
+  if (!invoiceId || !String(reason || '').trim()) {
+    return { data: null, error: { message: 'Selecciona una venta y escribe el motivo de cancelación.' } };
+  }
+  const { data, error } = await supabase.rpc('crm_cancel_pos_sale', {
+    p_invoice_id: invoiceId,
+    p_reason: String(reason).trim(),
+  });
+  return { data, error };
+}
+
 export async function voidCrmPayment(paymentId, { voidReason, voidedBy = null } = {}) {
   // Anular un registro de caja NO devuelve dinero a la tarjeta.
   // Prohibir la anulación local de un Point acreditado hasta disponer de
