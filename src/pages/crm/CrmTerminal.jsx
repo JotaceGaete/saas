@@ -36,7 +36,7 @@ const PAYMENT_METHODS = [
   { value: 'cash',          label: 'Efectivo',       icon: 'Banknote' },
   { value: 'debit_card',    label: 'Débito',         icon: 'CreditCard' },
   { value: 'credit_card',   label: 'Crédito',        icon: 'CreditCard' },
-  { value: 'mercado_pago',  label: 'Mercado Pago',   icon: 'Wallet' },
+  { value: 'mercado_pago',  label: 'MP externo (ya cobrado)',   icon: 'Wallet' },
   { value: 'bank_transfer', label: 'Transferencia',  icon: 'ArrowLeftRight' },
   { value: 'check',         label: 'Cheque',         icon: 'BadgeCheck' },
   { value: 'other',         label: 'Otro',           icon: 'MoreHorizontal' },
@@ -1292,6 +1292,17 @@ function CrmTerminalUI() {
       if (requiresCustomerForPending && !customerId) {
         setErrorMsg('CREDIT_NO_CUSTOMER');
         return;
+      }
+
+      // Un pago Mercado Pago manual no ejecuta una orden Point. Confirmación explícita
+      // para impedir registrar intentos fallidos como dinero efectivamente recibido.
+      if (appliedPayments.some((payment) => payment.method === 'mercado_pago')) {
+        const confirmed = window.confirm(
+          'Pago Mercado Pago EXTERNO: esta opción NO envía cobros a la máquina Point.\\n\\n' +
+          '¿Ya verificaste en Mercado Pago que recibiste el dinero?\\n\\n' +
+          'Si quieres cobrar con la máquina, pulsa Cancelar y usa "Mercado Pago Point".'
+        );
+        if (!confirmed) return;
       }
 
       // Guard: real payments require open cash session. Pure current account does not touch caja.
