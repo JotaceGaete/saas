@@ -1632,6 +1632,11 @@ export default function CrmCash() {
     // Load payments and movements for all recent sessions (needed for history detail)
     const allUnique = recentList.filter(s => !sessionsList.some(t => t.id === s.id));
     const historyLoad = allUnique.concat(sessionsList);
+    // Una caja abierta ayer sigue siendo el turno activo hoy: cargarla aunque
+    // no aparezca entre las sesiones de la fecha ni en el historial limitado.
+    if (openRes.data && !historyLoad.some(session => session.id === openRes.data.id)) {
+      historyLoad.push(openRes.data);
+    }
 
     const [paymentsResults, movementsResults] = await Promise.all([
       Promise.all(historyLoad.map(async session => {
@@ -2051,8 +2056,16 @@ export default function CrmCash() {
                       <span className="text-base font-bold text-gray-900">
                         {currentSession ? turnLabel(currentSession, sessions) : 'Sin caja abierta'}
                       </span>
-                      <span className="capitalize text-sm text-gray-400">{fmtDate(today)}</span>
+                      <span className="capitalize text-sm text-gray-400">{fmtDate(currentSession?.date || today)}</span>
                     </div>
+
+                    {currentSession && currentSession.date !== today && (
+                      <p className="mt-2 text-xs font-medium text-amber-700">
+                        Este turno se abrió el {fmtDate(currentSession.date)} y sigue abierto.
+                        Los cobros del turno incluyen días anteriores; «Resumen del día» muestra solo los cobros fechados hoy.
+                        Cierra y concilia el turno anterior para iniciar una caja nueva.
+                      </p>
+                    )}
 
                     {currentSession && (
                       <div className="mt-1.5 flex flex-wrap gap-x-4 gap-y-1 text-sm text-gray-500">
