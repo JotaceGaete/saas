@@ -2278,6 +2278,16 @@ function localHourOf(isoString) {
  * Informe operativo diario integral (RESUMEN-DEL-DIA-1). Ver contrato de
  * retorno documentado en el ticket -- shape estable, campos aditivos.
  */
+// A POS ticket whose every recorded payment was voided is not an effective
+// sale. Keep the original invoice for audit, but never inflate sales reports.
+// Unpaid CRM/credit invoices remain legitimate sales and are not excluded.
+function isEffectiveSaleInvoice(invoice) {
+  if (invoice.status === 'anulada') return false;
+  if (invoice.source !== 'pos') return true;
+  const payments = invoice.crm_payments || [];
+  return payments.length === 0 || payments.some(p => !p.voided_at);
+}
+
 export async function getDailySummary(businessId, date = getLocalDateString()) {
   const generatedAt = new Date().toISOString();
   const isToday = date === getLocalDateString();
@@ -2295,7 +2305,7 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
   ] = await Promise.all([
     supabase
       .from('crm_invoices')
-      .select('id, status, total, subtotal, discount_amount, source, order_id, created_at, issue_date, crm_invoice_items(product_id, name, quantity, subtotal)')
+      .select('id, status, total, subtotal, discount_amount, source, order_id, created_at, issue_date, crm_invoice_items(product_id, name, quantity, subtotal), crm_payments(id, voided_at)')
       .eq('business_id', businessId)
       .eq('issue_date', date),
     getCashDayPayments(businessId, date),
@@ -2338,7 +2348,7 @@ export async function getDailySummary(businessId, date = getLocalDateString()) {
 
   // ── Ventas (crm_invoices.issue_date = :date) ──────────────────────────────
   const allInvoices = invoicesRes.data || [];
-  const activeInvoices = allInvoices.filter(inv => inv.status !== 'anulada');
+  const activeInvoices = allInvoices.filter(isEffectiveSaleInvoice);
   const voidedCount = allInvoices.length - activeInvoices.length;
 
   const gross = activeInvoices.reduce((s, inv) => s + Number(inv.subtotal || 0), 0);
@@ -3028,7 +3038,7 @@ export async function getPeriodSummary(businessId, fromDate, toDate) {
   ] = await Promise.all([
     supabase
       .from('crm_invoices')
-      .select('id, status, total, subtotal, discount_amount, source, order_id, created_at, issue_date, crm_invoice_items(product_id, name, quantity, subtotal)')
+      .select('id, status, total, subtotal, discount_amount, source, order_id, created_at, issue_date, crm_invoice_items(product_id, name, quantity, subtotal), crm_payments(id, voided_at)')
       .eq('business_id', businessId)
       .gte('issue_date', fromDate)
       .lte('issue_date', toDate),
@@ -3063,7 +3073,7 @@ export async function getPeriodSummary(businessId, fromDate, toDate) {
 
   // ── Ventas (crm_invoices.issue_date entre fromDate y toDate) ──────────────
   const allInvoices = invoicesRes.data || [];
-  const activeInvoices = allInvoices.filter(inv => inv.status !== 'anulada');
+  const activeInvoices = allInvoices.filter(isEffectiveSaleInvoice);
   const voidedCount = allInvoices.length - activeInvoices.length;
 
   const gross = activeInvoices.reduce((s, inv) => s + Number(inv.subtotal || 0), 0);
