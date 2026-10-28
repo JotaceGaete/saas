@@ -10,7 +10,8 @@ BEGIN
   RAISE EXCEPTION 'expected exhaustion';
  EXCEPTION WHEN OTHERS THEN
   GET STACKED DIAGNOSTICS got = RETURNED_SQLSTATE;
-  IF SQLERRM='expected exhaustion' OR got<>'P0001' THEN RAISE; END IF;
+  IF SQLERRM='expected exhaustion' OR got<>'P0001' OR
+     SQLERRM<>'No active CAF folios available' THEN RAISE; END IF;
  END;
  SELECT count(*),min(folio) INTO op_count,allocated
  FROM fiscal.issuance_operations WHERE sale_id='sale-over-capacity';
