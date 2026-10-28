@@ -38,6 +38,13 @@ def inspect(path):
             raise ValueError("Unexpected nested draft element")
         if local in leaf and len(element):
             raise ValueError("Nested content in scalar field")
+    for element in root.iter():
+        local = element.tag[len(namespace):]
+        permitted_attrs = {"DTE": {"version"}, "Documento": {"ID"}}
+        if set(element.attrib) - permitted_attrs.get(local, set()):
+            raise ValueError("Unexpected XML attribute")
+        if local in leaf and not (element.text or "").strip():
+            raise ValueError("Empty scalar draft field")
     docs = root.xpath("./sii:Documento", namespaces=NS)
     if len(docs) != 1 or docs[0].get("ID") != "BORRADOR_NO_FISCAL":
         raise ValueError("Not an explicitly non-fiscal draft")
@@ -50,6 +57,16 @@ def inspect(path):
     totals = root.xpath("./sii:Documento/sii:Encabezado/sii:Totales/sii:MntTotal/text()", namespaces=NS)
     if len(totals) != 1 or not lines or not all(x.isascii() and x.isdecimal() for x in lines + totals):
         raise ValueError("Missing or invalid integer amounts")
+    details = root.xpath("./sii:Documento/sii:Detalle", namespaces=NS)
+    if len(details) != len(lines) or len(details) > 1000:
+        raise ValueError("Invalid detail count")
+    for number, detail in enumerate(details, 1):
+        names = detail.xpath("./sii:NmbItem/text()", namespaces=NS)
+        indices = detail.xpath("./sii:NroLinDet/text()", namespaces=NS)
+        amounts = detail.xpath("./sii:MontoItem/text()", namespaces=NS)
+        if (len(names) != 1 or not names[0].strip() or
+            indices != [str(number)] or len(amounts) != 1):
+            raise ValueError("Incomplete or repeated detail fields")
     if sum(map(int, lines)) != int(totals[0]) or int(totals[0]) <= 0:
         raise ValueError("Draft totals mismatch")
     print("PASS: well-formed non-fiscal draft structure; NOT XSD-validated, signed or SII-approved")
