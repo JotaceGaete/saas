@@ -46,7 +46,7 @@ jobs:
           path: node-sii-results.log
           if-no-files-found: warn
       - name: Test offline boleta 39 header mapping
-        run: node --test scripts/sii/boleta39-header-model.test.mjs scripts/sii/boleta39-header-xml-preview.test.mjs scripts/sii/boleta39-combined-preview.test.mjs
+        run: node --test scripts/sii/boleta39-header-model.test.mjs scripts/sii/boleta39-header-xml-preview.test.mjs scripts/sii/boleta39-combined-preview.test.mjs scripts/sii/boleta39-canonical-draft.test.mjs
       - name: Validate offline SII XSD validator syntax
         run: python -m py_compile scripts/sii/audit-boleta39-document-candidates.py scripts/sii/validate-official-boleta-xsd.py scripts/sii/audit-official-xsd-archive.py scripts/sii/inventory-boleta-xsd.py scripts/sii/check-unsigned-draft-xml.py
       - name: Run secure XML draft parser tests
