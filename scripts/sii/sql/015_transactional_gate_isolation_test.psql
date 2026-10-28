@@ -1,0 +1,16 @@
+\set ON_ERROR_STOP on
+\i scripts/sii/sql/014_transactional_authorization_gate_proposal.sql
+DO $$
+BEGIN
+ IF has_table_privilege('anon','fiscal.reservation_authorizations','SELECT')
+ OR has_table_privilege('authenticated','fiscal.reservation_authorizations','INSERT')
+ OR has_function_privilege('authenticated','fiscal.assert_reservation_authorized(text,text,text)','EXECUTE')
+ THEN RAISE EXCEPTION 'Reservation gate exposed to client roles'; END IF;
+ BEGIN
+  PERFORM fiscal.assert_reservation_authorized('tenant','sale','12345678-5');
+  RAISE EXCEPTION 'Unapproved reservation passed gate';
+ EXCEPTION WHEN SQLSTATE 'PZ403' THEN NULL;
+ END;
+END;
+$$;
+SELECT 'PASS: private reservation gate denies unapproved sale' AS result;
