@@ -19,3 +19,10 @@ test('denies tampering, unsupported tax and claimed fiscal eligibility',()=>{
   {...fixture(),snapshot:{...fixture().snapshot,lines:[]}}
  ]) assert.equal(buildUnsignedBoleta39Draft({prepared:p}).ok,false);
 });
+
+test('rejects XML-invalid control characters and impossible dates',()=>{
+ const p=fixture();p.snapshot.lines[0].name='Producto\u0001 inválido';
+ assert.equal(buildUnsignedBoleta39Draft({prepared:p}).reason,'UNSUPPORTED_DOCUMENT');
+ assert.equal(buildUnsignedBoleta39Draft({prepared:fixture(),issueDate:'2026-02-30'}).reason,'UNSUPPORTED_DOCUMENT');
+ assert.equal(buildUnsignedBoleta39Draft({prepared:fixture(),issueDate:'2026-13-01'}).reason,'UNSUPPORTED_DOCUMENT');
+});
