@@ -15,12 +15,16 @@ BEGIN
     END IF;
     SELECT count(*) INTO n
       FROM pg_class c JOIN pg_namespace ns ON ns.oid=c.relnamespace
-      WHERE ns.nspname='fiscal' AND c.relkind IN ('r','S')
+      WHERE ns.nspname='fiscal' AND c.relkind IN ('r','p')
         AND (has_table_privilege(r,c.oid,'SELECT') OR
              has_table_privilege(r,c.oid,'INSERT') OR
              has_table_privilege(r,c.oid,'UPDATE') OR
              has_table_privilege(r,c.oid,'DELETE'));
-    IF n<>0 THEN RAISE EXCEPTION '% has direct fiscal table/sequence privileges',r; END IF;
+    IF n<>0 THEN RAISE EXCEPTION '% has direct fiscal table privileges',r; END IF;
+    SELECT count(*) INTO n FROM pg_class c JOIN pg_namespace ns ON ns.oid=c.relnamespace
+      WHERE ns.nspname='fiscal' AND c.relkind='S'
+        AND (has_sequence_privilege(r,c.oid,'USAGE') OR has_sequence_privilege(r,c.oid,'SELECT') OR has_sequence_privilege(r,c.oid,'UPDATE'));
+    IF n<>0 THEN RAISE EXCEPTION '% has direct fiscal sequence privileges',r; END IF;
   END LOOP;
 END;
 $$;
