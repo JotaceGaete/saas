@@ -24,10 +24,10 @@ for i in $(seq 1 100); do
 done
 if [ "$ready" != 1 ]; then cat "$tmp/a.log"; echo "First reservation did not start" >&2; exit 1; fi
 # Different sale: no unique-key conflict. Locked CAF range is skipped.
-if psql -X -v ON_ERROR_STOP=1 -c "SELECT * FROM fiscal.reserve_boleta39('tenant-test','race-sale-b','12345678-5');" > "$tmp/attempt.log" 2>&1; then
+if psql -X -v ON_ERROR_STOP=1 -v VERBOSITY=verbose -c "SELECT * FROM fiscal.reserve_boleta39('tenant-test','race-sale-b','12345678-5');" > "$tmp/attempt.log" 2>&1; then
   echo "Unexpected successful concurrent reservation from sole locked CAF" >&2; exit 1
 fi
-if ! grep -q 'CAF range temporarily locked' "$tmp/attempt.log"; then
+if ! grep -Eq 'PZ101:.*CAF range temporarily locked' "$tmp/attempt.log"; then
   cat "$tmp/attempt.log"; echo "Unexpected SQL failure (not retryable CAF lock)" >&2; exit 1
 fi
 wait "$pid" || { cat "$tmp/a.log"; exit 1; }
