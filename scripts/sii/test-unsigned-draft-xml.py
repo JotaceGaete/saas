@@ -57,6 +57,15 @@ class DraftParserTests(unittest.TestCase):
     def test_rejects_nested_amount(self):
         self.check(BASE.replace('<MontoItem>1190</MontoItem>', '<MontoItem><NmbItem>1190</NmbItem></MontoItem>'), False)
 
+    def test_rejects_duplicate_amount(self):
+        self.check(BASE.replace('</Detalle>', '<MontoItem>1190</MontoItem></Detalle>'), False)
+
+    def test_rejects_wrong_line_number(self):
+        self.check(BASE.replace('<NroLinDet>1</NroLinDet>', '<NroLinDet>2</NroLinDet>'), False)
+
+    def test_rejects_unexpected_attribute(self):
+        self.check(BASE.replace('<MontoItem>1190</MontoItem>', '<MontoItem override="true">1190</MontoItem>'), False)
+
     def test_rejects_broken_xml(self):
         self.check(BASE.replace('</DTE>', ''), False)
 
