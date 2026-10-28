@@ -2,7 +2,7 @@
 // Never send, print as tax document, sign, or reserve a CAF folio from this draft.
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
 const fail = reason => Object.freeze({ok:false,reason,fiscalEligible:false,siiValidated:false,transmittable:false});
-const xmlSafe = value => typeof value === 'string' && !/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\uFFFE\\uFFFF]/u.test(value);
+const xmlSafe = value => typeof value === 'string' && ![...value].some(ch => { const n=ch.codePointAt(0); return n<32 && n!==9 && n!==10 && n!==13 || n===0xFFFE || n===0xFFFF; });
 export function buildUnsignedBoleta39Draft({prepared,issueDate='2026-10-28'}={}) {
  if (prepared?.ok !== true || prepared.fiscalEligible !== false ||
      !prepared.snapshot || !Array.isArray(prepared.snapshot.lines) ||
