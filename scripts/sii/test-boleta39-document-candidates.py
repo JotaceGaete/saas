@@ -41,7 +41,13 @@ class CandidateAuditTests(unittest.TestCase):
     self.assertEqual(module.audit(path),("CASO-5",3500))
  def test_valid_draft(self): self.assert_audit()
  def test_reject_total_mismatch(self):
-  self.assert_audit(lambda root:root.find(".//"+tag("MontoItem")).__setattr__("text","3499"),"TOTAL_MISMATCH")
+  self.assert_audit(lambda root:root.find(".//"+tag("MontoItem")).__setattr__("text","3499"),"CASE_DETAIL_MISMATCH")
+ def test_reject_changed_price(self):
+  self.assert_audit(lambda root:root.find(".//"+tag("PrcItem")).__setattr__("text","701"),"CASE_DETAIL_MISMATCH")
+ def test_reject_changed_name(self):
+  self.assert_audit(lambda root:root.find(".//"+tag("NmbItem")).__setattr__("text","Arroz premium"),"CASE_DETAIL_MISMATCH")
+ def test_reject_changed_unit(self):
+  self.assert_audit(lambda root:root.find(".//"+tag("UnmdItem")).__setattr__("text","Unidad"),"CASE_DETAIL_MISMATCH")
  def test_reject_folio(self):
   self.assert_audit(lambda root:etree.SubElement(root.find(".//"+tag("IdDoc")),tag("Folio")).__setattr__("text","1"),"UNSAFE_FISCAL_FIELD")
  def test_reject_bad_reference(self):
