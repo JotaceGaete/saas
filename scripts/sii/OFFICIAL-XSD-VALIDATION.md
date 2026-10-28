@@ -24,3 +24,13 @@ El SII publica **un esquema específico de Boletas Electrónicas** distinto del 
 
 ## Hallazgo importante
 El documento histórico `https://www.sii.cl/factura_electronica/boletas_elec.pdf` está fechado **2010-07-12** y afirma que boletas no se enviaban individualmente. **No usar esa instrucción histórica como regla operativa vigente** sin contrastar con normativa actual.
+
+## Inspección del ZIP aportado (2026-10-28)
+
+- SHA-256 del ZIP recibido: `cd9bbb1297cf9c6e6cb887f4d1686c91c8476e8c01afaafc5d0948f48bec044d`.
+- Contiene exactamente `EnvioBOLETA_v11.xsd` (52.608 bytes) y `xmldsignature_v10.xsd` (7.135 bytes).
+- XSD raíz `EnvioBOLETA_v11.xsd`; namespace `http://www.sii.cl/SiiDte`; importa el esquema de firma `xmldsignature_v10.xsd`.
+- El comentario interno registra modificaciones de 2007 y 2010.
+- **Resultado real:** `lxml.etree.XMLSchema` no logra compilar el XSD sin modificaciones. En línea 678, `DescuentoPct` restringe `SiiDte:PctType` con `minInclusive=0.00`, pero el tipo base exige `minInclusive=0.01`. La restricción es inválida conforme a XSD. Esto bloquea validación documental contra el esquema original con este motor; no prueba que Walinka sea inválido.
+- No editar el XSD original ni declarar validación oficial. Confirmar con SII una versión actualizada/corrección autorizada o documentar una copia de compatibilidad estrictamente para diagnóstico, nunca como prueba de conformidad oficial.
+- El ZIP se inspeccionó localmente, no se agregó al repositorio.
