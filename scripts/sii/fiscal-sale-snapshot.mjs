@@ -2,7 +2,7 @@
 // Explicit caller-provided records must originate from a consistent locked DB read.
 // No signing, folio reservation or XML serialization in this module.
 const integer = value => (typeof value === 'number' && Number.isSafeInteger(value)) ||
-  (typeof value === 'string' && /^(0|[1-9]\\d*)(\\.0{1,2})?$/.test(value) && Number.isSafeInteger(Number(value)));
+  (typeof value === 'string' && /^(0|[1-9]\d*)(\.0{1,2})?$/.test(value) && Number.isSafeInteger(Number(value)));
 const amount = value => Number(value);
 const VALID_METHODS = new Set(['cash','card','debit_card','credit_card','bank_transfer','mercado_pago','check','other']);
 const text = value => typeof value === 'string' && value.trim().length > 0;
