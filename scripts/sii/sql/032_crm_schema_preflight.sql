@@ -8,6 +8,7 @@ WITH expected(table_name,column_name) AS (
  ('crm_invoices','id'),('crm_invoices','business_id'),
  ('crm_invoices','status'),('crm_invoices','paid_at'),('crm_invoices','total'),
  ('crm_invoice_items','id'),('crm_invoice_items','invoice_id'),
+ ('crm_invoice_items','name'),('crm_invoice_items','description'),
  ('crm_invoice_items','quantity'),('crm_invoice_items','unit_price'),
  ('crm_invoice_items','subtotal'),
  ('crm_payments','invoice_id'),('crm_payments','amount'),
