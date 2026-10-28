@@ -30,6 +30,10 @@ def audit(xml_path):
     doc = docs[0]
     if doc.xpath("string(./s:Encabezado/s:IdDoc/s:TipoDTE)", namespaces=NS) != "39":
         raise ValueError("WRONG_DOCUMENT_TYPE")
+    if doc.xpath("string(./s:Encabezado/s:IdDoc/s:IndServicio)", namespaces=NS) != "3":
+        raise ValueError("WRONG_SERVICE_INDICATOR")
+    if doc.xpath("string(./s:Encabezado/s:Receptor/s:RUTRecep)", namespaces=NS) != "66666666-6":
+        raise ValueError("WRONG_GENERIC_RECIPIENT")
     refs = doc.xpath("./s:Referencia", namespaces=NS)
     if len(refs) != 1 or refs[0].xpath("string(./s:CodRef)", namespaces=NS) != "SET":
         raise ValueError("MISSING_SET_REFERENCE")
@@ -59,6 +63,10 @@ def audit(xml_path):
             or value("MontoItem") != str(quantity * price)):
             raise ValueError("CASE_DETAIL_MISMATCH")
         line_sum += int(value("MontoItem"))
+    exempt_total = sum(quantity * price for _, quantity, price, _, exempt in EXPECTED[case] if exempt)
+    reported_exempt = doc.xpath("string(./s:Encabezado/s:Totales/s:MntExe)", namespaces=NS)
+    if reported_exempt != (str(exempt_total) if exempt_total else ""):
+        raise ValueError("EXEMPT_TOTAL_MISMATCH")
     if line_sum != total or total <= 0:
         raise ValueError("TOTAL_MISMATCH")
     for forbidden in ("TED", "CAF", "Signature", "Folio", "RUTEmisor"):
