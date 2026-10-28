@@ -23,3 +23,9 @@ Fecha: 2026-10-28. Revisión estática del código en rama de piloto. **No equiv
 - G6: despliegue gradual con rollback; Mercado Pago continúa emitiendo hasta cambio explícitamente aprobado.
 
 **Política:** no habilitar flags de emisión real, no modificar Mercado Pago y no fusionar a main hasta cerrar G1–G5 con evidencia reproducible.
+
+## Hallazgo adicional — autorización de tenant en la reserva (2026-10-28)
+
+La función `fiscal.reserve_boleta39(p_business_id,p_sale_id,p_issuer_rut)` recibe los tres identificadores del llamador. La unicidad por venta y el chequeo de `issuer_rut` en una operación existente **no demuestran autorización del emisor**. Un backend que pase un `business_id` ajeno podría reservar un folio si tiene permisos de ejecución. La prueba `008_tenant_and_issuer_isolation_test.psql` solo demuestra separación de claves y preservación de una operación ya existente; **no prueba control de acceso**.
+
+**Bloqueo G4:** antes de producción, el adaptador backend debe resolver identidad de negocio desde una sesión autenticada y verificar propiedad y RUT autorizado mediante datos confiables, nunca desde campos enviados por el cliente. El rol de ejecución de base de datos debe restringirse y revisarse con pruebas negativas de acceso cruzado; no exponer `fiscal` en Data API. No usar `SECURITY DEFINER` como atajo. Las migraciones siguen siendo propuestas sin aplicar.
