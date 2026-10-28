@@ -51,6 +51,11 @@ jobs:
         run: |
           python -m pip install lxml
           python scripts/sii/test-unsigned-draft-xml.py
+          draft_xml="$(mktemp --suffix=.xml)"
+          rm "$draft_xml"
+          node scripts/sii/generate-unsigned-draft-fixture.mjs "$draft_xml"
+          python scripts/sii/check-unsigned-draft-xml.py "$draft_xml"
+          rm "$draft_xml"
       - name: Validate JS module syntax
         run: |
           node --check scripts/sii/issuance-orchestrator.mjs
