@@ -2,8 +2,8 @@
 export const SII_DOCUMENT_TYPES = Object.freeze({ BOLETA_AFECTA: 39, BOLETA_EXENTA: 41, FACTURA_AFECTA: 33, FACTURA_EXENTA: 34 });
 
 export function normalizeChileanRut(value) {
-  const compact = String(value ?? '').replace(/[.\\s-]/g, '').toUpperCase();
-  if (!/^\\d{1,8}[0-9K]$/.test(compact)) throw new Error('RUT inválido');
+  const compact = String(value ?? '').replace(/[.\s-]/g, '').toUpperCase();
+  if (!/^\d{1,8}[0-9K]$/.test(compact)) throw new Error('RUT inválido');
   const body = compact.slice(0, -1);
   let sum = 0, factor = 2;
   for (let i = body.length - 1; i >= 0; i--) { sum += Number(body[i]) * factor; factor = factor === 7 ? 2 : factor + 1; }
