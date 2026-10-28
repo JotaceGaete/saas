@@ -27,7 +27,7 @@ test('case 5 maps exact Kg unit',()=>{
  assert.match(buildBoletaSetPreview(cases[4]).xml,/<UnmdItem>Kg<\/UnmdItem>/);
 });
 test('rejects case mutation and XML injection',()=>{
- assert.throws(()=>buildBoletaSetPreview({...cases[0],expectedTotal:1}),/TOTAL_MISMATCH/);
- assert.throws(()=>buildBoletaSetPreview({...cases[0],items:[{...cases[0].items[0],name:'<DTE>'}]}),/TOTAL_MISMATCH/);
- assert.throws(()=>buildBoletaSetPreview({...cases[0],items:[{...cases[0].items[0],name:'bad\u0000'}]}),/INVALID_CERTIFICATION_CASE/);
+ assert.throws(()=>buildBoletaSetPreview({...cases[0],expectedTotal:1}),/UNTRUSTED_CERTIFICATION_CASE/);
+ assert.throws(()=>buildBoletaSetPreview({...cases[0],items:[{...cases[0].items[0],name:'<DTE>'}]}),/UNTRUSTED_CERTIFICATION_CASE/);
+ assert.throws(()=>buildBoletaSetPreview({...cases[0],items:[{...cases[0].items[0],name:'bad\u0000'}]}),/UNTRUSTED_CERTIFICATION_CASE/);
 });
