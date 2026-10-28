@@ -4,7 +4,7 @@ import {buildFiscalSaleSnapshot} from './fiscal-sale-snapshot.mjs';
 function fixture() {
  return {businessId:'b1',issuerRut:'12345678-5',
  sale:{id:'s1',business_id:'b1',status:'pagada',paid_at:'2026-10-28T12:00:00Z',total:1000,discount_amount:0},
- items:[{id:'i1',invoice_id:'s1',name:'Servicio de prueba',quantity:1,unit_price:1000,subtotal:1000,discount_amount:0}],
+ items:[{id:'i1',invoice_id:'s1',name:'Servicio de prueba',quantity:1,unit_price:1000,subtotal:1000,discount_pct:0}],
  payments:[{invoice_id:'s1',payment_status:'received',voided_at:null,amount:1000,payment_method:'cash'}],
  taxes:[{businessId:'b1',saleId:'s1',invoiceItemId:'i1',verified:true,category:'IVA_AFECTO_19'}]};
 }
