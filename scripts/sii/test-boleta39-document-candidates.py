@@ -16,6 +16,9 @@ def candidate():
  head=etree.SubElement(doc,tag("Encabezado"))
  iddoc=etree.SubElement(head,tag("IdDoc"))
  etree.SubElement(iddoc,tag("TipoDTE")).text="39"
+ etree.SubElement(iddoc,tag("IndServicio")).text="3"
+ receptor=etree.SubElement(head,tag("Receptor"))
+ etree.SubElement(receptor,tag("RUTRecep")).text="66666666-6"
  totals=etree.SubElement(head,tag("Totales"))
  etree.SubElement(totals,tag("MntTotal")).text="3500"
  detail=etree.SubElement(doc,tag("Detalle"))
@@ -56,6 +59,10 @@ class CandidateAuditTests(unittest.TestCase):
   self.assert_audit(lambda root:root.find(".//"+tag("RazonRef")).__setattr__("text","CASO-9"),"UNKNOWN_CASE")
  def test_reject_bad_sequence(self):
   self.assert_audit(lambda root:root.find(".//"+tag("NroLinDet")).__setattr__("text","2"),"LINE_SEQUENCE")
+ def test_reject_service_indicator(self):
+  self.assert_audit(lambda root:root.find(".//"+tag("IndServicio")).__setattr__("text","1"),"WRONG_SERVICE_INDICATOR")
+ def test_reject_recipient(self):
+  self.assert_audit(lambda root:root.find(".//"+tag("RUTRecep")).__setattr__("text","0"),"WRONG_GENERIC_RECIPIENT")
  def test_reject_wrong_type(self):
   self.assert_audit(lambda root:root.find(".//"+tag("TipoDTE")).__setattr__("text","33"),"WRONG_DOCUMENT_TYPE")
  def test_reject_external_entity(self):
