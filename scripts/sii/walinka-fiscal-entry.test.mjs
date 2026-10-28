@@ -7,7 +7,8 @@ function fixture({userId='actor-1',error=null}={}) {
   const records={
     wa_businesses:[{id:'business-1',user_id:'actor-1',country_code:'CL',is_active:true}],
     crm_invoices:[{id:'sale-1',business_id:'business-1',status:'pagada',paid_at:'2026-10-28T12:00:00Z',total:1000}],
-    crm_invoice_items:[{invoice_id:'sale-1',quantity:1,unit_price:1000,subtotal:1000}]
+    crm_invoice_items:[{id:'line-1',invoice_id:'sale-1',quantity:1,unit_price:1000,subtotal:1000}],
+    crm_payments:[{invoice_id:'sale-1',amount:1000,payment_method:'cash',payment_status:'received',voided_at:null}]
   };
   const db={from(table){
     const filters=[];
@@ -25,6 +26,7 @@ function fixture({userId='actor-1',error=null}={}) {
       accessToken:'opaque-token',businessId:'business-1',saleId:'sale-1',
       authClient:{auth:{async getUser(token){assert.equal(token,'opaque-token');return {data:{user:userId?{id:userId}:null},error};}}},
       db,
+      taxMapping:{async getVerifiedLineTaxes({businessId,saleId}){return [{businessId,saleId,invoiceItemId:'line-1',category:'IVA_AFECTO_19',verified:true}];}},
       issuerRegistry:{async getVerifiedIssuer(businessId){return {businessId,issuerRut:'12345678-5',issuerVerified:true,fiscalEnabled:true};}},
       reserve:async()=>{reserved++;return {folio:700};}
     },
