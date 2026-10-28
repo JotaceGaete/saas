@@ -93,6 +93,7 @@ jobs:
             psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/008_tenant_and_issuer_isolation_test.psql
             psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/009_fiscal_role_permissions_test.psql
             psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/011_issuer_registry_isolation_test.psql
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/013_line_tax_mapping_isolation_test.psql
           } 2>&1 | tee postgres-sii-results.log
       - name: Save PostgreSQL test evidence
         if: always()
