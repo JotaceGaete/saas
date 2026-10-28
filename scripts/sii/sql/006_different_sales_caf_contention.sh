@@ -45,6 +45,6 @@ BEGIN
   RAISE EXCEPTION 'Different-sale concurrency failure: count %, A %, B %, next %',n,a,b,next_value;
  END IF;
 END;
-$;
+$$;
 SQL
 echo "PASS: locked CAF returns transient failure; retry yields distinct folios"
