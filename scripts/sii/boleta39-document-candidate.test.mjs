@@ -8,6 +8,8 @@ test('all five cases generate non-fiscal DTE-shaped XML with SII namespace',()=>
   const d=buildBoleta39DocumentCandidate(c);
   assert.match(d.xml,/<DTE xmlns="http:\/\/www\.sii\.cl\/SiiDte" version="1\.0">/);
   assert.match(d.xml,/<TipoDTE>39<\/TipoDTE>/);
+  assert.match(d.xml,/<IndServicio>3<\/IndServicio>/);
+  assert.match(d.xml,/<RUTRecep>66666666-6<\/RUTRecep>/);
   assert.match(d.xml,new RegExp('<RazonRef>'+c.id+'</RazonRef>'));
   assert.match(d.xml,/<CodRef>SET<\/CodRef>/);
   assert.equal(d.transmittable,false);
@@ -18,6 +20,7 @@ test('all five cases generate non-fiscal DTE-shaped XML with SII namespace',()=>
 });
 test('exempt line and Kg unit map to candidate fields',()=>{
  assert.match(buildBoleta39DocumentCandidate(cases[3]).xml,/<IndExe>1<\/IndExe>/);
+ assert.match(buildBoleta39DocumentCandidate(cases[3]).xml,/<MntExe>2000<\/MntExe>/);
  assert.match(buildBoleta39DocumentCandidate(cases[4]).xml,/<UnmdItem>Kg<\/UnmdItem>/);
 });
 test('altered official set cases cannot enter candidate builder',()=>{
