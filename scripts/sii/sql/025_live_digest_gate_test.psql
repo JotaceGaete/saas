@@ -1,0 +1,21 @@
+\set ON_ERROR_STOP on
+\i scripts/sii/sql/024_live_digest_authorization_gate.sql
+DO $$
+DECLARE d text;
+BEGIN
+ UPDATE public.crm_payments SET payment_status='received' WHERE id='live-payment';
+ d:=fiscal.compute_live_crm_digest('live-tenant','live-sale');
+ INSERT INTO fiscal.reservation_authorizations(business_id,sale_id,issuer_rut,approved,approved_at,sale_digest,expires_at)
+ VALUES('live-tenant','live-sale','12345678-5',true,now(),d,now()+interval '5 minutes');
+ UPDATE public.crm_invoice_items SET unit_price=1187 WHERE id='live-item';
+ BEGIN
+  PERFORM fiscal.assert_reservation_authorized('live-tenant','live-sale','12345678-5');
+  RAISE EXCEPTION 'Changed sale accepted';
+ EXCEPTION WHEN SQLSTATE 'PZ403' THEN NULL;
+ END;
+ IF EXISTS(SELECT 1 FROM fiscal.reservation_authorizations WHERE business_id='live-tenant' AND consumed_at IS NOT NULL) THEN
+  RAISE EXCEPTION 'Rejected approval consumed';
+ END IF;
+END;
+$$;
+SELECT 'PASS: changed sale denied without consuming approval' AS result;
