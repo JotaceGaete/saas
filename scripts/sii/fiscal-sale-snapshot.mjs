@@ -1,7 +1,10 @@
 // SERVER ONLY — diagnostic immutable fiscal input, never authorizes issuance.
 // Explicit caller-provided records must originate from a consistent locked DB read.
 // No signing, folio reservation or XML serialization in this module.
-const integer = value => typeof value === 'number' && Number.isSafeInteger(value);
+const integer = value => (typeof value === 'number' && Number.isSafeInteger(value)) ||
+  (typeof value === 'string' && /^(0|[1-9]\\d*)$/.test(value) && Number.isSafeInteger(Number(value)));
+const amount = value => Number(value);
+const VALID_METHODS = new Set(['cash','card','debit_card','credit_card','bank_transfer','mercado_pago','check','other']);
 const text = value => typeof value === 'string' && value.trim().length > 0;
 const deny = reason => ({ok:false,reason});
 
@@ -30,19 +33,19 @@ export function buildFiscalSaleSnapshot({businessId, issuerRut, sale, items, pay
         !Number.isFinite(i.unit_price) || i.unit_price < 0 ||
         !taxById.has(i.id)) return deny('INVALID_LINE');
     seen.add(i.id);
-    total += i.subtotal;
+    total += amount(i.subtotal);
     if (!Number.isSafeInteger(total)) return deny('OVERFLOW');
     lines.push(Object.freeze({id:i.id,name:i.name.trim(),description:typeof i.description === 'string' ? i.description.trim() : null,
-      quantity:i.quantity,unitPrice:i.unit_price,subtotal:i.subtotal,
+      quantity:i.quantity,unitPrice:amount(i.unit_price),subtotal:amount(i.subtotal),
       taxCategory:'IVA_AFECTO_19'}));
   }
-  if (total !== sale.total) return deny('LINE_TOTAL_MISMATCH');
+  if (total !== amount(sale.total)) return deny('LINE_TOTAL_MISMATCH');
   let received = 0;
   for (const p of payments) {
     if (!p || p.invoice_id !== sale.id || p.payment_status !== 'received' ||
         p.voided_at != null || !integer(p.amount) || p.amount <= 0 ||
-        !text(p.payment_method)) return deny('INVALID_PAYMENT');
-    received += p.amount;
+        !VALID_METHODS.has(p.payment_method)) return deny('INVALID_PAYMENT');
+    received += amount(p.amount);
     if (!Number.isSafeInteger(received)) return deny('OVERFLOW');
   }
   if (received !== total) return deny('PAYMENT_TOTAL_MISMATCH');
