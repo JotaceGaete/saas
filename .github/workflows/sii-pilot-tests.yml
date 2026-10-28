@@ -6,6 +6,12 @@ on:
     paths:
       - 'scripts/sii/**'
       - '.github/workflows/sii-pilot-tests.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'scripts/sii/**'
+      - '.github/workflows/sii-pilot-tests.yml'
   workflow_dispatch:
 
 permissions:
