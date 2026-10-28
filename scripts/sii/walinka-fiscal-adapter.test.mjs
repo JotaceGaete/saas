@@ -6,7 +6,8 @@ import { reserveAuthorizedBoleta39 } from './fiscal-authorization.mjs';
 function setup({ owner='actor-1', country='CL', active=true, issuerVerified=true, saleTenant='business-1' }={}) {
   const records = {
     wa_businesses: [{ id:'business-1', user_id:owner, country_code:country, is_active:active }],
-    crm_invoices: [{ id:'sale-1', business_id:saleTenant, status:'pagada', total:1000 }]
+    crm_invoices: [{ id:'sale-1', business_id:saleTenant, status:'pagada', paid_at:'2026-10-28T12:00:00Z', total:1000 }],
+    crm_invoice_items: [{invoice_id:'sale-1',quantity:1,unit_price:1000,subtotal:1000}]
   };
   const queries=[];
   const db={from(table){
