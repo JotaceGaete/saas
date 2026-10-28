@@ -1,7 +1,8 @@
 // Offline unsigned XML structure draft for boleta 39. NOT a fiscal DTE.
 // Never send, print as tax document, sign, or reserve a CAF folio from this draft.
 const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&apos;');
-const fail = reason => Object.freeze({ok:false,reason,fiscalEligible:false});
+const fail = reason => Object.freeze({ok:false,reason,fiscalEligible:false,siiValidated:false,transmittable:false});
+const xmlSafe = value => typeof value === 'string' && !/[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\uFFFE\\uFFFF]/u.test(value);
 export function buildUnsignedBoleta39Draft({prepared,issueDate='2026-10-28'}={}) {
  if (prepared?.ok !== true || prepared.fiscalEligible !== false ||
      !prepared.snapshot || !Array.isArray(prepared.snapshot.lines) ||
@@ -9,9 +10,11 @@ export function buildUnsignedBoleta39Draft({prepared,issueDate='2026-10-28'}={})
    return fail('SNAPSHOT_NOT_PREPARED');
  const s=prepared.snapshot;
  if (!/^\d{4}-\d{2}-\d{2}$/.test(issueDate) ||
+     !Number.isFinite(Date.parse(issueDate+'T00:00:00Z')) ||
+     new Date(issueDate+'T00:00:00Z').toISOString().slice(0,10)!==issueDate ||
      typeof s.saleId!=='string' || !s.saleId.trim() ||
      !Number.isSafeInteger(s.total) || s.total<=0 ||
-     s.lines.some(x=>typeof x.name!=='string' || !x.name.trim() ||
+     s.lines.some(x=>!xmlSafe(x.name) || !x.name.trim() ||
        x.name.length>80 || !Number.isSafeInteger(x.subtotal) ||
        x.subtotal<0 || x.taxCategory!=='IVA_AFECTO_19'))
    return fail('UNSUPPORTED_DOCUMENT');
