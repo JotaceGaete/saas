@@ -73,7 +73,7 @@ BEGIN
       AND t.category='IVA_AFECTO_19')) THEN
   RAISE EXCEPTION USING ERRCODE='PZ403',MESSAGE='Tax mapping incomplete';
  END IF;
- RETURN encode(extensions.digest(convert_to(
+ RETURN encode(public.digest(pg_catalog.convert_to(
   jsonb_build_object('v',1,'business',p_business_id,'sale',v_sale,
    'items',v_items,'payments',v_payments,'taxes',v_taxes)::text,'UTF8'),'sha256'),'hex');
 END;
