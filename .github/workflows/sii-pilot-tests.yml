@@ -69,3 +69,4 @@ jobs:
           psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/004_isolated_smoke_test.psql
           bash scripts/sii/sql/005_concurrent_reservation_test.sh
           bash scripts/sii/sql/006_different_sales_caf_contention.sh
+          psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/007_caf_exhaustion_test.psql
