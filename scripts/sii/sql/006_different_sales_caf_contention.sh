@@ -44,6 +44,7 @@ BEGIN
  IF n<>2 OR a<>702 OR b<>703 OR next_value<>704 THEN
   RAISE EXCEPTION 'Different-sale concurrency failure: count %, A %, B %, next %',n,a,b,next_value;
  END IF;
-END $$;
+END;
+$;
 SQL
 echo "PASS: locked CAF returns transient failure; retry yields distinct folios"
