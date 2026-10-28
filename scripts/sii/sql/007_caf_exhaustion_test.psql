@@ -22,5 +22,6 @@ BEGIN
  SELECT reserved_folio INTO retry_folio
  FROM fiscal.reserve_boleta39('tenant-test','race-sale-a','12345678-5');
  IF retry_folio<>702 THEN RAISE EXCEPTION 'Retry changed previously assigned folio: %',retry_folio; END IF;
-END $;
+END;
+$;
 SELECT 'PASS: CAF exhaustion, no extra allocation, idempotent retry' AS result;
