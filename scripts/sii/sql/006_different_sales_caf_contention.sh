@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Isolated PostgreSQL only. Tests two DIFFERENT sales against one CAF range.
-# SKIP LOCKED is allowed to return a transient "No available unlocked CAF range";
+# SKIP LOCKED is allowed to return a transient "CAF range temporarily locked";
 # caller MUST retry that error after the other transaction commits.
 set -euo pipefail
 tmp="$(mktemp -d)"
