@@ -7,13 +7,13 @@ El SII publica **un esquema específico de Boletas Electrónicas** distinto del 
 
 ## Estado comprobado
 - Se verificó que la página oficial enlaza el ZIP `schema_envio_bol.zip`.
-- **No se logró descargar/inspeccionar el ZIP desde este entorno**. No conocemos aquí la lista exacta de XSD, versión ni namespaces internos. No inventar nombres ni copiar esquemas de terceros.
+- **Actualización 2026-10-28:** se inspeccionó un ZIP aportado por el usuario; sus nombres, hashes y error de compilación están detallados abajo. La procedencia exacta y vigencia normativa del archivo no quedan demostradas solo por esa inspección. No copiar esquemas de terceros.
 - El validador adjunto admite un XSD oficial extraído localmente, sin acceso a red y sin resolver entidades externas.
 - **No existe todavía evidencia de que un XML de Walinka valide contra ese XSD**. Validación XSD tampoco implica firma correcta, CAF vigente, aceptación SII ni certificación.
 
 ## Procedimiento reproducible (entorno local aislado)
 1. Descargar ZIP desde el enlace oficial, registrar fecha de descarga y SHA-256 del ZIP.
-2. Extraer en carpeta privada; identificar el XSD raíz real leyendo los includes/imports.
+2. Extraer en carpeta privada; identificar el XSD raíz real leyendo los includes/imports. Para el ZIP inspeccionado se identificó `EnvioBOLETA_v11.xsd`.
 3. Instalar `lxml` en entorno de desarrollo aislado.
 4. Ejecutar:
    ```bash
