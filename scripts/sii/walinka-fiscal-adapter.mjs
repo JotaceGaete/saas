@@ -1,12 +1,13 @@
+import { assessFiscalReconciliation } from './walinka-fiscal-reconciliation.mjs';
 import { assessWalinkaCrmSale } from './walinka-sale-eligibility.mjs';
 // SERVER ONLY. Pilot integration with Walinka's existing tenant and CRM tables.
 // This adapter is NOT an HTTP endpoint and does NOT enable fiscal issuance.
 // db: server-side Supabase client. issuerRegistry: trusted administrative registry.
 // reserve: backend transaction which MUST independently recheck authorization.
-export function createWalinkaFiscalAdapter({ db, issuerRegistry, reserve }) {
+export function createWalinkaFiscalAdapter({ db, issuerRegistry, taxMapping, reserve }) {
   if (!db || typeof db.from !== 'function' ||
       typeof issuerRegistry?.getVerifiedIssuer !== 'function' ||
-      typeof reserve !== 'function') throw Error('Fiscal backend not configured');
+      typeof taxMapping?.getVerifiedLineTaxes !== 'function' || typeof reserve !== 'function') throw Error('Fiscal backend not configured');
 
   const one = async query => {
     const { data, error } = await query.maybeSingle();
@@ -46,16 +47,33 @@ export function createWalinkaFiscalAdapter({ db, issuerRegistry, reserve }) {
         .eq('id', saleId).eq('business_id', businessId));
       if (!sale || sale.id !== saleId || sale.business_id !== businessId) return null;
       const { data: items, error: itemsError } = await db.from('crm_invoice_items')
-        .select('invoice_id, quantity, unit_price, subtotal')
+        .select('id, invoice_id, quantity, unit_price, subtotal')
         .eq('invoice_id', saleId);
       if (itemsError) throw Error('Fiscal sale items unavailable');
       const assessment = assessWalinkaCrmSale({ sale, items, businessId });
+      let reconciliation={eligible:false,reason:'SALE_PRECHECK_FAILED'};
+      if(assessment.eligible){
+        const {data:payments,error:paymentError}=await db.from('crm_payments')
+          .select('invoice_id, amount, payment_method, payment_status, voided_at')
+          .eq('invoice_id',saleId);
+        if(paymentError || !Array.isArray(payments)) throw Error('Fiscal payments unavailable');
+        const taxes=await taxMapping.getVerifiedLineTaxes({businessId,saleId});
+        const byId=new Map();
+        for(const t of taxes){
+          if(t.businessId!==businessId || t.saleId!==saleId || byId.has(t.invoiceItemId))
+            throw Error('Inconsistent fiscal tax mapping');
+          byId.set(t.invoiceItemId,t);
+        }
+        reconciliation=assessFiscalReconciliation({sale,items,payments,
+          taxClassifications:items.map(i=>byId.get(i.id)).filter(Boolean)});
+      }
       // Positive pre-eligibility does NOT mean SII eligibility: VAT treatment,
       // verified issuer binding, reconciled payment and transactional database
       // authorization remain required. Deliberately deny folio reservation.
       return { id: sale.id, businessId: sale.business_id,
         issuerRut: null, fiscalEligible: false,
-        preEligible: assessment.eligible, preEligibilityReason: assessment.reason };
+        preEligible: assessment.eligible, preEligibilityReason: assessment.reason,
+        reconciled:reconciliation.eligible,reconciliationReason:reconciliation.reason };
     },
     async reserve(args) { return reserve(args); }
   };
