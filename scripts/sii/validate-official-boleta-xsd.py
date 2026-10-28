@@ -27,9 +27,12 @@ class OfflineResolver(etree.Resolver):
 
     def resolve(self, url, pubid, context):
         parsed = urlparse(url)
-        if parsed.scheme or parsed.netloc or url.startswith("/"):
-            raise ValueError(f"External or absolute schema reference denied: {url}")
-        candidate = (self.root / url).resolve()
+        if parsed.scheme or parsed.netloc:
+            raise ValueError(f"External schema reference denied: {url}")
+        # lxml may invoke the resolver for the absolute entry-point filename.
+        # Permit absolute paths ONLY when they resolve inside the trusted root.
+        candidate = (pathlib.Path(url) if pathlib.Path(url).is_absolute()
+                     else self.root / url).resolve()
         if not candidate.is_relative_to(self.root):
             raise ValueError(f"Schema reference escapes trusted directory: {url}")
         if not candidate.is_file():
