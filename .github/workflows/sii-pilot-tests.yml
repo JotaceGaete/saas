@@ -28,8 +28,17 @@ jobs:
           test -z "${SII_CAF_PRIVATE_KEY:-}"
           test -z "${SII_CERT_PASSWORD:-}"
       - name: Execute isolated state, orchestration and fault tests
+        shell: bash
         run: |
-          node --test scripts/sii/issuance-orchestrator.test.mjs scripts/sii/issuance-faults.test.mjs scripts/sii/caf-retry.test.mjs
+          set -o pipefail
+          node --test scripts/sii/issuance-orchestrator.test.mjs scripts/sii/issuance-faults.test.mjs scripts/sii/caf-retry.test.mjs 2>&1 | tee node-sii-results.log
+      - name: Save Node test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sii-node-test-evidence
+          path: node-sii-results.log
+          if-no-files-found: warn
       - name: Validate JS module syntax
         run: |
           node --check scripts/sii/issuance-orchestrator.mjs
@@ -66,7 +75,17 @@ jobs:
           persist-credentials: false
       - name: PostgreSQL isolated schema and CAS smoke test
         run: |
-          psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/004_isolated_smoke_test.psql
-          bash scripts/sii/sql/005_concurrent_reservation_test.sh
-          bash scripts/sii/sql/006_different_sales_caf_contention.sh
-          psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/007_caf_exhaustion_test.psql
+          set -o pipefail
+          {
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/004_isolated_smoke_test.psql
+            bash scripts/sii/sql/005_concurrent_reservation_test.sh
+            bash scripts/sii/sql/006_different_sales_caf_contention.sh
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/007_caf_exhaustion_test.psql
+          } 2>&1 | tee postgres-sii-results.log
+      - name: Save PostgreSQL test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sii-postgres-test-evidence
+          path: postgres-sii-results.log
+          if-no-files-found: warn
