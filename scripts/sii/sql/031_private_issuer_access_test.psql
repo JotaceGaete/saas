@@ -1,0 +1,29 @@
+\set ON_ERROR_STOP on
+\i scripts/sii/sql/028_private_fiscal_allowlist.sql
+\i scripts/sii/sql/029_private_issuer_gate.sql
+\i scripts/sii/sql/030_private_issuer_reservation_enforcement.sql
+DO $$
+BEGIN
+ IF has_table_privilege('authenticated','fiscal.issuer_access','SELECT')
+ OR has_table_privilege('anon','fiscal.issuer_access','INSERT')
+ THEN RAISE EXCEPTION 'Issuer allowlist exposed'; END IF;
+ BEGIN
+  PERFORM fiscal.reserve_boleta39('retry-tenant','retry-sale','12345678-5');
+  RAISE EXCEPTION 'Unauthorized retry accepted';
+ EXCEPTION WHEN SQLSTATE 'PZ403' THEN NULL;
+ END;
+ INSERT INTO fiscal.issuer_access(business_id,issuer_rut,enabled,authorized_by)
+ VALUES('retry-tenant','12345678-5',true,'pilot-admin');
+ PERFORM fiscal.assert_private_issuer_access('retry-tenant','12345678-5');
+ IF (SELECT reserved_folio FROM fiscal.reserve_boleta39('retry-tenant','retry-sale','12345678-5'))<>987654321
+ THEN RAISE EXCEPTION 'Authorized retry did not preserve folio'; END IF;
+ UPDATE fiscal.issuer_access SET enabled=false,revoked_at=now()
+ WHERE business_id='retry-tenant';
+ BEGIN
+  PERFORM fiscal.reserve_boleta39('retry-tenant','retry-sale','12345678-5');
+  RAISE EXCEPTION 'Revoked retry accepted';
+ EXCEPTION WHEN SQLSTATE 'PZ403' THEN NULL;
+ END;
+END;
+$$;
+SELECT 'PASS: private access, allowed retry and revocation' AS result;
