@@ -1,0 +1,15 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { assessWalinkaCrmSale as assess } from './walinka-sale-eligibility.mjs';
+const sale={id:'sale-1',business_id:'tenant-1',status:'pagada',paid_at:'2026-10-28T12:00:00Z',total:1000};
+const items=[{invoice_id:'sale-1',quantity:2,unit_price:500,subtotal:1000}];
+const check=(s=sale,i=items,b='tenant-1')=>assess({sale:s,items:i,businessId:b});
+test('paid matching CRM sale passes pre-eligibility only',()=>assert.equal(check().eligible,true));
+test('other tenant denied',()=>assert.equal(check(sale,items,'tenant-2').reason,'TENANT_MISMATCH'));
+test('unpaid denied',()=>assert.equal(check({...sale,status:'pendiente'}).reason,'UNPAID_SALE'));
+test('missing paid timestamp denied',()=>assert.equal(check({...sale,paid_at:null}).reason,'UNPAID_SALE'));
+test('zero or fractional total denied',()=>assert.equal(check({...sale,total:0}).reason,'INVALID_TOTAL'));
+test('no items denied',()=>assert.equal(check(sale,[]).reason,'EMPTY_ITEMS'));
+test('cross-sale items denied',()=>assert.equal(check(sale,[{...items[0],invoice_id:'other'}]).reason,'INVALID_ITEMS'));
+test('negative quantities denied',()=>assert.equal(check(sale,[{...items[0],quantity:-1}]).reason,'INVALID_ITEMS'));
+test('total mismatch denied',()=>assert.equal(check({...sale,total:900}).reason,'TOTAL_MISMATCH'));
