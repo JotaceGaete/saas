@@ -51,6 +51,6 @@ BEGIN
     op_count,allocated_folio,next_folio;
  END IF;
 END;
-$;
+$$;
 SQL
 echo "PASS: two independent PostgreSQL sessions reserved one folio for one sale"
