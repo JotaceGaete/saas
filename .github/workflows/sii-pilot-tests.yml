@@ -37,7 +37,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          node --test scripts/sii/iva19-diagnostic.test.mjs scripts/sii/fiscal-sale-snapshot.test.mjs scripts/sii/issuance-orchestrator.test.mjs scripts/sii/issuance-faults.test.mjs scripts/sii/caf-retry.test.mjs scripts/sii/fiscal-authorization.test.mjs scripts/sii/walinka-fiscal-adapter.test.mjs scripts/sii/walinka-fiscal-entry.test.mjs scripts/sii/walinka-sale-eligibility.test.mjs scripts/sii/walinka-fiscal-reconciliation.test.mjs 2>&1 | tee node-sii-results.log
+          node --test scripts/sii/boleta39-unsigned-draft.test.mjs scripts/sii/iva19-diagnostic.test.mjs scripts/sii/fiscal-sale-snapshot.test.mjs scripts/sii/issuance-orchestrator.test.mjs scripts/sii/issuance-faults.test.mjs scripts/sii/caf-retry.test.mjs scripts/sii/fiscal-authorization.test.mjs scripts/sii/walinka-fiscal-adapter.test.mjs scripts/sii/walinka-fiscal-entry.test.mjs scripts/sii/walinka-sale-eligibility.test.mjs scripts/sii/walinka-fiscal-reconciliation.test.mjs 2>&1 | tee node-sii-results.log
       - name: Save Node test evidence
         if: always()
         uses: actions/upload-artifact@v4
