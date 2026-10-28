@@ -74,14 +74,14 @@ begin
   if not found then
     -- A locked, otherwise eligible CAF must not be reported as exhausted.
     -- This diagnostic is advisory under concurrency; caller retries only
-    -- SQLSTATE 55P03 and rechecks idempotency on each attempt.
+    -- SQLSTATE PZ101 and rechecks idempotency on each attempt.
     if exists (
       select 1 from fiscal.caf_ranges
       where issuer_rut=p_issuer_rut and document_type=39
         and active and next_folio <= last_folio
     ) then
       raise exception using
-        errcode='55P03',
+        errcode='PZ101',
         message='CAF range temporarily locked';
     end if;
     raise exception using
