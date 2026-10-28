@@ -1,0 +1,25 @@
+\set ON_ERROR_STOP on
+\i scripts/sii/sql/012_line_tax_mapping_proposal.sql
+DO $$
+BEGIN
+ IF has_table_privilege('anon','fiscal.verified_line_taxes','SELECT')
+ OR has_table_privilege('authenticated','fiscal.verified_line_taxes','SELECT')
+ OR has_table_privilege('authenticated','fiscal.verified_line_taxes','INSERT')
+ THEN RAISE EXCEPTION 'Client role can access fiscal tax mappings'; END IF;
+END;
+$$;
+INSERT INTO fiscal.verified_line_taxes
+ (business_id,invoice_id,invoice_item_id,category)
+VALUES ('tenant-tax','sale-tax','line-tax','REQUIERE_REVISION');
+DO $$
+BEGIN
+ IF EXISTS (SELECT 1 FROM fiscal.verified_line_taxes WHERE business_id='tenant-tax' AND verified)
+ THEN RAISE EXCEPTION 'Tax mapping unexpectedly verified'; END IF;
+ BEGIN
+  UPDATE fiscal.verified_line_taxes SET verified=true WHERE business_id='tenant-tax';
+  RAISE EXCEPTION 'Missing tax verification evidence accepted';
+ EXCEPTION WHEN check_violation THEN NULL;
+ END;
+END;
+$$;
+SELECT 'PASS: tax mapping private and unverified by default' AS result;
