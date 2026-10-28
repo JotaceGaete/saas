@@ -45,6 +45,8 @@ jobs:
           name: sii-node-test-evidence
           path: node-sii-results.log
           if-no-files-found: warn
+      - name: Validate offline SII XSD validator syntax
+        run: python -m py_compile scripts/sii/validate-official-boleta-xsd.py
       - name: Validate JS module syntax
         run: |
           node --check scripts/sii/issuance-orchestrator.mjs
