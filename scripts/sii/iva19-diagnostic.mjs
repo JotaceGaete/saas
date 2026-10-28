@@ -19,7 +19,8 @@ export function calculateInclusiveIva19Diagnostic(gross) {
 }
 export function assessSnapshotIva19Diagnostic(prepared) {
   if (prepared?.ok !== true || prepared.fiscalEligible !== false ||
-      !prepared.snapshot || !Array.isArray(prepared.snapshot.lines))
+      !prepared.snapshot || typeof prepared.snapshot.saleId !== 'string' || !prepared.snapshot.saleId.trim() ||
+      !Array.isArray(prepared.snapshot.lines))
     return deny('SNAPSHOT_NOT_PREPARED');
   const {snapshot} = prepared;
   if (!Number.isSafeInteger(snapshot.total) || snapshot.total <= 0 ||
