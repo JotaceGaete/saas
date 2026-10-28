@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {calculateInclusiveIva19Diagnostic,assessSnapshotIva19Diagnostic} from './iva19-diagnostic.mjs';
+import {buildFiscalSaleSnapshot} from './fiscal-sale-snapshot.mjs';
 test('illustrative CLP gross amounts preserve total',()=>{
  for(const gross of [1,2,3,100,119,1000,1001,10000,11900,Number.MAX_SAFE_INTEGER]){
   const r=calculateInclusiveIva19Diagnostic(gross);
@@ -70,4 +71,19 @@ test('diagnostic cannot accept claimed SII validation or fiscal eligibility',()=
  const rejected=calculateInclusiveIva19Diagnostic(-1);
  assert.equal(rejected.siiValidated,false);
  assert.equal(rejected.fiscalEligible,false);
+});
+
+test('real CRM snapshot feeds VAT diagnostic without granting issuance',()=>{
+ const prepared=buildFiscalSaleSnapshot({
+  businessId:'b1',issuerRut:'11111111-1',
+  sale:{id:'sale1',business_id:'b1',status:'pagada',paid_at:'2026-10-28T12:00:00Z',total:'1190.00',discount_amount:'0.00'},
+  items:[{id:'item1',invoice_id:'sale1',name:'Producto de prueba',quantity:1,unit_price:'1190.00',subtotal:'1190.00',discount_pct:'0.00'}],
+  payments:[{invoice_id:'sale1',payment_status:'received',voided_at:null,amount:'1190.00',payment_method:'mercado_pago'}],
+  taxes:[{businessId:'b1',saleId:'sale1',invoiceItemId:'item1',verified:true,category:'IVA_AFECTO_19'}]
+ });
+ assert.equal(prepared.ok,true);
+ const vat=assessSnapshotIva19Diagnostic(prepared);
+ assert.equal(vat.ok,true);assert.equal(vat.net,1000);assert.equal(vat.iva,190);
+ assert.equal(vat.fiscalEligible,false);assert.equal(vat.siiValidated,false);
+ assert.equal(prepared.fiscalEligible,false);
 });
