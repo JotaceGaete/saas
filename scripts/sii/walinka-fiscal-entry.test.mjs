@@ -6,7 +6,8 @@ function fixture({userId='actor-1',error=null}={}) {
   let reserved=0;
   const records={
     wa_businesses:[{id:'business-1',user_id:'actor-1',country_code:'CL',is_active:true}],
-    crm_invoices:[{id:'sale-1',business_id:'business-1',status:'pagada',total:1000}]
+    crm_invoices:[{id:'sale-1',business_id:'business-1',status:'pagada',paid_at:'2026-10-28T12:00:00Z',total:1000}],
+    crm_invoice_items:[{invoice_id:'sale-1',quantity:1,unit_price:1000,subtotal:1000}]
   };
   const db={from(table){
     const filters=[];
