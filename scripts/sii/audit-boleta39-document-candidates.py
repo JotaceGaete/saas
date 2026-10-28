@@ -6,6 +6,17 @@ from lxml import etree
 
 NS = {"s": "http://www.sii.cl/SiiDte"}
 REQUIRED_CASES = {f"CASO-{i}" for i in range(1, 6)}
+# Independent transcription of "Set Prueba BE.txt"; prices include IVA.
+EXPECTED = {
+    "CASO-1": [("Cambio de aceite", 1, 19900, None, False),
+               ("Alineacion y balanceo", 1, 9900, None, False)],
+    "CASO-2": [("Papel de regalo", 17, 120, None, False)],
+    "CASO-3": [("Sandwic", 2, 1500, None, False),
+               ("Bebida", 2, 550, None, False)],
+    "CASO-4": [("item afecto 1", 8, 1590, None, False),
+               ("item exento 2", 2, 1000, None, True)],
+    "CASO-5": [("Arroz", 5, 700, "Kg", False)],
+}
 
 def audit(xml_path):
     parser = etree.XMLParser(resolve_entities=False, no_network=True, load_dtd=False,
@@ -28,6 +39,8 @@ def audit(xml_path):
     lines = doc.xpath("./s:Detalle", namespaces=NS)
     if not lines:
         raise ValueError("MISSING_DETAILS")
+    if len(lines) != len(EXPECTED[case]):
+        raise ValueError("CASE_LINE_COUNT_MISMATCH")
     totals = doc.xpath("./s:Encabezado/s:Totales/s:MntTotal", namespaces=NS)
     if len(totals) != 1:
         raise ValueError("MISSING_TOTAL")
@@ -38,7 +51,14 @@ def audit(xml_path):
             raise ValueError("LINE_SEQUENCE")
         if not line.xpath("string(./s:NmbItem)", namespaces=NS):
             raise ValueError("EMPTY_ITEM")
-        line_sum += int(line.xpath("string(./s:MontoItem)", namespaces=NS))
+        name, quantity, price, unit, exempt = EXPECTED[case][index-1]
+        value = lambda field: line.xpath("string(./s:" + field + ")", namespaces=NS)
+        if (value("NmbItem") != name or value("QtyItem") != str(quantity)
+            or value("PrcItem") != str(price) or value("UnmdItem") != (unit or "")
+            or value("IndExe") != ("1" if exempt else "")
+            or value("MontoItem") != str(quantity * price)):
+            raise ValueError("CASE_DETAIL_MISMATCH")
+        line_sum += int(value("MontoItem"))
     if line_sum != total or total <= 0:
         raise ValueError("TOTAL_MISMATCH")
     for forbidden in ("TED", "CAF", "Signature", "Folio", "RUTEmisor"):
