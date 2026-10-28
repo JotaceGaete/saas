@@ -1,0 +1,38 @@
+name: SII pilot security tests
+on:
+  push:
+    branches:
+      - feat/sii-boleta-electronica-piloto
+    paths:
+      - 'scripts/sii/**'
+      - '.github/workflows/sii-pilot-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fiscal-state-and-failure-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify no fiscal secrets in test environment
+        shell: bash
+        run: |
+          test -z "${SII_CAF_PRIVATE_KEY:-}"
+          test -z "${SII_CERT_PASSWORD:-}"
+      - name: Execute isolated state, orchestration and fault tests
+        run: |
+          node --test scripts/sii/issuance-orchestrator.test.mjs scripts/sii/issuance-faults.test.mjs
+      - name: Validate JS module syntax
+        run: |
+          node --check scripts/sii/issuance-orchestrator.mjs
+          node --check scripts/sii/crypto-engine.mjs
+          node --check scripts/sii/tedFixture.mjs
+          node --check scripts/sii/issuance-state.mjs
