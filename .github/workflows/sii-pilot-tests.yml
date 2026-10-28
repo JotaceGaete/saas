@@ -74,8 +74,9 @@ jobs:
         with:
           persist-credentials: false
       - name: PostgreSQL isolated schema and CAS smoke test
+        shell: bash
         run: |
-          set -o pipefail
+          set -euo pipefail
           {
             psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/004_isolated_smoke_test.psql
             bash scripts/sii/sql/005_concurrent_reservation_test.sh
