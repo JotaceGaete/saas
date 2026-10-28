@@ -48,6 +48,15 @@ class DraftParserTests(unittest.TestCase):
     def test_rejects_doctype(self):
         self.check('<!DOCTYPE DTE>' + BASE, False)
 
+    def test_rejects_unexpected_nested_element(self):
+        self.check(BASE.replace('</Documento>', '<Extra>ignored</Extra></Documento>'), False)
+
+    def test_rejects_foreign_namespace(self):
+        self.check(BASE.replace('</Documento>', '<x:Payload xmlns:x="urn:other">hidden</x:Payload></Documento>'), False)
+
+    def test_rejects_nested_amount(self):
+        self.check(BASE.replace('<MontoItem>1190</MontoItem>', '<MontoItem><NmbItem>1190</NmbItem></MontoItem>'), False)
+
     def test_rejects_broken_xml(self):
         self.check(BASE.replace('</DTE>', ''), False)
 
