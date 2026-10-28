@@ -1,7 +1,7 @@
 // Diagnostic-only gross-inclusive 19% VAT arithmetic, NOT an SII-approved DTE calculator.
 // No folio, signing, fiscal authorization or XML generation.
 // Rounding policy is a hypothesis requiring verification against current SII rules.
-const deny = reason => Object.freeze({ok:false,reason,fiscalEligible:false});
+const deny = reason => Object.freeze({ok:false,reason,fiscalEligible:false,siiValidated:false});
 export function calculateInclusiveIva19Diagnostic(gross) {
   if (typeof gross !== 'number' || !Number.isSafeInteger(gross) || gross <= 0)
     return deny('INVALID_GROSS');
@@ -19,6 +19,7 @@ export function calculateInclusiveIva19Diagnostic(gross) {
 }
 export function assessSnapshotIva19Diagnostic(prepared) {
   if (prepared?.ok !== true || prepared.fiscalEligible !== false ||
+      prepared.siiValidated === true ||
       !prepared.snapshot || typeof prepared.snapshot.saleId !== 'string' || !prepared.snapshot.saleId.trim() ||
       !Array.isArray(prepared.snapshot.lines))
     return deny('SNAPSHOT_NOT_PREPARED');
