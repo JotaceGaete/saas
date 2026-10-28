@@ -67,7 +67,7 @@ test('adapter snapshot diagnostic cannot enable fiscal issuance or reserve folio
   const result=f.deps.assessPreparedSale({
     businessId:'business-1',issuerRut:'12345678-5',
     sale:{id:'sale-1',business_id:'business-1',status:'pagada',paid_at:'2026-10-28T12:00:00Z',total:1000},
-    items:[{id:'line-1',invoice_id:'sale-1',description:'Servicio',quantity:1,unit_price:1000,subtotal:1000}],
+    items:[{id:'line-1',invoice_id:'sale-1',name:'Servicio',quantity:1,unit_price:1000,subtotal:1000}],
     payments:[{invoice_id:'sale-1',amount:1000,payment_method:'cash',payment_status:'received',voided_at:null}],
     taxes:[{businessId:'business-1',saleId:'sale-1',invoiceItemId:'line-1',category:'IVA_AFECTO_19',verified:true}]
   });
