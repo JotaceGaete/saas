@@ -7,7 +7,7 @@ function setup({ owner='actor-1', country='CL', active=true, issuerVerified=true
   const records = {
     wa_businesses: [{ id:'business-1', user_id:owner, country_code:country, is_active:active }],
     crm_invoices: [{ id:'sale-1', business_id:saleTenant, status:'pagada', paid_at:'2026-10-28T12:00:00Z', total:1000 }],
-    crm_invoice_items: [{id:'line-1',invoice_id:'sale-1',quantity:1,unit_price:1000,subtotal:1000,discount_amount:0}],
+    crm_invoice_items: [{id:'line-1',invoice_id:'sale-1',quantity:1,unit_price:1000,subtotal:1000,discount_pct:0}],
     crm_payments: [{invoice_id:'sale-1',amount:1000,payment_method:'cash',payment_status:'received',voided_at:null}]
   };
   const queries=[];
@@ -67,7 +67,7 @@ test('adapter snapshot diagnostic cannot enable fiscal issuance or reserve folio
   const result=f.deps.assessPreparedSale({
     businessId:'business-1',issuerRut:'12345678-5',
     sale:{id:'sale-1',business_id:'business-1',status:'pagada',paid_at:'2026-10-28T12:00:00Z',total:1000,discount_amount:0},
-    items:[{id:'line-1',invoice_id:'sale-1',name:'Servicio',quantity:1,unit_price:1000,subtotal:1000,discount_amount:0}],
+    items:[{id:'line-1',invoice_id:'sale-1',name:'Servicio',quantity:1,unit_price:1000,subtotal:1000,discount_pct:0}],
     payments:[{invoice_id:'sale-1',amount:1000,payment_method:'cash',payment_status:'received',voided_at:null}],
     taxes:[{businessId:'business-1',saleId:'sale-1',invoiceItemId:'line-1',category:'IVA_AFECTO_19',verified:true}]
   });
