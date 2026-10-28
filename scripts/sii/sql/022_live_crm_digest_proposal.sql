@@ -4,7 +4,7 @@
 -- concurrent INSERTs of new payments/items unless all writers share a lock.
 -- The schema/field assumptions must be reviewed against Walinka production.
 BEGIN;
-CREATE EXTENSION IF NOT EXISTS pgcrypto;
+-- PostgreSQL 16 provides pg_catalog.sha256(bytea) without pgcrypto.
 CREATE OR REPLACE FUNCTION fiscal.compute_live_crm_digest(
  p_business_id text,p_sale_id text
 ) RETURNS text LANGUAGE plpgsql SECURITY INVOKER SET search_path='' AS $$
@@ -73,9 +73,9 @@ BEGIN
       AND t.category='IVA_AFECTO_19')) THEN
   RAISE EXCEPTION USING ERRCODE='PZ403',MESSAGE='Tax mapping incomplete';
  END IF;
- RETURN encode(public.digest(pg_catalog.convert_to(
+ RETURN encode(pg_catalog.sha256(pg_catalog.convert_to(
   jsonb_build_object('v',1,'business',p_business_id,'sale',v_sale,
-   'items',v_items,'payments',v_payments,'taxes',v_taxes)::text,'UTF8'),'sha256'),'hex');
+   'items',v_items,'payments',v_payments,'taxes',v_taxes)::text,'UTF8')),'hex');
 END;
 $$;
 REVOKE ALL ON FUNCTION fiscal.compute_live_crm_digest(text,text)
