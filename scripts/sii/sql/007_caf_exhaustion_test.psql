@@ -1,0 +1,15 @@
+-- Isolated PostgreSQL only, after 004-006.
+\set ON_ERROR_STOP on
+SELECT * FROM fiscal.reserve_boleta39('tenant-test','last-sale-704','12345678-5');
+SELECT * FROM fiscal.reserve_boleta39('tenant-test','last-sale-705','12345678-5');
+DO $$
+DECLARE got text;
+BEGIN
+ BEGIN
+  PERFORM * FROM fiscal.reserve_boleta39('tenant-test','sale-over-capacity','12345678-5');
+  RAISE EXCEPTION 'expected exhaustion';
+ EXCEPTION WHEN OTHERS THEN
+  GET STACKED DIAGNOSTICS got = RETURNED_SQLSTATE;
+  IF SQLERRM='expected exhaustion' OR got<>'P0001' THEN RAISE; END IF;
+ END;
+END $$;
