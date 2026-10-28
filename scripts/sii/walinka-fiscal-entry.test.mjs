@@ -12,6 +12,11 @@ function fixture({userId='actor-1',error=null}={}) {
   const db={from(table){
     const filters=[];
     const q={select(){return q;},eq(k,v){filters.push([k,v]);return q;},
+      then(resolve,reject){
+        const rows=(records[table]||[]).filter(row=>filters.every(([k,v])=>row[k]===v));
+         
+        return Promise.resolve({data:rows,error:null}).then(resolve,reject);
+      },
       async maybeSingle(){return {data:(records[table]||[]).find(row=>filters.every(([k,v])=>row[k]===v))||null,error:null};}};
     return q;
   }};
