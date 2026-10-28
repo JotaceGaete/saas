@@ -58,7 +58,9 @@ def main():
     try:
         schema_doc = etree.parse(str(schema_file), parser)
         schema = etree.XMLSchema(schema_doc)
-        xml_doc = etree.parse(str(args.xml), parser)
+        xml_parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True,
+                                     huge_tree=False)
+        xml_doc = etree.parse(str(args.xml), xml_parser)
         if not schema.validate(xml_doc):
             for error in schema.error_log:
                 print(f"XSD ERROR line {error.line}: {error.message}", file=sys.stderr)
