@@ -3,7 +3,13 @@
 import pathlib
 import tempfile
 import unittest
-from check_unsigned_draft_xml import inspect
+import importlib.util
+
+module_path = pathlib.Path(__file__).with_name('check-unsigned-draft-xml.py')
+spec = importlib.util.spec_from_file_location('check_unsigned_draft_xml', module_path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+inspect = module.inspect
 
 BASE = '''<?xml version="1.0" encoding="UTF-8"?>
 <DTE xmlns="http://www.sii.cl/SiiDte" version="1.0">
