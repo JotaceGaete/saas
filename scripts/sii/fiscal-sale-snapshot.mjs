@@ -29,6 +29,8 @@ export function buildFiscalSaleSnapshot({businessId, issuerRut, sale, items, pay
   for (const i of items) {
     if (!i || !text(i.id) || seen.has(i.id) || i.invoice_id !== sale.id ||
         !text(i.name) || !integer(i.subtotal) || i.subtotal < 0 ||
+        i.discount_pct === undefined || !Number.isFinite(Number(i.discount_pct)) ||
+        Number(i.discount_pct) !== 0 ||
         !Number.isFinite(Number(i.quantity)) || Number(i.quantity) <= 0 ||
         !Number.isFinite(Number(i.unit_price)) || Number(i.unit_price) < 0 ||
         !taxById.has(i.id)) return deny('INVALID_LINE');
@@ -42,7 +44,7 @@ export function buildFiscalSaleSnapshot({businessId, issuerRut, sale, items, pay
   if (total !== amount(sale.total)) return deny('LINE_TOTAL_MISMATCH');
   // CRM discount_amount is a document-level discount; reject until
   // allocation across SII lines is explicitly defined and tested.
-  if (sale.discount_amount !== undefined && amount(sale.discount_amount) !== 0)
+  if (sale.discount_amount === undefined || !integer(sale.discount_amount) || amount(sale.discount_amount) !== 0)
     return deny('DOCUMENT_DISCOUNT_NOT_SUPPORTED');
   let received = 0;
   for (const p of payments) {
