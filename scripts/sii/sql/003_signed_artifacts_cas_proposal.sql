@@ -22,7 +22,7 @@ returns trigger language plpgsql set search_path = '' as $$
 begin
  raise exception 'Signed fiscal artifacts are immutable';
 end;
-$;
+$$;
 drop trigger if exists fiscal_signed_documents_immutable on fiscal.signed_documents;
 create trigger fiscal_signed_documents_immutable
  before update or delete on fiscal.signed_documents
@@ -66,6 +66,6 @@ begin
  get diagnostics v_rows=row_count;
  return v_rows=1;
 end;
-$;
+$$;
 revoke all on function fiscal.cas_issuance_state(bigint,text,text,text) from public, anon, authenticated;
 commit;
