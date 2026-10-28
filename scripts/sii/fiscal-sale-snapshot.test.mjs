@@ -4,14 +4,14 @@ import {buildFiscalSaleSnapshot} from './fiscal-sale-snapshot.mjs';
 function fixture() {
  return {businessId:'b1',issuerRut:'12345678-5',
  sale:{id:'s1',business_id:'b1',status:'pagada',paid_at:'2026-10-28T12:00:00Z',total:1000},
- items:[{id:'i1',invoice_id:'s1',description:'Servicio de prueba',quantity:1,unit_price:1000,subtotal:1000}],
+ items:[{id:'i1',invoice_id:'s1',name:'Servicio de prueba',quantity:1,unit_price:1000,subtotal:1000}],
  payments:[{invoice_id:'s1',payment_status:'received',voided_at:null,amount:1000,payment_method:'cash'}],
  taxes:[{businessId:'b1',saleId:'s1',invoiceItemId:'i1',verified:true,category:'IVA_AFECTO_19'}]};
 }
 test('builds immutable diagnostic snapshot, not fiscal authorization',()=>{
  const r=buildFiscalSaleSnapshot(fixture());
  assert.equal(r.ok,true);assert.equal(r.fiscalEligible,false);
- assert.equal(r.snapshot.lines[0].description,'Servicio de prueba');
+ assert.equal(r.snapshot.lines[0].name,'Servicio de prueba');
  assert.equal(Object.isFrozen(r.snapshot),true);
  assert.equal(Object.isFrozen(r.snapshot.lines),true);
  assert.equal(Object.isFrozen(r.snapshot.lines[0]),true);
@@ -19,7 +19,7 @@ test('builds immutable diagnostic snapshot, not fiscal authorization',()=>{
 for(const [label,mutate,reason] of [
  ['other tenant',f=>f.sale.business_id='b2','IDENTITY_MISMATCH'],
  ['unpaid',f=>f.sale.status='pendiente','SALE_NOT_SETTLED'],
- ['missing description',f=>delete f.items[0].description,'INVALID_LINE'],
+ ['missing name',f=>delete f.items[0].name,'INVALID_LINE'],
  ['duplicate item',f=>f.items.push({...f.items[0]}),'INCOMPLETE_DATA'],
  ['tampered total',f=>f.sale.total=999,'LINE_TOTAL_MISMATCH'],
  ['unverified tax',f=>f.taxes[0].verified=false,'UNVERIFIED_TAX'],
