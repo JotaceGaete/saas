@@ -20,7 +20,7 @@ BEGIN;
 SELECT * FROM fiscal.reserve_boleta39('tenant-test','race-same-sale','12345678-5');
 COMMIT;
 SQL
-psql -X -f "$tmp/first.psql" > "$tmp/first.log" 2>&1 &
+psql -X -v ON_ERROR_STOP=1 -f "$tmp/first.psql" > "$tmp/first.log" 2>&1 &
 first_pid=$!
 ready=0
 for i in $(seq 1 100); do
@@ -31,7 +31,7 @@ for i in $(seq 1 100); do
   sleep 0.05
 done
 if [ "$ready" != 1 ]; then echo "First transaction did not reach reservation" >&2; exit 1; fi
-psql -X -f "$tmp/second.psql" > "$tmp/second.log" 2>&1 &
+psql -X -v ON_ERROR_STOP=1 -f "$tmp/second.psql" > "$tmp/second.log" 2>&1 &
 second_pid=$!
 sleep 0.3
 if ! kill -0 "$second_pid" 2>/dev/null; then
@@ -50,6 +50,7 @@ BEGIN
   RAISE EXCEPTION 'Concurrency invariant failed: count %, folio %, next %',
     op_count,allocated_folio,next_folio;
  END IF;
-END $$;
+END;
+$;
 SQL
 echo "PASS: two independent PostgreSQL sessions reserved one folio for one sale"
