@@ -15,17 +15,22 @@ create table if not exists fiscal.signed_documents (
 -- digest() is installed. This migration assumes extensions.digest.
 alter table fiscal.signed_documents enable row level security;
 revoke all on fiscal.signed_documents from public, anon, authenticated;
+-- WARNING: Trigger also blocks maintenance updates; use a separately reviewed recovery procedure.
 -- Disallow mutation even by the privileged application role; use insert-only.
 create or replace function fiscal.prevent_signed_document_mutation()
 returns trigger language plpgsql set search_path = '' as $$
 begin
  raise exception 'Signed fiscal artifacts are immutable';
-end $$;
+end;
+$;
 drop trigger if exists fiscal_signed_documents_immutable on fiscal.signed_documents;
 create trigger fiscal_signed_documents_immutable
  before update or delete on fiscal.signed_documents
  for each row execute function fiscal.prevent_signed_document_mutation();
 
+-- CRITICAL: revoke direct UPDATE on issuance_operations from the application role
+-- after introducing a dedicated restricted execution role. SECURITY INVOKER
+-- alone does NOT enforce that callers use CAS instead of direct UPDATE.
 -- State transitions are CAS; return false if another worker won.
 -- Caller must check true before any SII transmission.
 create or replace function fiscal.cas_issuance_state(
@@ -60,6 +65,7 @@ begin
        (select 1 from fiscal.signed_documents where operation_id=p_operation_id));
  get diagnostics v_rows=row_count;
  return v_rows=1;
-end $$;
+end;
+$;
 revoke all on function fiscal.cas_issuance_state(bigint,text,text,text) from public, anon, authenticated;
 commit;
