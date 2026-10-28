@@ -1,3 +1,4 @@
+import { assessWalinkaCrmSale } from './walinka-sale-eligibility.mjs';
 // SERVER ONLY. Pilot integration with Walinka's existing tenant and CRM tables.
 // This adapter is NOT an HTTP endpoint and does NOT enable fiscal issuance.
 // db: server-side Supabase client. issuerRegistry: trusted administrative registry.
@@ -41,13 +42,20 @@ export function createWalinkaFiscalAdapter({ db, issuerRegistry, reserve }) {
     async getSale({ businessId, saleId }) {
       // CRM invoice is the existing sales document; it is not itself an SII DTE.
       const sale = await one(db.from('crm_invoices')
-        .select('id, business_id, status, total')
+        .select('id, business_id, status, paid_at, total')
         .eq('id', saleId).eq('business_id', businessId));
       if (!sale || sale.id !== saleId || sale.business_id !== businessId) return null;
-      // Deliberately deny until a trusted fiscal-sale eligibility and issuer
-      // binding is implemented; never infer these from client-supplied fields.
+      const { data: items, error: itemsError } = await db.from('crm_invoice_items')
+        .select('invoice_id, quantity, unit_price, subtotal')
+        .eq('invoice_id', saleId);
+      if (itemsError) throw Error('Fiscal sale items unavailable');
+      const assessment = assessWalinkaCrmSale({ sale, items, businessId });
+      // Positive pre-eligibility does NOT mean SII eligibility: VAT treatment,
+      // verified issuer binding, reconciled payment and transactional database
+      // authorization remain required. Deliberately deny folio reservation.
       return { id: sale.id, businessId: sale.business_id,
-        issuerRut: null, fiscalEligible: false };
+        issuerRut: null, fiscalEligible: false,
+        preEligible: assessment.eligible, preEligibilityReason: assessment.reason };
     },
     async reserve(args) { return reserve(args); }
   };
