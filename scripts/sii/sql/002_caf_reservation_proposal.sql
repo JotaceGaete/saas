@@ -69,8 +69,8 @@ begin
   where issuer_rut=p_issuer_rut and document_type=39
     and active and next_folio <= last_folio
   order by first_folio, id
-  for update skip locked
-  limit 1;
+  limit 1
+  for update skip locked;
   if not found then
     -- A locked, otherwise eligible CAF must not be reported as exhausted.
     -- This diagnostic is advisory under concurrency; caller retries only
