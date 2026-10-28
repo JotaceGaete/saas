@@ -2,7 +2,7 @@
 // Explicit caller-provided records must originate from a consistent locked DB read.
 // No signing, folio reservation or XML serialization in this module.
 const integer = value => (typeof value === 'number' && Number.isSafeInteger(value)) ||
-  (typeof value === 'string' && /^(0|[1-9]\\d*)$/.test(value) && Number.isSafeInteger(Number(value)));
+  (typeof value === 'string' && /^(0|[1-9]\\d*)(\\.0{1,2})?$/.test(value) && Number.isSafeInteger(Number(value)));
 const amount = value => Number(value);
 const VALID_METHODS = new Set(['cash','card','debit_card','credit_card','bank_transfer','mercado_pago','check','other']);
 const text = value => typeof value === 'string' && value.trim().length > 0;
@@ -29,14 +29,14 @@ export function buildFiscalSaleSnapshot({businessId, issuerRut, sale, items, pay
   for (const i of items) {
     if (!i || !text(i.id) || seen.has(i.id) || i.invoice_id !== sale.id ||
         !text(i.name) || !integer(i.subtotal) || i.subtotal < 0 ||
-        typeof i.quantity !== 'number' || !Number.isFinite(i.quantity) || i.quantity <= 0 ||
-        !Number.isFinite(i.unit_price) || i.unit_price < 0 ||
+        !Number.isFinite(Number(i.quantity)) || Number(i.quantity) <= 0 ||
+        !Number.isFinite(Number(i.unit_price)) || Number(i.unit_price) < 0 ||
         !taxById.has(i.id)) return deny('INVALID_LINE');
     seen.add(i.id);
     total += amount(i.subtotal);
     if (!Number.isSafeInteger(total)) return deny('OVERFLOW');
     lines.push(Object.freeze({id:i.id,name:i.name.trim(),description:typeof i.description === 'string' ? i.description.trim() : null,
-      quantity:i.quantity,unitPrice:amount(i.unit_price),subtotal:amount(i.subtotal),
+      quantity:Number(i.quantity),unitPrice:amount(i.unit_price),subtotal:amount(i.subtotal),
       taxCategory:'IVA_AFECTO_19'}));
   }
   if (total !== amount(sale.total)) return deny('LINE_TOTAL_MISMATCH');
