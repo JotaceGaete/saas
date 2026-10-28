@@ -50,6 +50,7 @@ jobs:
       - name: Run secure XML draft parser tests
         run: |
           python -m pip install lxml
+          python scripts/sii/test-official-boleta-xsd-validator.py
           python scripts/sii/test-unsigned-draft-xml.py
           draft_xml="$(mktemp --suffix=.xml)"
           rm "$draft_xml"
