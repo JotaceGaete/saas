@@ -3,8 +3,8 @@ import assert from 'node:assert/strict';
 import {buildFiscalSaleSnapshot} from './fiscal-sale-snapshot.mjs';
 function fixture() {
  return {businessId:'b1',issuerRut:'12345678-5',
- sale:{id:'s1',business_id:'b1',status:'pagada',paid_at:'2026-10-28T12:00:00Z',total:1000},
- items:[{id:'i1',invoice_id:'s1',name:'Servicio de prueba',quantity:1,unit_price:1000,subtotal:1000}],
+ sale:{id:'s1',business_id:'b1',status:'pagada',paid_at:'2026-10-28T12:00:00Z',total:1000,discount_amount:0},
+ items:[{id:'i1',invoice_id:'s1',name:'Servicio de prueba',quantity:1,unit_price:1000,subtotal:1000,discount_amount:0}],
  payments:[{invoice_id:'s1',payment_status:'received',voided_at:null,amount:1000,payment_method:'cash'}],
  taxes:[{businessId:'b1',saleId:'s1',invoiceItemId:'i1',verified:true,category:'IVA_AFECTO_19'}]};
 }
@@ -53,4 +53,17 @@ test('denies fractional CLP returned as NUMERIC string',()=>{
 test('blocks document-level discount pending fiscal line allocation',()=>{
  const f=fixture();f.sale.discount_amount='100.00';
  assert.equal(buildFiscalSaleSnapshot(f).reason,'DOCUMENT_DISCOUNT_NOT_SUPPORTED');
+});
+
+test('denies unknown document discount',()=>{
+ const f=fixture();delete f.sale.discount_amount;
+ assert.equal(buildFiscalSaleSnapshot(f).reason,'DOCUMENT_DISCOUNT_NOT_SUPPORTED');
+});
+test('denies nonzero item discount pending fiscal allocation',()=>{
+ const f=fixture();f.items[0].discount_pct='5.00';
+ assert.equal(buildFiscalSaleSnapshot(f).reason,'INVALID_LINE');
+});
+test('denies missing item discount classification',()=>{
+ const f=fixture();delete f.items[0].discount_pct;
+ assert.equal(buildFiscalSaleSnapshot(f).reason,'INVALID_LINE');
 });
