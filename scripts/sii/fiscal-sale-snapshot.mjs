@@ -25,14 +25,14 @@ export function buildFiscalSaleSnapshot({businessId, issuerRut, sale, items, pay
   const lines = [];
   for (const i of items) {
     if (!i || !text(i.id) || seen.has(i.id) || i.invoice_id !== sale.id ||
-        !text(i.description) || !integer(i.subtotal) || i.subtotal < 0 ||
+        !text(i.name) || !integer(i.subtotal) || i.subtotal < 0 ||
         typeof i.quantity !== 'number' || !Number.isFinite(i.quantity) || i.quantity <= 0 ||
         !Number.isFinite(i.unit_price) || i.unit_price < 0 ||
         !taxById.has(i.id)) return deny('INVALID_LINE');
     seen.add(i.id);
     total += i.subtotal;
     if (!Number.isSafeInteger(total)) return deny('OVERFLOW');
-    lines.push(Object.freeze({id:i.id,description:i.description.trim(),
+    lines.push(Object.freeze({id:i.id,name:i.name.trim(),description:typeof i.description === 'string' ? i.description.trim() : null,
       quantity:i.quantity,unitPrice:i.unit_price,subtotal:i.subtotal,
       taxCategory:'IVA_AFECTO_19'}));
   }
