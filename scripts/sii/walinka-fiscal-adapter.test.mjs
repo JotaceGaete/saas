@@ -36,7 +36,7 @@ test('owner, Chilean business and invoice are resolved from actual Walinka table
   assert.equal((await f.deps.canIssue({actorId:'actor-1',businessId:'business-1'})),true);
   assert.equal((await f.deps.getBusiness('business-1')).issuerRut,'12345678-5');
   assert.equal((await f.deps.getSale({businessId:'business-1',saleId:'sale-1'})).fiscalEligible,false);
-  assert.deepEqual(new Set(f.queries.map(x=>x.table)),new Set(['wa_businesses','crm_invoices']));
+  assert.deepEqual(new Set(f.queries.map(x=>x.table)),new Set(['wa_businesses','crm_invoices','crm_invoice_items']));
   await assert.rejects(reserveAuthorizedBoleta39(input(f)));
   assert.equal(f.reservations,0);
 });
