@@ -36,3 +36,33 @@ jobs:
           node --check scripts/sii/crypto-engine.mjs
           node --check scripts/sii/tedFixture.mjs
           node --check scripts/sii/issuance-state.mjs
+
+  postgres-isolated-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test_only
+          POSTGRES_DB: fiscal_pilot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d fiscal_pilot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: test_only
+      PGDATABASE: fiscal_pilot
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: PostgreSQL isolated schema and CAS smoke test
+        run: psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/004_isolated_smoke_test.psql
