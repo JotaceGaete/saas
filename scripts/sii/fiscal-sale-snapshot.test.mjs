@@ -49,3 +49,8 @@ test('denies fractional CLP returned as NUMERIC string',()=>{
  const f=fixture();f.sale.total='1000.50';
  assert.equal(buildFiscalSaleSnapshot(f).reason,'SALE_NOT_SETTLED');
 });
+
+test('blocks document-level discount pending fiscal line allocation',()=>{
+ const f=fixture();f.sale.discount_amount='100.00';
+ assert.equal(buildFiscalSaleSnapshot(f).reason,'DOCUMENT_DISCOUNT_NOT_SUPPORTED');
+});
