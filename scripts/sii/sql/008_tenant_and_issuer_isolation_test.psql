@@ -1,0 +1,38 @@
+-- Isolated PostgreSQL 16 only. Run after 004-007.
+\set ON_ERROR_STOP on
+-- A previously reserved sale cannot be rebound to another issuer.
+DO $$
+DECLARE got text;
+BEGIN
+ BEGIN
+  PERFORM * FROM fiscal.reserve_boleta39('tenant-test','sale-1','87654321-K');
+  RAISE EXCEPTION 'expected issuer mismatch';
+ EXCEPTION WHEN OTHERS THEN
+  GET STACKED DIAGNOSTICS got = RETURNED_SQLSTATE;
+  IF SQLERRM='expected issuer mismatch' OR
+     SQLERRM<>'Issuer mismatch' THEN RAISE; END IF;
+ END;
+END;
+$$;
+-- A different tenant with the same sale ID must not inherit the original
+-- tenant's fiscal operation or folio; with the fixture CAF exhausted it fails.
+DO $$
+DECLARE got text; n integer;
+BEGIN
+ BEGIN
+  PERFORM * FROM fiscal.reserve_boleta39('other-tenant','sale-1','12345678-5');
+  RAISE EXCEPTION 'expected no folios';
+ EXCEPTION WHEN OTHERS THEN
+  GET STACKED DIAGNOSTICS got = RETURNED_SQLSTATE;
+  IF SQLERRM='expected no folios' OR got<>'P0001' OR
+     SQLERRM<>'No active CAF folios available' THEN RAISE; END IF;
+ END;
+ SELECT count(*) INTO n FROM fiscal.issuance_operations
+ WHERE business_id='other-tenant' AND sale_id='sale-1';
+ IF n<>0 THEN RAISE EXCEPTION 'Cross-tenant operation unexpectedly persisted'; END IF;
+ SELECT count(*) INTO n FROM fiscal.issuance_operations
+ WHERE business_id='tenant-test' AND sale_id='sale-1' AND folio=700;
+ IF n<>1 THEN RAISE EXCEPTION 'Original tenant operation was modified'; END IF;
+END;
+$$;
+SELECT 'PASS: issuer mismatch and cross-tenant isolation' AS result;
