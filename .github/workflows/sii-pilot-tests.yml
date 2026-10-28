@@ -57,6 +57,7 @@ jobs:
           node scripts/sii/generate-unsigned-draft-fixture.mjs "$draft_xml"
           python scripts/sii/check-unsigned-draft-xml.py "$draft_xml"
           candidates_dir="$(mktemp -d)"
+          node scripts/sii/report-boleta39-fiscal-gaps.mjs
           node scripts/sii/export-boleta39-document-candidates.mjs "$candidates_dir"
           python scripts/sii/audit-boleta39-document-candidates.py "$candidates_dir"/CASO-*.candidate.xml
           python scripts/sii/test-boleta39-document-candidates.py
