@@ -84,6 +84,8 @@ jobs:
         run: |
           set -euo pipefail
           {
+            # Vanilla PostgreSQL lacks Supabase's standard roles; create inert fixture roles only here.
+            psql -X -v ON_ERROR_STOP=1 -c 'CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN;'
             psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/004_isolated_smoke_test.psql
             bash scripts/sii/sql/005_concurrent_reservation_test.sh
             bash scripts/sii/sql/006_different_sales_caf_contention.sh
