@@ -15,6 +15,11 @@ function setup({ owner='actor-1', country='CL', active=true, issuerVerified=true
     const q={
       select(){return q;},
       eq(k,v){filters.push([k,v]);return q;},
+      then(resolve,reject){
+        const rows=(records[table]||[]).filter(row=>filters.every(([k,v])=>row[k]===v));
+        queries.push({table,filters}); 
+        return Promise.resolve({data:rows,error:null}).then(resolve,reject);
+      },
       async maybeSingle(){
         queries.push({table,filters});
         return {data:(records[table]||[]).find(row=>filters.every(([k,v])=>row[k]===v))||null,error:null};
