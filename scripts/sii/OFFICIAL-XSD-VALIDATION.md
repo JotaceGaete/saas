@@ -34,3 +34,16 @@ El documento histórico `https://www.sii.cl/factura_electronica/boletas_elec.pdf
 - **Resultado real:** `lxml.etree.XMLSchema` no logra compilar el XSD sin modificaciones. En línea 678, `DescuentoPct` restringe `SiiDte:PctType` con `minInclusive=0.00`, pero el tipo base exige `minInclusive=0.01`. La restricción es inválida conforme a XSD. Esto bloquea validación documental contra el esquema original con este motor; no prueba que Walinka sea inválido.
 - No editar el XSD original ni declarar validación oficial. Confirmar con SII una versión actualizada/corrección autorizada o documentar una copia de compatibilidad estrictamente para diagnóstico, nunca como prueba de conformidad oficial.
 - El ZIP se inspeccionó localmente, no se agregó al repositorio.
+
+## Segunda inspección reproducible (archivo del usuario)
+
+El script `scripts/sii/audit-official-xsd-archive.py` comprueba hashes SHA-256 de los dos XSD antes de intentar compilar el original **sin modificarlo**. Ejecución local:
+
+```bash
+python -m pip install lxml
+python scripts/sii/audit-official-xsd-archive.py "/ruta/schema_envio_bol (1).zip"
+```
+
+Resultado observado: **exit code 2 (esquema inválido para lxml/libxml2)**. Hay **dos** restricciones incompatibles: líneas **678 y 700** (`minInclusive=0.00` sobre `PctType` cuyo mínimo es `0.01`). Los errores secundarios señalan la misma incompatibilidad del tipo base.
+
+Esto es un diagnóstico del archivo concreto, no prueba de vigencia normativa ni aceptación/rechazo del SII. No se ha validado todavía ningún XML de Walinka contra el esquema original. El ZIP no se guarda en el repositorio.
