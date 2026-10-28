@@ -50,12 +50,12 @@ class XsdValidationGateTests(unittest.TestCase):
     def test_invalid_xml_fails_closed(self):
         result = self.invoke(VALID_SCHEMA, f'<Draft xmlns="{NS}">not-a-number</Draft>')
         self.assertEqual(result.returncode, 1, result.stderr)
-        self.assertIn("XSD ERROR", result.stderr)
+        self.assertIn("XML_SCHEMA_MISMATCH", result.stderr)
 
     def test_inconsistent_restriction_cannot_be_bypassed(self):
         result = self.invoke(INVALID_RESTRICTION, "<Draft>0.00</Draft>")
         self.assertEqual(result.returncode, 2, result.stderr)
-        self.assertIn("ERROR:", result.stderr)
+        self.assertIn("SCHEMA_COMPILE_ERROR:", result.stderr)
         self.assertNotIn("PASS:", result.stdout)
 
     def test_malformed_xml_fails(self):
