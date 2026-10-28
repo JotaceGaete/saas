@@ -61,3 +61,13 @@ test('rejects tampered line totals and unsafe line integers',()=>{
   assert.equal(assessSnapshotIva19Diagnostic(p).reason,'INVALID_LINES');
  }
 });
+
+test('diagnostic cannot accept claimed SII validation or fiscal eligibility',()=>{
+ const p={ok:true,fiscalEligible:false,snapshot:{saleId:'s1',total:1190,
+ lines:[{subtotal:1190,taxCategory:'IVA_AFECTO_19'}]}};
+ assert.equal(assessSnapshotIva19Diagnostic({...p,siiValidated:true}).reason,'SNAPSHOT_NOT_PREPARED');
+ assert.equal(assessSnapshotIva19Diagnostic({...p,fiscalEligible:true}).reason,'SNAPSHOT_NOT_PREPARED');
+ const rejected=calculateInclusiveIva19Diagnostic(-1);
+ assert.equal(rejected.siiValidated,false);
+ assert.equal(rejected.fiscalEligible,false);
+});
