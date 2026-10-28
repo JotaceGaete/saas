@@ -16,7 +16,7 @@ BEGIN
  SELECT count(*),min(folio) INTO n,f FROM fiscal.issuance_operations WHERE sale_id='sale-1';
  IF n<>1 OR f<>700 THEN RAISE EXCEPTION 'Idempotent reservation failed'; END IF;
 END;
-$;
+$$;
 INSERT INTO fiscal.signed_documents(operation_id,sha256,xml_bytes)
 SELECT id,encode(extensions.digest(convert_to('<test/>','UTF8'),'sha256'),'hex'),convert_to('<test/>','UTF8')
 FROM fiscal.issuance_operations WHERE sale_id='sale-1';
@@ -31,7 +31,7 @@ BEGIN
  SELECT fiscal.cas_issuance_state(oid,'signed','submitting') INTO success;
  IF success IS DISTINCT FROM true THEN RAISE EXCEPTION 'Submitting CAS failed'; END IF;
 END;
-$;
+$$;
 DO $$
 BEGIN
  BEGIN
@@ -41,4 +41,4 @@ BEGIN
   IF SQLERRM='Immutability trigger did not reject update' THEN RAISE; END IF;
  END;
 END;
-$;
+$$;
