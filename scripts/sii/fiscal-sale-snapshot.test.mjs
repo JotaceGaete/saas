@@ -32,3 +32,20 @@ for(const [label,mutate,reason] of [
  const f=fixture();mutate(f);const r=buildFiscalSaleSnapshot(f);
  assert.equal(r.ok,false);assert.equal(r.reason,reason);
 });
+
+test('accepts exact integer CLP values returned as NUMERIC strings',()=>{
+ const f=fixture();f.sale.total='1000.00';f.items[0].subtotal='1000.00';
+ f.items[0].unit_price='1000.00';f.items[0].quantity='1';
+ f.payments[0].amount='1000.00';
+ const r=buildFiscalSaleSnapshot(f);
+ assert.equal(r.ok,true);assert.equal(r.snapshot.total,1000);
+ assert.equal(r.snapshot.lines[0].subtotal,1000);
+});
+test('denies unknown payment method',()=>{
+ const f=fixture();f.payments[0].payment_method='unknown';
+ assert.equal(buildFiscalSaleSnapshot(f).reason,'INVALID_PAYMENT');
+});
+test('denies fractional CLP returned as NUMERIC string',()=>{
+ const f=fixture();f.sale.total='1000.50';
+ assert.equal(buildFiscalSaleSnapshot(f).reason,'SALE_NOT_SETTLED');
+});
