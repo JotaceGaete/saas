@@ -1,5 +1,6 @@
 import { assessFiscalReconciliation } from './walinka-fiscal-reconciliation.mjs';
 import { assessWalinkaCrmSale } from './walinka-sale-eligibility.mjs';
+import { buildFiscalSaleSnapshot } from './fiscal-sale-snapshot.mjs';
 // SERVER ONLY. Pilot integration with Walinka's existing tenant and CRM tables.
 // This adapter is NOT an HTTP endpoint and does NOT enable fiscal issuance.
 // db: server-side Supabase client. issuerRegistry: trusted administrative registry.
@@ -74,6 +75,12 @@ export function createWalinkaFiscalAdapter({ db, issuerRegistry, taxMapping, res
         issuerRut: null, fiscalEligible: false,
         preEligible: assessment.eligible, preEligibilityReason: assessment.reason,
         reconciled:reconciliation.eligible,reconciliationReason:reconciliation.reason };
+    },
+    // Diagnostic-only: caller must supply independently verified, transactionally
+    // consistent records. Not connected to production CRM queries yet.
+    // Never converts a successful diagnostic into fiscal eligibility.
+    assessPreparedSale({ businessId, issuerRut, sale, items, payments, taxes }) {
+      return buildFiscalSaleSnapshot({businessId,issuerRut,sale,items,payments,taxes});
     },
     async reserve(args) { return reserve(args); }
   };
