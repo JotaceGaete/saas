@@ -29,7 +29,7 @@ jobs:
           test -z "${SII_CERT_PASSWORD:-}"
       - name: Execute isolated state, orchestration and fault tests
         run: |
-          node --test scripts/sii/issuance-orchestrator.test.mjs scripts/sii/issuance-faults.test.mjs
+          node --test scripts/sii/issuance-orchestrator.test.mjs scripts/sii/issuance-faults.test.mjs scripts/sii/caf-retry.test.mjs
       - name: Validate JS module syntax
         run: |
           node --check scripts/sii/issuance-orchestrator.mjs
