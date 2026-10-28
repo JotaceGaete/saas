@@ -15,6 +15,29 @@ def inspect(path):
     root = etree.fromstring(data, parser=parser)
     if root.tag != "{http://www.sii.cl/SiiDte}DTE":
         raise ValueError("Unexpected XML root")
+    # Fail closed on unexpected document content; never accept hidden nested elements.
+    allowed = {
+        "DTE": {"Documento"},
+        "Documento": {"Encabezado", "Detalle"},
+        "Encabezado": {"IdDoc", "Totales"},
+        "IdDoc": {"TipoDTE", "FchEmis"},
+        "Totales": {"MntTotal"},
+        "Detalle": {"NroLinDet", "NmbItem", "MontoItem"},
+    }
+    leaf = {"TipoDTE", "FchEmis", "MntTotal", "NroLinDet", "NmbItem", "MontoItem"}
+    namespace = "{http://www.sii.cl/SiiDte}"
+    for element in root.iter():
+        if not isinstance(element.tag, str) or not element.tag.startswith(namespace):
+            raise ValueError("Foreign namespace or processing element forbidden")
+        local = element.tag[len(namespace):]
+        if local not in allowed and local not in leaf:
+            raise ValueError("Unexpected draft element")
+        expected = allowed.get(local, set())
+        if any(child.tag != namespace + child.tag[len(namespace):] or
+               child.tag[len(namespace):] not in expected for child in element):
+            raise ValueError("Unexpected nested draft element")
+        if local in leaf and len(element):
+            raise ValueError("Nested content in scalar field")
     docs = root.xpath("./sii:Documento", namespaces=NS)
     if len(docs) != 1 or docs[0].get("ID") != "BORRADOR_NO_FISCAL":
         raise ValueError("Not an explicitly non-fiscal draft")
