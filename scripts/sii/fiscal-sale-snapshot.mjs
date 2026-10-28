@@ -40,6 +40,10 @@ export function buildFiscalSaleSnapshot({businessId, issuerRut, sale, items, pay
       taxCategory:'IVA_AFECTO_19'}));
   }
   if (total !== amount(sale.total)) return deny('LINE_TOTAL_MISMATCH');
+  // CRM discount_amount is a document-level discount; reject until
+  // allocation across SII lines is explicitly defined and tested.
+  if (sale.discount_amount !== undefined && amount(sale.discount_amount) !== 0)
+    return deny('DOCUMENT_DISCOUNT_NOT_SUPPORTED');
   let received = 0;
   for (const p of payments) {
     if (!p || p.invoice_id !== sale.id || p.payment_status !== 'received' ||
