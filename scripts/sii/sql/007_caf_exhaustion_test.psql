@@ -3,7 +3,7 @@
 SELECT * FROM fiscal.reserve_boleta39('tenant-test','last-sale-704','12345678-5');
 SELECT * FROM fiscal.reserve_boleta39('tenant-test','last-sale-705','12345678-5');
 DO $$
-DECLARE got text;
+DECLARE got text; op_count integer; allocated bigint; next_value bigint; retry_folio bigint;
 BEGIN
  BEGIN
   PERFORM * FROM fiscal.reserve_boleta39('tenant-test','sale-over-capacity','12345678-5');
@@ -12,4 +12,15 @@ BEGIN
   GET STACKED DIAGNOSTICS got = RETURNED_SQLSTATE;
   IF SQLERRM='expected exhaustion' OR got<>'P0001' THEN RAISE; END IF;
  END;
-END $$;
+ SELECT count(*),min(folio) INTO op_count,allocated
+ FROM fiscal.issuance_operations WHERE sale_id='sale-over-capacity';
+ IF op_count<>0 OR allocated IS NOT NULL THEN
+  RAISE EXCEPTION 'Exhausted CAF must not persist a new fiscal operation';
+ END IF;
+ SELECT next_folio INTO next_value FROM fiscal.caf_ranges WHERE issuer_rut='12345678-5';
+ IF next_value<>706 THEN RAISE EXCEPTION 'Unexpected CAF next folio: %',next_value; END IF;
+ SELECT reserved_folio INTO retry_folio
+ FROM fiscal.reserve_boleta39('tenant-test','race-sale-a','12345678-5');
+ IF retry_folio<>702 THEN RAISE EXCEPTION 'Retry changed previously assigned folio: %',retry_folio; END IF;
+END $;
+SELECT 'PASS: CAF exhaustion, no extra allocation, idempotent retry' AS result;
