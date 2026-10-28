@@ -1,4 +1,4 @@
-// Server only. Retries only PostgreSQL lock_not_available (55P03).
+// Server only. Retries only fiscal-specific SQLSTATE PZ101; generic 55P03 must fail closed.
 // Never retry ambiguous SII submissions through this helper.
 export async function reserveWithContentionRetry({
   reserve, sleep, maxAttempts = 3, jitter = Math.random
@@ -11,7 +11,7 @@ export async function reserveWithContentionRetry({
       // The DB reserve function itself enforces idempotency on every call.
       return await reserve();
     } catch (error) {
-      if (error?.code !== '55P03') throw error;
+      if (error?.code !== 'PZ101') throw error;
       if (attempt === maxAttempts) return { status: 'temporarily_unavailable', reason: 'caf_locked' };
       const random = jitter();
       if (!Number.isFinite(random) || random < 0 || random >= 1) throw Error('Invalid jitter value');
