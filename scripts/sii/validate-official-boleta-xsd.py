@@ -57,15 +57,19 @@ def main():
     parser.resolvers.add(OfflineResolver(root))
     try:
         schema_doc = etree.parse(str(schema_file), parser)
-        schema = etree.XMLSchema(schema_doc)
+        try:
+            schema = etree.XMLSchema(schema_doc)
+        except etree.XMLSchemaParseError as exc:
+            print(f"SCHEMA_COMPILE_ERROR: {exc}", file=sys.stderr)
+            return 2
         xml_parser = etree.XMLParser(resolve_entities=False, load_dtd=False, no_network=True,
                                      huge_tree=False)
         xml_doc = etree.parse(str(args.xml), xml_parser)
         if not schema.validate(xml_doc):
             for error in schema.error_log:
-                print(f"XSD ERROR line {error.line}: {error.message}", file=sys.stderr)
+                print(f"XML_SCHEMA_MISMATCH line {error.line}: {error.message}", file=sys.stderr)
             return 1
-    except (etree.XMLSyntaxError, etree.XMLSchemaParseError, ValueError, OSError) as exc:
+    except (etree.XMLSyntaxError, ValueError, OSError) as exc:
         print(f"ERROR: {exc}", file=sys.stderr)
         return 2
     print("PASS: XML validates against supplied official SII XSD (syntax only; not certification)")
