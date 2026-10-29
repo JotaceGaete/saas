@@ -45,3 +45,13 @@ test('independent verification failure prevents DB update',async()=>{
 test('disabled gate refuses construction',()=>{
   assert.throws(()=>setup({env:{}}),/disabled/);
 });
+
+test('malformed base64 documents cannot finalize a fiscal record',async()=>{
+  for (const invalid of ['', 'not-base64!', 'abc']) {
+    const {admin,reconcile}=setup({
+      decodeOriginalDocuments:async()=>({folio:321,xmlBase64:invalid,pdfBase64:'cGRm'}),
+    });
+    assert.equal((await reconcile(input)).reason,'ORIGINAL_AUTHENTICITY_NOT_VERIFIED');
+    assert.equal(admin.calls.length,0);
+  }
+});
