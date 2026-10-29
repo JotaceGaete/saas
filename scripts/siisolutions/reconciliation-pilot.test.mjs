@@ -14,22 +14,28 @@ function admin(){
 }
 test('composed reconciliation uses trusted read-only original and independent verification',async()=>{
   const db=admin();
-  const reconcile=createConfiguredFiscalReconciliation({admin:db,retrieveOriginal:async()=>original,verifyOriginal:async()=>true});
+  const reconcile=createConfiguredFiscalReconciliation({env:{SIISOLUTIONS_RECONCILIATION_ENABLED:'verified-readonly'},admin:db,retrieveOriginal:async()=>original,verifyOriginal:async()=>true});
   assert.deepEqual(await reconcile(input),{state:'issued',folio:123});
   assert.equal(db.rpcCount,1);
 });
 test('unverified original cannot update ledger',async()=>{
   const db=admin();
-  const reconcile=createConfiguredFiscalReconciliation({admin:db,retrieveOriginal:async()=>original,verifyOriginal:async()=>false});
+  const reconcile=createConfiguredFiscalReconciliation({env:{SIISOLUTIONS_RECONCILIATION_ENABLED:'verified-readonly'},admin:db,retrieveOriginal:async()=>original,verifyOriginal:async()=>false});
   assert.equal((await reconcile(input)).reason,'ORIGINAL_AUTHENTICITY_NOT_VERIFIED');
   assert.equal(db.rpcCount,0);
 });
 test('retrieval with mismatched tenant cannot update ledger',async()=>{
   const db=admin();
-  const reconcile=createConfiguredFiscalReconciliation({admin:db,retrieveOriginal:async()=>({...original,businessId:'other'}),verifyOriginal:async()=>true});
+  const reconcile=createConfiguredFiscalReconciliation({env:{SIISOLUTIONS_RECONCILIATION_ENABLED:'verified-readonly'},admin:db,retrieveOriginal:async()=>({...original,businessId:'other'}),verifyOriginal:async()=>true});
   assert.equal((await reconcile(input)).reason,'ORIGINAL_AUTHENTICITY_NOT_VERIFIED');
   assert.equal(db.rpcCount,0);
 });
 test('composition refuses missing verifier or retrieval',()=>{
   assert.throws(()=>createConfiguredFiscalReconciliation({admin:admin(),retrieveOriginal:async()=>original}),/required/);
+});
+
+test('reconciliation disabled by default even with valid provider adapters',()=>{
+  assert.throws(()=>createConfiguredFiscalReconciliation({
+    admin:admin(),retrieveOriginal:async()=>original,verifyOriginal:async()=>true,env:{},
+  }),/disabled/);
 });
