@@ -3,11 +3,12 @@ import { validateManualFiscalReconciliation } from './siisolutions-manual-reconc
 /**
  * Privileged manual reconciliation. The caller MUST authenticate the operator,
  * independently retrieve the original DTE from a trusted provider source and
- * verify its identity and authenticity before setting verifiedByTrustedOperator.
+ * verify its identity and authenticity using an independent trusted verifier.
  * No browser endpoint is provided. Never calls emission APIs.
  */
-export function createManualFiscalReconciler({ admin, loadOriginalDocument }) {
-  if (!admin?.from || !admin?.rpc || typeof loadOriginalDocument !== 'function') {
+export function createManualFiscalReconciler({ admin, loadOriginalDocument, verifyOriginalDocument }) {
+  if (!admin?.from || !admin?.rpc || typeof loadOriginalDocument !== 'function' ||
+      typeof verifyOriginalDocument !== 'function') {
     throw new Error('Trusted fiscal reconciliation dependencies required');
   }
   return async function reconcile({ businessId, saleId, operationId }) {
@@ -26,8 +27,13 @@ export function createManualFiscalReconciler({ admin, loadOriginalDocument }) {
     // Never accept original document bytes, folio or verification flags from
     // request parameters; only a trusted backend loader may provide them.
     const document = await loadOriginalDocument({ businessId, saleId, operationId });
+    const authentic = await verifyOriginalDocument({
+      businessId, saleId, operationId, document,
+    });
+    if (authentic !== true) return { state: 'blocked', reason: 'ORIGINAL_AUTHENTICITY_NOT_VERIFIED' };
     const checked = validateManualFiscalReconciliation({
-      ledger, businessId, saleId, operationId, document,
+      ledger, businessId, saleId, operationId,
+      document: { ...document, verifiedByTrustedOperator: true },
     });
     if (!checked.ready) return { state: 'blocked', reason: checked.reason };
 
