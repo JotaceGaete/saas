@@ -31,7 +31,7 @@ async function assessPointConfirmation({businessId,sale,expectedAmount,paymentAl
  let payment;
  try { payment=await fetchVerifiedPayment({businessId,saleId:sale?.id,pointPaymentId}); }
  catch { return {action:'block',reason:'POINT_VERIFICATION_UNAVAILABLE'}; }
- if(!payment || payment.id!==pointPaymentId || payment.verifiedByServer!==true)
+ if(!payment || String(payment.id)!==pointPaymentId || payment.verifiedByServer!==true)
   return {action:'block',reason:'POINT_PAYMENT_NOT_VERIFIED'};
  return decidePointFiscalAction({businessId,sale,expectedAmount,paymentAlreadyLinked,payment});
 }
