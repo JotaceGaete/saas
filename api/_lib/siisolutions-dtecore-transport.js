@@ -10,7 +10,8 @@ export function createDteCoreDocumentTransport({
       typeof fetchImpl !== 'function') throw new Error('Server-only DTECore credentials required');
   const base = new URL(baseUrl);
   if (base.protocol !== 'https:' || base.username || base.password ||
-      base.search || base.hash || base.pathname !== '/') {
+      base.search || base.hash || base.pathname !== '/' ||
+      base.hostname !== 'api.siisolutions.cl' || base.port) {
     throw new Error('Invalid DTECore base URL');
   }
   const origin = base.origin;
