@@ -6,6 +6,7 @@ function adminStub({ operations = [{ id: 'op-1' }], invoice = { id: 'sale-1', bu
   const calls = [];
   const rows = {
     crm_invoices: invoice,
+    wa_businesses: { id: 'biz-1', currency: 'CLP', country_code: 'CL' },
     crm_invoice_items: [{ name: 'Product' }],
     crm_payments: [{ amount: 1000 }],
     crm_pos_point_operations: operations,
