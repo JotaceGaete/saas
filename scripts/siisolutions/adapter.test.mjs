@@ -6,7 +6,7 @@ const sale = { id: 'TEST-1', operatorRut: '76509283-3', total: 5950, paymentMeth
 
 test('maps boleta without fiscal folio', () => {
   const result = buildBoletaPayload(sale);
-  assert.equal(result.total, 5950);
+  assert.equal(result.detalles[0].precioSubtotal, 5950);
   assert.equal(result.idBoletaOperacion, 'TEST-1');
   assert.equal(result.folio, undefined);
 });
