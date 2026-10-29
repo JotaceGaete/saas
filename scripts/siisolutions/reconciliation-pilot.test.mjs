@@ -31,7 +31,7 @@ test('retrieval with mismatched tenant cannot update ledger',async()=>{
   assert.equal(db.rpcCount,0);
 });
 test('composition refuses missing verifier or retrieval',()=>{
-  assert.throws(()=>createConfiguredFiscalReconciliation({admin:admin(),retrieveOriginal:async()=>original}),/required/);
+  assert.throws(()=>createConfiguredFiscalReconciliation({env:{SIISOLUTIONS_RECONCILIATION_ENABLED:'verified-readonly'},admin:admin(),retrieveOriginal:async()=>original}),/required/);
 });
 
 test('reconciliation disabled by default even with valid provider adapters',()=>{
