@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { supabase } from '../../../lib/supabase';
 import ReactDOM from 'react-dom';
 import Icon from 'components/AppIcon';
 import { formatMoney } from '../../../utils/formatMoney';
@@ -68,6 +69,115 @@ export default function CrmThermalTicket({
   printErrorMessage = null,
   onConfigurePrinter,
 }) {
+  // Pilot-only fiscal status. This never issues a DTE or allocates a folio.
+  const fiscalPilotBusinessId = 'cda904a1-e331-4bd4-9f33-a6715687d3dd';
+  const showFiscalPilot = business?.id === fiscalPilotBusinessId;
+  const [fiscalCheck, setFiscalCheck] = useState({ status: 'idle', data: null });
+  useEffect(() => {
+    if (!showFiscalPilot || !sale?.id) return;
+    let active = true;
+    setFiscalCheck({ status: 'checking', data: null, error: null });
+    (async () => {
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !sessionData?.session?.access_token) throw new Error('SESSION_UNAVAILABLE');
+        const response = await fetch('/api/sii/boleta-readiness', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session.access_token}` },
+          body: JSON.stringify({ businessId: business.id, saleId: sale.id }),
+        });
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.toLowerCase().includes('application/json')) {
+          throw new Error(`FISCAL_API_NON_JSON_HTTP_${response.status}`);
+        }
+        const data = await response.json().catch(() => { throw new Error(`FISCAL_API_INVALID_JSON_HTTP_${response.status}`); });
+        if (!response.ok) throw new Error(data?.error || `HTTP_${response.status}`);
+        if (active) setFiscalCheck({ status: 'ready', data, error: null });
+      } catch (error) {
+        if (active) setFiscalCheck({ status: 'error', data: null, error: String(error?.message || 'NETWORK_ERROR').slice(0, 100) });
+      }
+    })();
+    return () => { active = false; };
+  }, [showFiscalPilot, business?.id, sale?.id]);
+
+  const [fiscalPreflight, setFiscalPreflight] = useState({ status: 'idle', data: null, error: null });
+  useEffect(() => {
+    if (!showFiscalPilot || !sale?.id) return;
+    let active = true;
+    setFiscalPreflight({ status: 'checking', data: null, error: null });
+    (async () => {
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !sessionData?.session?.access_token) throw new Error('SESSION_UNAVAILABLE');
+        const response = await fetch('/api/sii/boleta-preflight', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session.access_token}` },
+          body: JSON.stringify({ businessId: business.id, saleId: sale.id }),
+        });
+        if (!(response.headers.get('content-type') || '').includes('application/json'))
+          throw new Error(`FISCAL_PREFLIGHT_NON_JSON_${response.status}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || `HTTP_${response.status}`);
+        if (active) setFiscalPreflight({ status: 'ready', data, error: null });
+      } catch (error) {
+        if (active) setFiscalPreflight({ status: 'error', data: null, error: String(error?.message || 'NETWORK_ERROR').slice(0, 100) });
+      }
+    })();
+    return () => { active = false; };
+  }, [showFiscalPilot, business?.id, sale?.id]);
+
+  const [taxSelection, setTaxSelection] = useState({});
+  const [taxEvidence, setTaxEvidence] = useState({});
+  const [taxSaving, setTaxSaving] = useState({});
+  const saveTaxClassification = async (itemId) => {
+    if (!showFiscalPilot || !sale?.id || taxSaving[itemId] === 'saving') return;
+    setTaxSaving(previous => ({...previous, [itemId]: 'saving'}));
+    try {
+      const {data:sessionData,error:sessionError}=await supabase.auth.getSession();
+      if(sessionError || !sessionData?.session?.access_token)throw new Error('SESSION_UNAVAILABLE');
+      const response=await fetch('/api/sii/boleta-verify-tax',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',Authorization:`Bearer ${sessionData.session.access_token}`},
+        body:JSON.stringify({businessId:business.id,saleId:sale.id,itemId,
+          category:taxSelection[itemId],evidence:taxEvidence[itemId]})
+      });
+      if(!(response.headers.get('content-type')||'').includes('application/json'))throw new Error('INVALID_API_RESPONSE');
+      const result=await response.json();
+      if(!response.ok || result.verified!==true)throw new Error(result.error||'VERIFICATION_FAILED');
+      setTaxSaving(previous=>({...previous,[itemId]:'saved'}));
+      const check=await fetch('/api/sii/boleta-preflight',{
+        method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${sessionData.session.access_token}`},
+        body:JSON.stringify({businessId:business.id,saleId:sale.id})
+      });
+      if(check.ok && (check.headers.get('content-type')||'').includes('application/json')){
+        const data=await check.json();
+        setFiscalPreflight({status:'ready',data,error:null});
+      }
+    }catch(error){setTaxSaving(previous=>({...previous,[itemId]:String(error?.message||'ERROR').slice(0,90)}));}
+  };
+
+  const [fiscalPreparation, setFiscalPreparation] = useState({ status: 'idle', error: null });
+  const prepareFiscalOperation = async () => {
+    if (!showFiscalPilot || !sale?.id || fiscalPreparation.status === 'working') return;
+    setFiscalPreparation({ status: 'working', error: null });
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData?.session?.access_token) throw new Error('SESSION_UNAVAILABLE');
+      const response = await fetch('/api/sii/boleta-prepare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session.access_token}` },
+        body: JSON.stringify({ businessId: business.id, saleId: sale.id }),
+      });
+      if (!(response.headers.get('content-type') || '').includes('application/json')) throw new Error(`FISCAL_API_HTTP_${response.status}`);
+      const data = await response.json();
+      if (!response.ok || data?.message !== 'OPERATION_PREPARED_NO_DTE_SENT') throw new Error(data?.error || `HTTP_${response.status}`);
+      setFiscalPreparation({ status: 'prepared', error: null });
+      setFiscalCheck((previous) => ({ ...previous, data: { ...previous.data, fiscalOperationStatus: data.operationStatus } }));
+    } catch (error) {
+      setFiscalPreparation({ status: 'error', error: String(error?.message || 'UNKNOWN_ERROR').slice(0, 100) });
+    }
+  };
+
   // Inject print styles while modal is open.
   // The print div is portaled directly into document.body so
   // `body > *:not(#crm-thermal-print-root)` can hide the entire app
@@ -400,6 +510,71 @@ export default function CrmThermalTicket({
                 </button>
               )}
             </div>
+          )}
+
+          {showFiscalPilot && (
+            <section aria-label="Boleta electrónica SII" style={{ margin: '12px 16px', padding: 12, border: '1px solid #d1d5db', borderRadius: 10, background: '#f9fafb', color: '#374151', fontSize: 12 }}>
+              <strong style={{ display: 'block', fontSize: 13, marginBottom: 5 }}>Boleta electrónica · SII</strong>
+              <div>{fiscalCheck.status === 'checking' ? 'Verificando venta y autorización…' : fiscalCheck.status === 'error' ? 'No fue posible verificar el estado fiscal. No se emitió ninguna boleta.' : fiscalCheck.status === 'ready' ? 'Emisión pendiente de habilitación. Esta venta tiene solo ticket interno.' : 'Sin verificación fiscal.'}</div>
+              {fiscalCheck.status === 'error' && <div style={{ marginTop: 5, fontFamily: 'monospace', fontSize: 11 }}>Diagnóstico: {fiscalCheck.error || 'UNKNOWN_ERROR'}</div>}
+              {fiscalCheck.status === 'ready' && <div style={{ marginTop: 4 }}>Venta: {fiscalCheck.data?.salePaid ? 'pagada' : 'no confirmada como pagada'} · Folio SII: {fiscalCheck.data?.fiscalFolio || 'no asignado'}</div>}
+              {fiscalCheck.status === 'ready' && <div style={{ marginTop: 5, fontSize: 11, color: '#6b7280' }}>SII Solutions: {fiscalCheck.data?.providerConfigured ? 'clave configurada' : 'falta configurar clave en Preview'} · Emisión: bloqueada hasta validar registro fiscal y protección contra duplicados.</div>}
+              {fiscalCheck.status === 'ready' && <div style={{ marginTop: 5, fontSize: 11, color: '#6b7280' }}>Emisor fiscal: {fiscalCheck.data?.issuerRegistered ? 'registrado' : 'no registrado'} · Verificación: {fiscalCheck.data?.issuerVerified ? 'validada' : 'pendiente'} · Estado: {({ pending: 'preparada (sin emitir)', submitting: 'en proceso', submitted: 'enviada al proveedor', accepted: 'aceptada', rejected: 'rechazada', unknown: 'requiere conciliación', cancelled: 'cancelada' })[fiscalCheck.data?.fiscalOperationStatus] || 'sin operación tributaria'}</div>}
+              {fiscalCheck.status === 'ready' && fiscalCheck.data?.salePaid && fiscalCheck.data?.issuerRegistered && fiscalCheck.data?.providerConfigured && (
+                <div style={{ marginTop: 8 }}>
+                  <button type="button" onClick={prepareFiscalOperation} disabled={fiscalPreparation.status === 'working' || fiscalPreparation.status === 'prepared'} style={{ padding: '8px 12px', border: '1px solid #64748b', borderRadius: 7, background: '#fff', color: '#334155', cursor: 'pointer' }}>
+                    {fiscalPreparation.status === 'working' ? 'Preparando…' : fiscalPreparation.status === 'prepared' ? 'Operación fiscal preparada' : 'Preparar operación fiscal (sin emitir)'}
+                  </button>
+                  {fiscalPreparation.status === 'error' && <div style={{ marginTop: 4, color: '#b91c1c' }}>Preparación fallida: {fiscalPreparation.error}</div>}
+                  {fiscalPreparation.status === 'prepared' && <div style={{ marginTop: 4 }}>Operación registrada. No se emitió ninguna boleta ni se asignó folio.</div>}
+                </div>
+              )}
+              <div style={{ marginTop: 8, padding: 8, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7 }}>
+                <strong>Diagnóstico tributario de la venta</strong>
+                <div>{fiscalPreflight.status === 'checking' ? 'Revisando productos y pagos…' :
+                  fiscalPreflight.status === 'error' ? `No disponible: ${fiscalPreflight.error}` :
+                  fiscalPreflight.status === 'ready' ? (fiscalPreflight.data?.saleChecksPassed
+                    ? 'Venta y pagos conciliados.' : 'Venta o pagos requieren revisión.') : 'Sin diagnóstico.'}</div>
+                {fiscalPreflight.status === 'ready' && <div style={{ marginTop: 4 }}>
+                  IVA: {fiscalPreflight.data?.taxMappingVerified ? 'todos los productos verificados' : `verificados ${fiscalPreflight.data?.taxVerifiedItemCount ?? 0} de ${fiscalPreflight.data?.taxItemCount ?? '—'}`}
+                  {' · '}Emisor: {fiscalPreflight.data?.issuerVerified ? 'verificado' : 'no verificado'}
+                  {' · '}Emisión: bloqueada
+                </div>}
+              </div>
+              {fiscalPreflight.status === 'ready' && !fiscalPreflight.data?.taxMappingVerified && (
+                <div style={{marginTop:8,padding:8,border:'1px solid #d1d5db',borderRadius:7,background:'#fff'}}>
+                  <strong>Verificación manual de IVA</strong>
+                  <p style={{margin:'4px 0 8px'}}>Clasifica cada línea únicamente con respaldo tributario. Esto no emite boletas.</p>
+                  {items.filter(item=>item?.id).map(item=>(
+                    <div key={item.id} style={{marginBottom:10,borderTop:'1px solid #eee',paddingTop:6}}>
+                      <div>{item.name||item.description||'Producto'}</div>
+                      <select aria-label="Clasificación IVA" value={taxSelection[item.id]||''}
+                        onChange={event=>setTaxSelection(previous=>({...previous,[item.id]:event.target.value}))}
+                        style={{width:'100%',padding:6,marginTop:4}}>
+                        <option value="">Seleccionar tratamiento tributario</option>
+                        <option value="IVA_AFECTO_19">Afecto a IVA 19 %</option>
+                        <option value="EXENTO">Exento</option>
+                      </select>
+                      <textarea aria-label="Respaldo tributario" rows={2}
+                        placeholder="Fundamento de la clasificación (mínimo 15 caracteres)"
+                        value={taxEvidence[item.id]||''}
+                        onChange={event=>setTaxEvidence(previous=>({...previous,[item.id]:event.target.value}))}
+                        style={{width:'100%',marginTop:5,padding:6,boxSizing:'border-box'}} />
+                      <button type="button" onClick={()=>saveTaxClassification(item.id)}
+                        disabled={!taxSelection[item.id]||(taxEvidence[item.id]||'').trim().length<15||taxSaving[item.id]==='saving'}
+                        style={{padding:'6px 10px',marginTop:4}}>
+                        {taxSaving[item.id]==='saving'?'Guardando…':'Registrar clasificación verificada'}
+                      </button>
+                      {taxSaving[item.id] && taxSaving[item.id]!=='saving' && <div style={{marginTop:4}}>
+                        {taxSaving[item.id]==='saved'?'Clasificación registrada (sin emitir).':`No se guardó: ${taxSaving[item.id]}`}
+                      </div>}
+                    </div>
+                  ))}
+                </div>
+              )}
+              <button type="button" disabled style={{ marginTop: 9, padding: '8px 12px', borderRadius: 7, border: '1px solid #d1d5db', color: '#6b7280', background: '#e5e7eb', cursor: 'not-allowed' }}>Emitir boleta electrónica (próximamente)</button>
+              <div style={{ marginTop: 6, color: '#6b7280', fontSize: 11 }}>No se envían documentos al SII ni se consumen folios.</div>
+            </section>
           )}
 
           {/* Ticket preview (screen only) */}

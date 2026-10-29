@@ -1,0 +1,35 @@
+\set ON_ERROR_STOP on
+CREATE TABLE IF NOT EXISTS public.crm_invoices (
+ id text PRIMARY KEY,business_id text NOT NULL,status text NOT NULL,
+ paid_at timestamptz,total numeric NOT NULL);
+CREATE TABLE IF NOT EXISTS public.crm_invoice_items (
+ id text PRIMARY KEY,invoice_id text NOT NULL,quantity numeric,unit_price numeric,subtotal numeric);
+CREATE TABLE IF NOT EXISTS public.crm_payments (
+ id text PRIMARY KEY,invoice_id text NOT NULL,amount numeric NOT NULL,
+ payment_status text,payment_method text,voided_at timestamptz);
+\i scripts/sii/sql/022_live_crm_digest_proposal.sql
+INSERT INTO public.crm_invoices VALUES ('live-sale','live-tenant','pagada',now(),1190);
+INSERT INTO public.crm_invoice_items VALUES ('live-item','live-sale',1,1190,1190);
+INSERT INTO public.crm_payments VALUES ('live-payment','live-sale',1190,'received','cash',NULL);
+INSERT INTO fiscal.verified_line_taxes
+ (business_id,invoice_id,invoice_item_id,category,verified,verified_by,verified_at)
+ VALUES ('live-tenant','live-sale','live-item','IVA_AFECTO_19',true,'fixture-admin',now());
+DO $$
+DECLARE before_digest text; after_digest text;
+BEGIN
+ before_digest:=fiscal.compute_live_crm_digest('live-tenant','live-sale');
+ IF length(before_digest)<>64 THEN RAISE EXCEPTION 'Invalid SHA-256 digest'; END IF;
+ IF before_digest<>fiscal.compute_live_crm_digest('live-tenant','live-sale')
+ THEN RAISE EXCEPTION 'Digest is not deterministic'; END IF;
+ UPDATE public.crm_invoice_items SET unit_price=1189 WHERE id='live-item';
+ after_digest:=fiscal.compute_live_crm_digest('live-tenant','live-sale');
+ IF before_digest=after_digest THEN RAISE EXCEPTION 'Changed item was not detected'; END IF;
+ UPDATE public.crm_payments SET payment_status='pending' WHERE id='live-payment';
+ BEGIN
+  PERFORM fiscal.compute_live_crm_digest('live-tenant','live-sale');
+  RAISE EXCEPTION 'Pending payment accepted';
+ EXCEPTION WHEN SQLSTATE 'PZ403' THEN NULL;
+ END;
+END;
+$$;
+SELECT 'PASS: live digest changes with sale and denies pending payment' AS result;

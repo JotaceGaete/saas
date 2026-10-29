@@ -1,0 +1,31 @@
+-- PostgreSQL 16 isolated CI only. Execute after 004-008.
+\set ON_ERROR_STOP on
+DO $$
+DECLARE r text; n integer;
+BEGIN
+  FOREACH r IN ARRAY ARRAY['anon','authenticated'] LOOP
+    IF has_schema_privilege(r, 'fiscal', 'USAGE') THEN
+      RAISE EXCEPTION '% can use private fiscal schema', r;
+    END IF;
+    IF has_function_privilege(r, 'fiscal.reserve_boleta39(text,text,text)', 'EXECUTE') THEN
+      RAISE EXCEPTION '% can reserve CAF folios', r;
+    END IF;
+    IF has_function_privilege(r, 'fiscal.cas_issuance_state(bigint,text,text,text)', 'EXECUTE') THEN
+      RAISE EXCEPTION '% can transition fiscal state', r;
+    END IF;
+    SELECT count(*) INTO n
+      FROM pg_class c JOIN pg_namespace ns ON ns.oid=c.relnamespace
+      WHERE ns.nspname='fiscal' AND c.relkind IN ('r','p')
+        AND (has_table_privilege(r,c.oid,'SELECT') OR
+             has_table_privilege(r,c.oid,'INSERT') OR
+             has_table_privilege(r,c.oid,'UPDATE') OR
+             has_table_privilege(r,c.oid,'DELETE'));
+    IF n<>0 THEN RAISE EXCEPTION '% has direct fiscal table privileges',r; END IF;
+    SELECT count(*) INTO n FROM pg_class c JOIN pg_namespace ns ON ns.oid=c.relnamespace
+      WHERE ns.nspname='fiscal' AND c.relkind='S'
+        AND (has_sequence_privilege(r,c.oid,'USAGE') OR has_sequence_privilege(r,c.oid,'SELECT') OR has_sequence_privilege(r,c.oid,'UPDATE'));
+    IF n<>0 THEN RAISE EXCEPTION '% has direct fiscal sequence privileges',r; END IF;
+  END LOOP;
+END;
+$$;
+SELECT 'PASS: anon/authenticated cannot read, mutate, reserve or transition fiscal records' AS result;

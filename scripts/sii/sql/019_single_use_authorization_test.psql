@@ -1,0 +1,30 @@
+\set ON_ERROR_STOP on
+\i scripts/sii/sql/018_reservation_single_use_authorization.sql
+DO $$
+DECLARE v_consumed timestamptz;
+BEGIN
+ INSERT INTO fiscal.reservation_authorizations
+  (business_id,sale_id,issuer_rut,approved,approved_at,sale_digest,expires_at)
+ VALUES('tenant-single','sale-single','12345678-5',true,now(),
+  repeat('a',64),now()+interval '5 minutes');
+ PERFORM fiscal.assert_reservation_authorized('tenant-single','sale-single','12345678-5');
+ SELECT consumed_at INTO v_consumed FROM fiscal.reservation_authorizations
+ WHERE business_id='tenant-single' AND sale_id='sale-single';
+ IF v_consumed IS NULL THEN RAISE EXCEPTION 'Authorization not consumed'; END IF;
+ BEGIN
+  PERFORM fiscal.assert_reservation_authorized('tenant-single','sale-single','12345678-5');
+  RAISE EXCEPTION 'Replay accepted';
+ EXCEPTION WHEN SQLSTATE 'PZ403' THEN NULL;
+ END;
+ INSERT INTO fiscal.reservation_authorizations
+  (business_id,sale_id,issuer_rut,approved,approved_at,sale_digest,expires_at)
+ VALUES('tenant-expired','sale-expired','12345678-5',true,now(),
+  repeat('b',64),now()-interval '1 second');
+ BEGIN
+  PERFORM fiscal.assert_reservation_authorized('tenant-expired','sale-expired','12345678-5');
+  RAISE EXCEPTION 'Expired authorization accepted';
+ EXCEPTION WHEN SQLSTATE 'PZ403' THEN NULL;
+ END;
+END;
+$$;
+SELECT 'PASS: authorization consumed once and expiry enforced' AS result;

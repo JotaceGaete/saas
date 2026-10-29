@@ -1,0 +1,33 @@
+\set ON_ERROR_STOP on
+\i scripts/sii/sql/020_authorization_snapshot_integrity.sql
+DO $$
+BEGIN
+ IF has_table_privilege('authenticated','fiscal.trusted_sale_snapshots','INSERT')
+ OR has_table_privilege('anon','fiscal.trusted_sale_snapshots','SELECT')
+ THEN RAISE EXCEPTION 'Private snapshot exposed'; END IF;
+ INSERT INTO fiscal.reservation_authorizations
+ (business_id,sale_id,issuer_rut,approved,approved_at,sale_digest,expires_at)
+ VALUES('digest-tenant','digest-sale','12345678-5',true,now(),repeat('a',64),now()+interval '5 minutes');
+ BEGIN
+  PERFORM fiscal.assert_reservation_authorized('digest-tenant','digest-sale','12345678-5');
+  RAISE EXCEPTION 'Missing snapshot accepted';
+ EXCEPTION WHEN SQLSTATE 'PZ403' THEN NULL;
+ END;
+ INSERT INTO fiscal.trusted_sale_snapshots(business_id,sale_id,issuer_rut,sale_digest)
+ VALUES('digest-tenant','digest-sale','12345678-5',repeat('b',64));
+ BEGIN
+  PERFORM fiscal.assert_reservation_authorized('digest-tenant','digest-sale','12345678-5');
+  RAISE EXCEPTION 'Mismatched digest accepted';
+ EXCEPTION WHEN SQLSTATE 'PZ403' THEN NULL;
+ END;
+ UPDATE fiscal.trusted_sale_snapshots SET sale_digest=repeat('a',64)
+ WHERE business_id='digest-tenant' AND sale_id='digest-sale';
+ PERFORM fiscal.assert_reservation_authorized('digest-tenant','digest-sale','12345678-5');
+ BEGIN
+  PERFORM fiscal.assert_reservation_authorized('digest-tenant','digest-sale','12345678-5');
+  RAISE EXCEPTION 'Authorization replay accepted';
+ EXCEPTION WHEN SQLSTATE 'PZ403' THEN NULL;
+ END;
+END;
+$$;
+SELECT 'PASS: missing, mismatched and replayed snapshots denied' AS result;

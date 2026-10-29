@@ -1,0 +1,21 @@
+name: SII fiscal pilot contract tests
+on:
+  push:
+    branches:
+      - feat/sii-boleta-electronica-piloto
+    paths:
+      - 'scripts/sii/**'
+      - '.github/workflows/sii-fiscal-pilot-tests.yml'
+  workflow_dispatch:
+jobs:
+  fiscal-contracts:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test fiscal adapters without network or credentials
+        run: node --test scripts/sii/*.test.mjs

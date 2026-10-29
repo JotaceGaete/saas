@@ -1,0 +1,22 @@
+\set ON_ERROR_STOP on
+\i scripts/sii/sql/026_idempotent_reservation_after_authorization.sql
+DO $$
+DECLARE first_folio bigint; second_folio bigint; first_id bigint; second_id bigint; before_next bigint; after_next bigint;
+BEGIN
+ INSERT INTO fiscal.issuance_operations(business_id,sale_id,issuer_rut,document_type,folio,status)
+ VALUES('retry-tenant','retry-sale','12345678-5',39,987654321,'reserved');
+ SELECT id INTO first_id FROM fiscal.issuance_operations WHERE business_id='retry-tenant' AND sale_id='retry-sale';
+ SELECT reserved_folio INTO first_folio FROM fiscal.reserve_boleta39('retry-tenant','retry-sale','12345678-5');
+ SELECT reserved_folio INTO second_folio FROM fiscal.reserve_boleta39('retry-tenant','retry-sale','12345678-5');
+ IF first_folio<>987654321 OR second_folio<>first_folio THEN RAISE EXCEPTION 'Retry changed reserved folio'; END IF;
+ BEGIN
+  PERFORM fiscal.reserve_boleta39('retry-tenant','retry-sale','99999999-9');
+  RAISE EXCEPTION 'Issuer mismatch accepted';
+ EXCEPTION WHEN OTHERS THEN
+  IF SQLERRM='Issuer mismatch accepted' THEN RAISE; END IF;
+ END;
+ IF (SELECT count(*) FROM fiscal.issuance_operations WHERE business_id='retry-tenant' AND sale_id='retry-sale')<>1
+ THEN RAISE EXCEPTION 'Duplicate operation'; END IF;
+END;
+$$;
+SELECT 'PASS: retry reuses folio; issuer mismatch rejected' AS result;

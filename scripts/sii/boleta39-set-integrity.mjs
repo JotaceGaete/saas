@@ -1,0 +1,22 @@
+// Independent, source-transcribed baseline for the five cases in "Set Prueba BE.txt".
+// Do not load expected data from the fixture being checked: that would accept
+// simultaneous changes to the fixture and its dynamically calculated digest.
+import {createHash} from 'node:crypto';
+const canonical=x=>JSON.stringify(x);
+const expected=[
+ {id:'CASO-1',items:[{name:'Cambio de aceite',quantity:1,unitPriceWithIva:19900,tax:'afecto'},{name:'Alineacion y balanceo',quantity:1,unitPriceWithIva:9900,tax:'afecto'}],expectedTotal:29800},
+ {id:'CASO-2',items:[{name:'Papel de regalo',quantity:17,unitPriceWithIva:120,tax:'afecto'}],expectedTotal:2040},
+ {id:'CASO-3',items:[{name:'Sandwic',quantity:2,unitPriceWithIva:1500,tax:'afecto'},{name:'Bebida',quantity:2,unitPriceWithIva:550,tax:'afecto'}],expectedTotal:4100},
+ {id:'CASO-4',items:[{name:'item afecto 1',quantity:8,unitPriceWithIva:1590,tax:'afecto',kind:'servicio'},{name:'item exento 2',quantity:2,unitPriceWithIva:1000,tax:'exento',kind:'servicio'}],expectedTotal:14720},
+ {id:'CASO-5',items:[{name:'Arroz',quantity:5,unitPriceWithIva:700,tax:'afecto',unit:'Kg'}],expectedTotal:3500}
+];
+const digest=x=>createHash('sha256').update(canonical(x)).digest('hex');
+const trusted=expected.map(c=>Object.freeze({id:c.id,hash:digest(c)}));
+export function verifyOfficialBoletaCase(candidate){
+ if(!candidate||typeof candidate!=='object') return Object.freeze({ok:false,reason:'INVALID_CASE',fiscalEligible:false,transmittable:false});
+ const baseline=expected.find(x=>x.id===candidate.id);
+ if(!baseline) return Object.freeze({ok:false,reason:'UNKNOWN_CASE',fiscalEligible:false,transmittable:false});
+ const ok=digest(candidate)===digest(baseline);
+ return Object.freeze({ok,reason:ok?null:'ALTERED_CASE',fiscalEligible:false,transmittable:false});
+}
+export const officialBoletaCaseDigests=Object.freeze(trusted);

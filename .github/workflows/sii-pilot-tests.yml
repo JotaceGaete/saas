@@ -1,0 +1,144 @@
+name: SII pilot security tests
+on:
+  push:
+    branches:
+      - feat/sii-boleta-electronica-piloto
+    paths:
+      - 'scripts/sii/**'
+      - '.github/workflows/sii-pilot-tests.yml'
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'scripts/sii/**'
+      - '.github/workflows/sii-pilot-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fiscal-state-and-failure-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify no fiscal secrets in test environment
+        shell: bash
+        run: |
+          test -z "${SII_CAF_PRIVATE_KEY:-}"
+          test -z "${SII_CERT_PASSWORD:-}"
+      - name: Execute isolated state, orchestration and fault tests
+        shell: bash
+        run: |
+          set -o pipefail
+          node --test scripts/sii/boleta39-fiscal-readiness.test.mjs scripts/sii/boleta39-document-candidate.test.mjs scripts/sii/export-boleta39-set-previews.test.mjs scripts/sii/boleta39-set-integrity.test.mjs scripts/sii/boleta39-set-xml-preview.test.mjs scripts/sii/boleta39-set-arithmetic.test.mjs scripts/sii/artema-boleta39-set.test.mjs scripts/sii/artema-set-5157271.test.mjs scripts/sii/boleta39-fiscal-fields.test.mjs scripts/sii/boleta39-unsigned-draft.test.mjs scripts/sii/iva19-diagnostic.test.mjs scripts/sii/fiscal-sale-snapshot.test.mjs scripts/sii/issuance-orchestrator.test.mjs scripts/sii/issuance-faults.test.mjs scripts/sii/caf-retry.test.mjs scripts/sii/fiscal-authorization.test.mjs scripts/sii/walinka-fiscal-adapter.test.mjs scripts/sii/walinka-fiscal-entry.test.mjs scripts/sii/walinka-sale-eligibility.test.mjs scripts/sii/walinka-fiscal-reconciliation.test.mjs 2>&1 | tee node-sii-results.log
+      - name: Save Node test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sii-node-test-evidence
+          path: node-sii-results.log
+          if-no-files-found: warn
+      - name: Test offline boleta 39 header mapping
+        run: node --test scripts/sii/boleta39-header-model.test.mjs scripts/sii/boleta39-header-xml-preview.test.mjs scripts/sii/boleta39-combined-preview.test.mjs scripts/sii/boleta39-canonical-draft.test.mjs scripts/sii/boleta39-canonical-xml-preview.test.mjs
+      - name: Validate offline SII XSD validator syntax
+        run: python -m py_compile scripts/sii/audit-boleta39-document-candidates.py scripts/sii/validate-official-boleta-xsd.py scripts/sii/audit-official-xsd-archive.py scripts/sii/inventory-boleta-xsd.py scripts/sii/check-unsigned-draft-xml.py
+      - name: Run secure XML draft parser tests
+        run: |
+          python -m pip install lxml
+          python scripts/sii/test-official-boleta-xsd-validator.py
+          python scripts/sii/test-unsigned-draft-xml.py
+          draft_xml="$(mktemp --suffix=.xml)"
+          rm "$draft_xml"
+          node scripts/sii/generate-unsigned-draft-fixture.mjs "$draft_xml"
+          python scripts/sii/check-unsigned-draft-xml.py "$draft_xml"
+          candidates_dir="$(mktemp -d)"
+          node scripts/sii/report-boleta39-fiscal-gaps.mjs
+          canonical_dir="$(mktemp -d)"
+          node scripts/sii/export-canonical-previews.mjs "$canonical_dir"
+          python scripts/sii/audit-canonical-preview.py "$canonical_dir"/CASO-*.canonical.xml
+          python scripts/sii/test-canonical-preview-audit.py
+          python scripts/sii/test-boleta-xsd-order.py
+          python scripts/sii/test-audit-boleta-xml-order.py
+          node --test scripts/sii/reconcile-folios.test.mjs
+          node --test scripts/sii/reconcile-scoped-folios.test.mjs
+          node --test scripts/sii/summarize-registered-boletas.test.mjs
+          node --test scripts/sii/fiscal-document-state-machine.test.mjs
+          node --test scripts/sii/sii-pilot-document-events-draft.test.mjs
+          rm -rf "$canonical_dir"
+          node scripts/sii/export-boleta39-document-candidates.mjs "$candidates_dir"
+          python scripts/sii/audit-boleta39-document-candidates.py "$candidates_dir"/CASO-*.candidate.xml
+          python scripts/sii/test-boleta39-document-candidates.py
+          rm -rf "$candidates_dir"
+          rm "$draft_xml"
+      - name: Validate JS module syntax
+        run: |
+          node --check scripts/sii/issuance-orchestrator.mjs
+          node --check scripts/sii/crypto-engine.mjs
+          node --check scripts/sii/tedFixture.mjs
+          node --check scripts/sii/issuance-state.mjs
+
+  postgres-isolated-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test_only
+          POSTGRES_DB: fiscal_pilot
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d fiscal_pilot"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: test_only
+      PGDATABASE: fiscal_pilot
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: PostgreSQL isolated schema and CAS smoke test
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            # Vanilla PostgreSQL lacks Supabase's standard roles; create inert fixture roles only here.
+            psql -X -v ON_ERROR_STOP=1 -c 'CREATE ROLE anon NOLOGIN; CREATE ROLE authenticated NOLOGIN;'
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/004_isolated_smoke_test.psql
+            bash scripts/sii/sql/005_concurrent_reservation_test.sh
+            bash scripts/sii/sql/006_different_sales_caf_contention.sh
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/007_caf_exhaustion_test.psql
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/008_tenant_and_issuer_isolation_test.psql
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/009_fiscal_role_permissions_test.psql
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/011_issuer_registry_isolation_test.psql
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/013_line_tax_mapping_isolation_test.psql
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/015_transactional_gate_isolation_test.psql
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/017_reservation_gate_enforcement_test.psql
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/019_single_use_authorization_test.psql
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/021_snapshot_integrity_test.psql
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/023_live_crm_digest_test.psql
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/025_live_digest_gate_test.psql
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/027_idempotent_reservation_test.psql
+            psql -X -v ON_ERROR_STOP=1 -f scripts/sii/sql/031_private_issuer_access_test.psql
+          } 2>&1 | tee postgres-sii-results.log
+      - name: Save PostgreSQL test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sii-postgres-test-evidence
+          path: postgres-sii-results.log
+          if-no-files-found: warn

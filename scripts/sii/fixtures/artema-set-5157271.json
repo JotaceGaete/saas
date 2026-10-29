@@ -1,0 +1,135 @@
+{
+  "source": "SIISetDePruebas785064178.txt",
+  "set": "5157271",
+  "fiscalEligible": false,
+  "cases": [
+    {
+      "id": "5157271-1",
+      "type": 33,
+      "items": [
+        {
+          "name": "Cajón",
+          "tax": "afecto",
+          "quantity": 139,
+          "unitPrice": 1819
+        },
+        {
+          "name": "Relleno",
+          "tax": "afecto",
+          "quantity": 59,
+          "unitPrice": 2989
+        }
+      ]
+    },
+    {
+      "id": "5157271-2",
+      "type": 33,
+      "items": [
+        {
+          "name": "Pañuelo",
+          "tax": "afecto",
+          "quantity": 418,
+          "unitPrice": 3305,
+          "discountPercent": 6
+        },
+        {
+          "name": "ITEM 2",
+          "tax": "afecto",
+          "quantity": 350,
+          "unitPrice": 2364,
+          "discountPercent": 11
+        }
+      ]
+    },
+    {
+      "id": "5157271-3",
+      "type": 33,
+      "items": [
+        {
+          "name": "Pintura B&W",
+          "tax": "afecto",
+          "quantity": 32,
+          "unitPrice": 3782
+        },
+        {
+          "name": "ITEM 2",
+          "tax": "afecto",
+          "quantity": 179,
+          "unitPrice": 3254
+        },
+        {
+          "name": "ITEM 3",
+          "tax": "exento",
+          "kind": "servicio",
+          "quantity": 1,
+          "unitPrice": 34910
+        }
+      ]
+    },
+    {
+      "id": "5157271-4",
+      "type": 33,
+      "items": [
+        {
+          "name": "ITEM 1",
+          "tax": "afecto",
+          "quantity": 197,
+          "unitPrice": 3155
+        },
+        {
+          "name": "ITEM 2",
+          "tax": "afecto",
+          "quantity": 84,
+          "unitPrice": 3430
+        },
+        {
+          "name": "ITEM 3",
+          "tax": "exento",
+          "kind": "servicio",
+          "quantity": 2,
+          "unitPrice": 6790
+        }
+      ],
+      "globalDiscount": {
+        "tax": "afecto",
+        "percent": 12
+      }
+    },
+    {
+      "id": "5157271-5",
+      "type": 61,
+      "reference": "5157271-1",
+      "reason": "CORRIGE GIRO DEL RECEPTOR"
+    },
+    {
+      "id": "5157271-6",
+      "type": 61,
+      "reference": "5157271-2",
+      "reason": "DEVOLUCION DE MERCADERIAS",
+      "items": [
+        {
+          "name": "Pañuelo",
+          "tax": "afecto",
+          "quantity": 153
+        },
+        {
+          "name": "ITEM 2",
+          "tax": "afecto",
+          "quantity": 238
+        }
+      ]
+    },
+    {
+      "id": "5157271-7",
+      "type": 61,
+      "reference": "5157271-3",
+      "reason": "ANULA FACTURA"
+    },
+    {
+      "id": "5157271-8",
+      "type": 56,
+      "reference": "5157271-5",
+      "reason": "ANULA NOTA DE CREDITO ELECTRONICA"
+    }
+  ]
+}

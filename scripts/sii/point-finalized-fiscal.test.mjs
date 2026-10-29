@@ -1,0 +1,55 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+const require=createRequire(import.meta.url);
+const {prepareFinalizedPointFiscal}=require('./point-finalized-fiscal.cjs');
+const businessId='b1',saleId='s1';
+const op={id:'op1',business_id:businessId,crm_invoice_id:saleId,mp_order_id:'456',mp_payment_id:'123',
+ external_reference:'ref1',mp_status:'processed',amount:100,currency:'CLP',finalized_at:'2026-10-29T12:00:00Z'};
+const pay={id:'p1',business_id:businessId,invoice_id:saleId,amount:100,currency:'CLP',
+ payment_method:'mercado_pago',payment_status:'received',voided_at:null,reference:'Point 456'};
+const sale={id:saleId,business_id:businessId,total:100,status:'pagada',paid_at:'2026-10-29T12:00:00Z'};
+function setup({operation=op,payment=pay,mpStatus='approved'}={}){
+ let prepares=0,lookups=0;
+ const db={from(table){const q={select(){return q;},eq(){return q;},limit(){
+  return Promise.resolve({data:table==='crm_pos_point_operations'?[operation]:[payment],error:null});
+ }};return q;}};
+ return {args:{db,businessId,saleId,loadSale:async()=>sale,getMerchantAccessToken:async()=> 'test-secret',
+  prepareFiscal:async({operationKey})=>{prepares++;return {operationKey,status:'pending'};},
+  fetchImpl:async()=>{lookups++;return {ok:true,json:async()=>({id:'456',external_reference:'ref1',status:'processed',transactions:{payments:[{id:'123',status:mpStatus,amount:'100'}]}})};}},
+  counts:()=>({prepares,lookups})};
+}
+test('reconciles completed Point and prepares one fiscal operation without duplicate payment',async()=>{
+ const h=setup(),result=await prepareFinalizedPointFiscal(h.args);
+ assert.equal(result.status,'prepared');assert.equal(result.emissionEnabled,false);
+ assert.deepEqual(h.counts(),{prepares:1,lookups:1});
+});
+test('pending Point, rejected MP and wrong CRM reference cannot prepare',async()=>{
+ for(const options of [
+  {operation:{...op,mp_status:'pending'}},{mpStatus:'rejected'},
+  {payment:{...pay,reference:'Point other'}},{payment:{...pay,voided_at:'2026-10-29'}}
+ ]) {
+  const h=setup(options),result=await prepareFinalizedPointFiscal(h.args);
+  assert.equal(result.status,'blocked');assert.equal(h.counts().prepares,0);
+ }
+});
+
+
+
+test('repeated finalization uses the same fiscal idempotency key',async()=>{
+ const keys=[];
+ const h=setup();
+ h.args.prepareFiscal=async({operationKey})=>{keys.push(operationKey);return {operationKey,status:'pending'};};
+ const first=await prepareFinalizedPointFiscal(h.args);
+ const second=await prepareFinalizedPointFiscal(h.args);
+ assert.equal(first.status,'prepared');assert.equal(second.status,'prepared');
+ assert.deepEqual(keys,['b1:s1:39','b1:s1:39']);
+});
+test('fiscal claim mismatch or non-pending operation is rejected',async()=>{
+ for(const prepared of [{operationKey:'other',status:'pending'},
+  {operationKey:'b1:s1:39',status:'issued'},null]){
+  const h=setup();h.args.prepareFiscal=async()=>prepared;
+  const result=await prepareFinalizedPointFiscal(h.args);
+  assert.equal(result.status,'blocked');assert.equal(result.emissionEnabled,false);
+ }
+});

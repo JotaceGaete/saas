@@ -1,0 +1,44 @@
+\set ON_ERROR_STOP on
+CREATE SCHEMA IF NOT EXISTS extensions;
+CREATE EXTENSION IF NOT EXISTS pgcrypto WITH SCHEMA extensions;
+\i scripts/sii/sql/001_fiscal_operations_proposal.sql
+\i scripts/sii/sql/002_caf_reservation_proposal.sql
+\i scripts/sii/sql/003_signed_artifacts_cas_proposal.sql
+INSERT INTO fiscal.caf_ranges
+ (issuer_rut,document_type,first_folio,last_folio,next_folio,caf_sha256,verified_at,active)
+ VALUES ('12345678-5',39,700,705,700,repeat('a',64),now(),true);
+-- Fixture ONLY: CAF signature not verified; never use for real issuance.
+SELECT * FROM fiscal.reserve_boleta39('tenant-test','sale-1','12345678-5');
+SELECT * FROM fiscal.reserve_boleta39('tenant-test','sale-1','12345678-5');
+DO $$
+DECLARE n integer; f integer;
+BEGIN
+ SELECT count(*),min(folio) INTO n,f FROM fiscal.issuance_operations WHERE sale_id='sale-1';
+ IF n<>1 OR f<>700 THEN RAISE EXCEPTION 'Idempotent reservation failed'; END IF;
+END;
+$$;
+INSERT INTO fiscal.signed_documents(operation_id,sha256,xml_bytes)
+SELECT id,encode(extensions.digest(convert_to('<test/>','UTF8'),'sha256'),'hex'),convert_to('<test/>','UTF8')
+FROM fiscal.issuance_operations WHERE sale_id='sale-1';
+DO $$
+DECLARE oid bigint; success boolean;
+BEGIN
+ SELECT id INTO oid FROM fiscal.issuance_operations WHERE sale_id='sale-1';
+ SELECT fiscal.cas_issuance_state(oid,'reserved','signed') INTO success;
+ IF success IS DISTINCT FROM true THEN RAISE EXCEPTION 'First CAS failed'; END IF;
+ SELECT fiscal.cas_issuance_state(oid,'reserved','signed') INTO success;
+ IF success IS DISTINCT FROM false THEN RAISE EXCEPTION 'Second CAS unexpectedly succeeded'; END IF;
+ SELECT fiscal.cas_issuance_state(oid,'signed','submitting') INTO success;
+ IF success IS DISTINCT FROM true THEN RAISE EXCEPTION 'Submitting CAS failed'; END IF;
+END;
+$$;
+DO $$
+BEGIN
+ BEGIN
+  UPDATE fiscal.signed_documents SET xml_bytes=convert_to('<altered/>','UTF8');
+  RAISE EXCEPTION 'Immutability trigger did not reject update';
+ EXCEPTION WHEN raise_exception THEN
+  IF SQLERRM='Immutability trigger did not reject update' THEN RAISE; END IF;
+ END;
+END;
+$$;

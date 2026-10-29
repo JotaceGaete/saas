@@ -1,0 +1,19 @@
+\set ON_ERROR_STOP on
+\i scripts/sii/sql/016_reservation_gate_enforcement_proposal.sql
+DO $$
+DECLARE before_ops bigint; after_ops bigint;
+BEGIN
+ SELECT count(*) INTO before_ops FROM fiscal.issuance_operations;
+ BEGIN
+  PERFORM * FROM fiscal.reserve_boleta39('tenant-no-approval','sale-no-approval','12345678-5');
+  RAISE EXCEPTION 'Unapproved reservation unexpectedly succeeded';
+ EXCEPTION WHEN SQLSTATE 'PZ403' THEN NULL;
+ END;
+ SELECT count(*) INTO after_ops FROM fiscal.issuance_operations;
+ IF after_ops<>before_ops THEN RAISE EXCEPTION 'Unauthorized operation was inserted'; END IF;
+ IF EXISTS(SELECT 1 FROM fiscal.issuance_operations
+   WHERE business_id='tenant-no-approval' AND sale_id='sale-no-approval')
+ THEN RAISE EXCEPTION 'Unauthorized fiscal operation persisted'; END IF;
+END;
+$$;
+SELECT 'PASS: unauthorized reservation denied before operation mutation' AS result;

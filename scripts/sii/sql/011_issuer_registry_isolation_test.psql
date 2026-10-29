@@ -1,0 +1,27 @@
+\set ON_ERROR_STOP on
+\i scripts/sii/sql/010_issuer_registry_proposal.sql
+DO $$
+BEGIN
+ IF has_table_privilege('anon','fiscal.verified_issuers','SELECT') OR
+    has_table_privilege('authenticated','fiscal.verified_issuers','SELECT') OR
+    has_table_privilege('anon','fiscal.verified_issuers','UPDATE') OR
+    has_table_privilege('authenticated','fiscal.verified_issuers','INSERT')
+ THEN RAISE EXCEPTION 'Fiscal issuer registry exposed to client roles'; END IF;
+END;
+$$;
+INSERT INTO fiscal.verified_issuers(business_id,issuer_rut)
+VALUES ('tenant-registry-test','12345678-5');
+DO $$
+BEGIN
+ IF EXISTS (SELECT 1 FROM fiscal.verified_issuers WHERE business_id='tenant-registry-test'
+    AND (issuer_verified OR fiscal_enabled)) THEN
+  RAISE EXCEPTION 'New fiscal issuer unexpectedly enabled';
+ END IF;
+ BEGIN
+  UPDATE fiscal.verified_issuers SET fiscal_enabled=true WHERE business_id='tenant-registry-test';
+  RAISE EXCEPTION 'Unverified issuer was enabled';
+ EXCEPTION WHEN check_violation THEN NULL;
+ END;
+END;
+$$;
+SELECT 'PASS: fiscal issuer registry private and disabled by default' AS result;
