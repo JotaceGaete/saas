@@ -1,4 +1,5 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { supabase } from '../../../lib/supabase';
 import ReactDOM from 'react-dom';
 import Icon from 'components/AppIcon';
 import { formatMoney } from '../../../utils/formatMoney';
@@ -68,6 +69,33 @@ export default function CrmThermalTicket({
   printErrorMessage = null,
   onConfigurePrinter,
 }) {
+  // Pilot-only fiscal status. This never issues a DTE or allocates a folio.
+  const fiscalPilotBusinessId = 'cda904a1-e331-4bd4-9f33-a6715687d3dd';
+  const showFiscalPilot = business?.id === fiscalPilotBusinessId;
+  const [fiscalCheck, setFiscalCheck] = useState({ status: 'idle', data: null });
+  useEffect(() => {
+    if (!showFiscalPilot || !sale?.id) return;
+    let active = true;
+    setFiscalCheck({ status: 'checking', data: null });
+    (async () => {
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !sessionData?.session?.access_token) throw new Error('SESSION_UNAVAILABLE');
+        const response = await fetch('/api/sii/boleta-readiness', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session.access_token}` },
+          body: JSON.stringify({ businessId: business.id, saleId: sale.id }),
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || 'READINESS_UNAVAILABLE');
+        if (active) setFiscalCheck({ status: 'ready', data });
+      } catch (_error) {
+        if (active) setFiscalCheck({ status: 'error', data: null });
+      }
+    })();
+    return () => { active = false; };
+  }, [showFiscalPilot, business?.id, sale?.id]);
+
   // Inject print styles while modal is open.
   // The print div is portaled directly into document.body so
   // `body > *:not(#crm-thermal-print-root)` can hide the entire app
@@ -400,6 +428,16 @@ export default function CrmThermalTicket({
                 </button>
               )}
             </div>
+          )}
+
+          {showFiscalPilot && (
+            <section aria-label="Boleta electrónica SII" style={{ margin: '12px 16px', padding: 12, border: '1px solid #d1d5db', borderRadius: 10, background: '#f9fafb', color: '#374151', fontSize: 12 }}>
+              <strong style={{ display: 'block', fontSize: 13, marginBottom: 5 }}>Boleta electrónica · SII</strong>
+              <div>{fiscalCheck.status === 'checking' ? 'Verificando venta y autorización…' : fiscalCheck.status === 'error' ? 'No fue posible verificar el estado fiscal. No se emitió ninguna boleta.' : fiscalCheck.status === 'ready' ? 'Emisión pendiente de habilitación. Esta venta tiene solo ticket interno.' : 'Sin verificación fiscal.'}</div>
+              {fiscalCheck.status === 'ready' && <div style={{ marginTop: 4 }}>Venta: {fiscalCheck.data?.salePaid ? 'pagada' : 'no confirmada como pagada'} · Folio SII: no asignado</div>}
+              <button type="button" disabled style={{ marginTop: 9, padding: '8px 12px', borderRadius: 7, border: '1px solid #d1d5db', color: '#6b7280', background: '#e5e7eb', cursor: 'not-allowed' }}>Emitir boleta electrónica (próximamente)</button>
+              <div style={{ marginTop: 6, color: '#6b7280', fontSize: 11 }}>No se envían documentos al SII ni se consumen folios.</div>
+            </section>
           )}
 
           {/* Ticket preview (screen only) */}
