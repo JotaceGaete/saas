@@ -41,7 +41,7 @@ begin
   end if;
   insert into public.crm_fiscal_issuances (business_id, sale_id, operation_id, dte_type, status)
   values (p_business_id, p_sale_id, p_operation_id, p_dte_type, 'sending')
-  on conflict (business_id, sale_id, dte_type) do nothing
+  on conflict do nothing
   returning id into v_id;
   return v_id is not null;
 end;
