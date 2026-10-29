@@ -65,3 +65,12 @@ test('network timeout propagates without automatic retry',async()=>{
   }}),/network timeout/);
   assert.equal(calls,1);
 });
+
+test('manual folio and incomplete payload are rejected without network calls',async()=>{
+ let calls=0;
+ const fetchImpl=async()=>{calls++;throw Error('must not send');};
+ const payload=buildBoletaPayload(base);
+ await assert.rejects(()=>emitirBoleta({apiKey:'test-only',payload:{...payload,folio:51105},fetchImpl}),/MANUAL_FOLIO_NOT_ALLOWED/);
+ await assert.rejects(()=>emitirBoleta({apiKey:'test-only',payload:{...payload,detalles:[]},fetchImpl}),/INVALID_DTE_PAYLOAD/);
+ assert.equal(calls,0);
+});
