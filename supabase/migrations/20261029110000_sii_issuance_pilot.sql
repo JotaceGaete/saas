@@ -1,8 +1,8 @@
 -- Pilot fiscal issuance ledger. No automatic emission is enabled.
 create table if not exists public.crm_fiscal_issuances (
   id uuid primary key default gen_random_uuid(),
-  business_id uuid not null, -- FK pending confirmation of canonical business table
-  sale_id uuid not null,
+  business_id uuid not null references public.wa_businesses(id),
+  sale_id uuid not null references public.crm_invoices(id),
   provider text not null default 'siisolutions' check (provider = 'siisolutions'),
   dte_type integer not null default 39 check (dte_type = 39),
   operation_id text not null,
@@ -29,7 +29,8 @@ create or replace function public.crm_claim_fiscal_issuance(
 ) returns boolean language plpgsql security invoker set search_path = public as $$
 declare v_id uuid;
 begin
-  if p_dte_type <> 39 or nullif(trim(p_operation_id), '') is null then
+  if p_dte_type <> 39 or nullif(trim(p_operation_id), '') is null or
+     not exists (select 1 from public.crm_invoices i where i.id = p_sale_id and i.business_id = p_business_id) then
     raise exception 'Invalid fiscal issuance claim';
   end if;
   insert into public.crm_fiscal_issuances (business_id, sale_id, operation_id, dte_type, status)
@@ -49,7 +50,9 @@ create or replace function public.crm_finalize_fiscal_issuance(
 ) returns boolean language plpgsql security invoker set search_path = public as $$
 declare v_count integer;
 begin
-  if p_status not in ('issued', 'unknown') then
+  if p_status not in ('issued', 'unknown') or
+     (p_status = 'issued' and (p_folio is null or p_folio <= 0 or
+       nullif(p_xml_base64, '') is null or nullif(p_pdf_base64, '') is null)) then
     raise exception 'Invalid fiscal outcome';
   end if;
   update public.crm_fiscal_issuances
