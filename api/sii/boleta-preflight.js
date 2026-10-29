@@ -26,7 +26,19 @@ export default async function handler(req,res) {
    return res.status(403).json({error:'BUSINESS_NOT_AUTHORIZED'});
   const {data,error}=await db.rpc('sii_pilot_preflight_sale',{p_business_id:businessId,p_sale_id:saleId});
   if(error||!data) return res.status(409).json({error:'FISCAL_PREFLIGHT_UNAVAILABLE',emissionEnabled:false});
-  return res.status(200).json({...data,emissionEnabled:false});
+  const {data:taxMapping,error:taxError}=await db.rpc('sii_pilot_tax_mapping_status',{
+    p_business_id:businessId,p_sale_id:saleId
+  });
+  if(taxError||!taxMapping) return res.status(503).json({error:'FISCAL_TAX_REGISTRY_UNAVAILABLE',emissionEnabled:false});
+  const taxVerified=taxMapping.allAffected19Verified===true;
+  return res.status(200).json({
+    ...data,
+    taxMappingVerified:taxVerified,
+    taxItemCount:taxMapping.itemCount,
+    taxVerifiedItemCount:taxMapping.verifiedItemCount,
+    reason:data.saleChecksPassed && !taxVerified ? 'TAX_MAPPING_NOT_VERIFIED' : data.reason,
+    eligible:false,emissionEnabled:false
+  });
  } catch {
   return res.status(500).json({error:'FISCAL_PREFLIGHT_FAILED',emissionEnabled:false});
  }
