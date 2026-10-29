@@ -440,6 +440,7 @@ export default function CrmThermalTicket({
               <div>{fiscalCheck.status === 'checking' ? 'Verificando venta y autorización…' : fiscalCheck.status === 'error' ? 'No fue posible verificar el estado fiscal. No se emitió ninguna boleta.' : fiscalCheck.status === 'ready' ? 'Emisión pendiente de habilitación. Esta venta tiene solo ticket interno.' : 'Sin verificación fiscal.'}</div>
               {fiscalCheck.status === 'error' && <div style={{ marginTop: 5, fontFamily: 'monospace', fontSize: 11 }}>Diagnóstico: {fiscalCheck.error || 'UNKNOWN_ERROR'}</div>}
               {fiscalCheck.status === 'ready' && <div style={{ marginTop: 4 }}>Venta: {fiscalCheck.data?.salePaid ? 'pagada' : 'no confirmada como pagada'} · Folio SII: no asignado</div>}
+              {fiscalCheck.status === 'ready' && <div style={{ marginTop: 5, fontSize: 11, color: '#6b7280' }}>SII Solutions: {fiscalCheck.data?.providerConfigured ? 'clave configurada' : 'falta configurar clave en Preview'} · Emisión: bloqueada hasta validar registro fiscal y protección contra duplicados.</div>
               <button type="button" disabled style={{ marginTop: 9, padding: '8px 12px', borderRadius: 7, border: '1px solid #d1d5db', color: '#6b7280', background: '#e5e7eb', cursor: 'not-allowed' }}>Emitir boleta electrónica (próximamente)</button>
               <div style={{ marginTop: 6, color: '#6b7280', fontSize: 11 }}>No se envían documentos al SII ni se consumen folios.</div>
             </section>
