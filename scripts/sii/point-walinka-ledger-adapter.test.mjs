@@ -37,3 +37,13 @@ test('Point binding rejects unfinalized operation and invalid amounts',async()=>
  for(const bad of [{mp_status:'approved'},{finalized_at:null},{amount:0},{amount:1.25}])
  await assert.rejects(loadWalinkaPointBinding({db:db([{...row,...bad}]),businessId:'b1',saleId:'s1'}));
 });
+
+test('duplicate CRM payments for one Point order block fiscal reconciliation',async()=>{
+ const pay={id:'p1',business_id:'b1',invoice_id:'s1',amount:100,currency:'CLP',
+  payment_method:'mercado_pago',payment_status:'received',voided_at:null,reference:'Point o1'};
+ assert.equal(await isWalinkaPointPaymentLinked({db:db([row],[pay,{...pay,id:'p2'}]),
+  businessId:'b1',saleId:'s1',pointPaymentId:'123'}),false);
+});
+test('Point binding requires external reference for provider correlation',async()=>{
+ await assert.rejects(loadWalinkaPointBinding({db:db([{...row,external_reference:null}]),businessId:'b1',saleId:'s1'}));
+});
