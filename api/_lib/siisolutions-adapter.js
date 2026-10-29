@@ -19,7 +19,7 @@ const integer = (value, name) => {
 export function buildBoletaPayload(sale) {
   if (!sale || typeof sale !== 'object') throw new Error('Sale required');
   if (!sale.id || typeof sale.id !== 'string') throw new Error('Unique sale id required');
-  if (!/^\\d{7,8}-[0-9Kk]$/.test(String(sale.operatorRut || ''))) throw new Error('Authorized operator RUT required');
+  if (!/^\d{7,8}-[0-9Kk]$/.test(String(sale.operatorRut || ''))) throw new Error('Authorized operator RUT required');
   if (!Array.isArray(sale.items) || !sale.items.length) throw new Error('Sale items required');
   const details = sale.items.map((item, i) => {
     const quantity = Number(item.quantity);
@@ -48,7 +48,6 @@ export function buildBoletaPayload(sale) {
   return {
     rutOperador: sale.operatorRut,
     idBoletaOperacion: sale.id,
-    total,
     descuentoGlobal: 0,
     medioPago: sale.paymentMethod === 'cash' ? 'EF' : ['mercado_pago', 'card', 'debit_card', 'credit_card'].includes(sale.paymentMethod) ? 'PE' : sale.paymentMethod === 'bank_transfer' ? 'TF' : 'OT',
     retornarPdf: true,
@@ -83,8 +82,10 @@ export async function sendBoletaSimulation({ sale, apiKey, fetchImpl = fetch }) 
   });
   const body = await response.json().catch(() => null);
   if (!response.ok) throw new Error(`SII Solutions HTTP ${response.status}; inspect server logs`);
-  if (!body || body.esSimulacion !== true) {
-    throw new Error('Provider did not confirm simulation mode; review account settings immediately');
+  if (!body || !Number.isSafeInteger(body.folio) || !body.xmlBase64) {
+    throw new Error('Provider response missing folio or XML; reconcile emission manually before retrying');
   }
-  return { folio: body.folio ?? null, simulated: true, pdfBase64: body.pdfBase64 ?? null, xmlBase64: body.xmlBase64 ?? null };
+  // The provider does not return a simulation flag. Simulation must be verified
+  // independently in the provider portal before invoking this method.
+  return { folio: body.folio, pdfBase64: body.pdfBase64 ?? null, xmlBase64: body.xmlBase64 };
 }
