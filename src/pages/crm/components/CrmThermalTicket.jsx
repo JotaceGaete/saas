@@ -126,6 +126,36 @@ export default function CrmThermalTicket({
     return () => { active = false; };
   }, [showFiscalPilot, business?.id, sale?.id]);
 
+  const [taxSelection, setTaxSelection] = useState({});
+  const [taxEvidence, setTaxEvidence] = useState({});
+  const [taxSaving, setTaxSaving] = useState({});
+  const saveTaxClassification = async (itemId) => {
+    if (!showFiscalPilot || !sale?.id || taxSaving[itemId] === 'saving') return;
+    setTaxSaving(previous => ({...previous, [itemId]: 'saving'}));
+    try {
+      const {data:sessionData,error:sessionError}=await supabase.auth.getSession();
+      if(sessionError || !sessionData?.session?.access_token)throw new Error('SESSION_UNAVAILABLE');
+      const response=await fetch('/api/sii/boleta-verify-tax',{
+        method:'POST',
+        headers:{'Content-Type':'application/json',Authorization:`Bearer ${sessionData.session.access_token}`},
+        body:JSON.stringify({businessId:business.id,saleId:sale.id,itemId,
+          category:taxSelection[itemId],evidence:taxEvidence[itemId]})
+      });
+      if(!(response.headers.get('content-type')||'').includes('application/json'))throw new Error('INVALID_API_RESPONSE');
+      const result=await response.json();
+      if(!response.ok || result.verified!==true)throw new Error(result.error||'VERIFICATION_FAILED');
+      setTaxSaving(previous=>({...previous,[itemId]:'saved'}));
+      const check=await fetch('/api/sii/boleta-preflight',{
+        method:'POST',headers:{'Content-Type':'application/json',Authorization:`Bearer ${sessionData.session.access_token}`},
+        body:JSON.stringify({businessId:business.id,saleId:sale.id})
+      });
+      if(check.ok && (check.headers.get('content-type')||'').includes('application/json')){
+        const data=await check.json();
+        setFiscalPreflight({status:'ready',data,error:null});
+      }
+    }catch(error){setTaxSaving(previous=>({...previous,[itemId]:String(error?.message||'ERROR').slice(0,90)}));}
+  };
+
   const [fiscalPreparation, setFiscalPreparation] = useState({ status: 'idle', error: null });
   const prepareFiscalOperation = async () => {
     if (!showFiscalPilot || !sale?.id || fiscalPreparation.status === 'working') return;
@@ -511,6 +541,37 @@ export default function CrmThermalTicket({
                   {' · '}Emisión: bloqueada
                 </div>}
               </div>
+              {fiscalPreflight.status === 'ready' && !fiscalPreflight.data?.taxMappingVerified && (
+                <div style={{marginTop:8,padding:8,border:'1px solid #d1d5db',borderRadius:7,background:'#fff'}}>
+                  <strong>Verificación manual de IVA</strong>
+                  <p style={{margin:'4px 0 8px'}}>Clasifica cada línea únicamente con respaldo tributario. Esto no emite boletas.</p>
+                  {items.filter(item=>item?.id).map(item=>(
+                    <div key={item.id} style={{marginBottom:10,borderTop:'1px solid #eee',paddingTop:6}}>
+                      <div>{item.name||item.description||'Producto'}</div>
+                      <select aria-label="Clasificación IVA" value={taxSelection[item.id]||''}
+                        onChange={event=>setTaxSelection(previous=>({...previous,[item.id]:event.target.value}))}
+                        style={{width:'100%',padding:6,marginTop:4}}>
+                        <option value="">Seleccionar tratamiento tributario</option>
+                        <option value="IVA_AFECTO_19">Afecto a IVA 19 %</option>
+                        <option value="EXENTO">Exento</option>
+                      </select>
+                      <textarea aria-label="Respaldo tributario" rows={2}
+                        placeholder="Fundamento de la clasificación (mínimo 15 caracteres)"
+                        value={taxEvidence[item.id]||''}
+                        onChange={event=>setTaxEvidence(previous=>({...previous,[item.id]:event.target.value}))}
+                        style={{width:'100%',marginTop:5,padding:6,boxSizing:'border-box'}} />
+                      <button type="button" onClick={()=>saveTaxClassification(item.id)}
+                        disabled={!taxSelection[item.id]||(taxEvidence[item.id]||'').trim().length<15||taxSaving[item.id]==='saving'}
+                        style={{padding:'6px 10px',marginTop:4}}>
+                        {taxSaving[item.id]==='saving'?'Guardando…':'Registrar clasificación verificada'}
+                      </button>
+                      {taxSaving[item.id] && taxSaving[item.id]!=='saving' && <div style={{marginTop:4}}>
+                        {taxSaving[item.id]==='saved'?'Clasificación registrada (sin emitir).':`No se guardó: ${taxSaving[item.id]}`}
+                      </div>}
+                    </div>
+                  ))}
+                </div>
+              )}
               <button type="button" disabled style={{ marginTop: 9, padding: '8px 12px', borderRadius: 7, border: '1px solid #d1d5db', color: '#6b7280', background: '#e5e7eb', cursor: 'not-allowed' }}>Emitir boleta electrónica (próximamente)</button>
               <div style={{ marginTop: 6, color: '#6b7280', fontSize: 11 }}>No se envían documentos al SII ni se consumen folios.</div>
             </section>
