@@ -66,6 +66,7 @@ jobs:
           python scripts/sii/test-canonical-preview-audit.py
           python scripts/sii/test-boleta-xsd-order.py
           python scripts/sii/test-audit-boleta-xml-order.py
+          node --test scripts/sii/reconcile-folios.test.mjs
           rm -rf "$canonical_dir"
           node scripts/sii/export-boleta39-document-candidates.mjs "$candidates_dir"
           python scripts/sii/audit-boleta39-document-candidates.py "$candidates_dir"/CASO-*.candidate.xml
