@@ -5,6 +5,8 @@ import {
 } from './siisolutions-point-provider.js';
 import { createFiscalIssuanceRepository } from './siisolutions-repository.js';
 import { issueVerifiedPointBoleta } from './siisolutions-point-checkout.js';
+import { createBusinessFiscalIssuerResolver } from './siisolutions-issuer-resolver.js';
+import { createFiscalPilotAuthorizationLoader } from './siisolutions-pilot-authorization.js';
 
 /**
  * Trusted server composition root for a Point DTE 39 pilot.
@@ -39,4 +41,15 @@ export function createPointFiscalPilot({
       sandboxBaseUrl, fetchImpl,
     });
   };
+}
+
+/**
+ * Default simulation-only assembly. It reads business-scoped credentials from
+ * protected server environment and never falls back to a global issuer.
+ * No HTTP route or background worker is registered by this helper.
+ */
+export function createConfiguredPointFiscalPilot({ admin, sandboxBaseUrl, fetchImpl = fetch, env = process.env }) {
+  const loadAuthorization = createFiscalPilotAuthorizationLoader({ env });
+  const resolveIssuer = createBusinessFiscalIssuerResolver({ loadAuthorization });
+  return createPointFiscalPilot({ admin, resolveIssuer, sandboxBaseUrl, fetchImpl });
 }
