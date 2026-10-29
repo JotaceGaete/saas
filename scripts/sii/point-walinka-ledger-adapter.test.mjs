@@ -10,7 +10,7 @@ function db(rows, payments=[]){
   return q;
  }};
 }
-const row={id:'op1',business_id:'b1',crm_invoice_id:'s1',mp_order_id:'o1',mp_payment_id:'123',mp_status:'processed',amount:100,currency:'CLP',finalized_at:'2026-10-29T12:00:00Z'};
+const row={id:'op1',business_id:'b1',crm_invoice_id:'s1',mp_order_id:'o1',external_reference:'ref1',mp_payment_id:'123',mp_status:'processed',amount:100,currency:'CLP',finalized_at:'2026-10-29T12:00:00Z'};
 test('loads Point order and payment IDs from Walinka operation',async()=>{
  const r=await loadWalinkaPointBinding({db:db([row]),businessId:'b1',saleId:'s1'});
  assert.equal(r.orderId,'o1');assert.equal(r.paymentId,'123');
