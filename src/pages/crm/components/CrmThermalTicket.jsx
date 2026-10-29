@@ -100,6 +100,28 @@ export default function CrmThermalTicket({
     return () => { active = false; };
   }, [showFiscalPilot, business?.id, sale?.id]);
 
+  const [fiscalPreparation, setFiscalPreparation] = useState({ status: 'idle', error: null });
+  const prepareFiscalOperation = async () => {
+    if (!showFiscalPilot || !sale?.id || fiscalPreparation.status === 'working') return;
+    setFiscalPreparation({ status: 'working', error: null });
+    try {
+      const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+      if (sessionError || !sessionData?.session?.access_token) throw new Error('SESSION_UNAVAILABLE');
+      const response = await fetch('/api/sii/boleta-prepare', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session.access_token}` },
+        body: JSON.stringify({ businessId: business.id, saleId: sale.id }),
+      });
+      if (!(response.headers.get('content-type') || '').includes('application/json')) throw new Error(`FISCAL_API_HTTP_${response.status}`);
+      const data = await response.json();
+      if (!response.ok || data?.message !== 'OPERATION_PREPARED_NO_DTE_SENT') throw new Error(data?.error || `HTTP_${response.status}`);
+      setFiscalPreparation({ status: 'prepared', error: null });
+      setFiscalCheck((previous) => ({ ...previous, data: { ...previous.data, fiscalOperationStatus: data.operationStatus } }));
+    } catch (error) {
+      setFiscalPreparation({ status: 'error', error: String(error?.message || 'UNKNOWN_ERROR').slice(0, 100) });
+    }
+  };
+
   // Inject print styles while modal is open.
   // The print div is portaled directly into document.body so
   // `body > *:not(#crm-thermal-print-root)` can hide the entire app
@@ -442,6 +464,15 @@ export default function CrmThermalTicket({
               {fiscalCheck.status === 'ready' && <div style={{ marginTop: 4 }}>Venta: {fiscalCheck.data?.salePaid ? 'pagada' : 'no confirmada como pagada'} · Folio SII: no asignado</div>}
               {fiscalCheck.status === 'ready' && <div style={{ marginTop: 5, fontSize: 11, color: '#6b7280' }}>SII Solutions: {fiscalCheck.data?.providerConfigured ? 'clave configurada' : 'falta configurar clave en Preview'} · Emisión: bloqueada hasta validar registro fiscal y protección contra duplicados.</div>}
               {fiscalCheck.status === 'ready' && <div style={{ marginTop: 5, fontSize: 11, color: '#6b7280' }}>Emisor fiscal: {fiscalCheck.data?.issuerRegistered ? 'registrado' : 'no registrado'} · Verificación: {fiscalCheck.data?.issuerVerified ? 'validada' : 'pendiente'} · Estado: {fiscalCheck.data?.fiscalOperationStatus || 'sin operación tributaria'}</div>}
+              {fiscalCheck.status === 'ready' && fiscalCheck.data?.salePaid && fiscalCheck.data?.issuerRegistered && fiscalCheck.data?.providerConfigured && (
+                <div style={{ marginTop: 8 }}>
+                  <button type="button" onClick={prepareFiscalOperation} disabled={fiscalPreparation.status === 'working' || fiscalPreparation.status === 'prepared'} style={{ padding: '8px 12px', border: '1px solid #64748b', borderRadius: 7, background: '#fff', color: '#334155', cursor: 'pointer' }}>
+                    {fiscalPreparation.status === 'working' ? 'Preparando…' : fiscalPreparation.status === 'prepared' ? 'Operación fiscal preparada' : 'Preparar operación fiscal (sin emitir)'}
+                  </button>
+                  {fiscalPreparation.status === 'error' && <div style={{ marginTop: 4, color: '#b91c1c' }}>Preparación fallida: {fiscalPreparation.error}</div>}
+                  {fiscalPreparation.status === 'prepared' && <div style={{ marginTop: 4 }}>Operación registrada. No se emitió ninguna boleta ni se asignó folio.</div>}
+                </div>
+              )}
               <button type="button" disabled style={{ marginTop: 9, padding: '8px 12px', borderRadius: 7, border: '1px solid #d1d5db', color: '#6b7280', background: '#e5e7eb', cursor: 'not-allowed' }}>Emitir boleta electrónica (próximamente)</button>
               <div style={{ marginTop: 6, color: '#6b7280', fontSize: 11 }}>No se envían documentos al SII ni se consumen folios.</div>
             </section>
