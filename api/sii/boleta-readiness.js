@@ -42,6 +42,7 @@ export default async function handler(req,res) {
       issuerEnabled:fiscalStatus.issuerEnabled === true,
       issuerRutMatches:fiscalStatus.issuerRutMatches === true,
       fiscalOperationStatus:fiscalStatus.operationStatus || null,
+      fiscalFolio:fiscalStatus.folio || null,
       privateFiscalRegistryVerified:fiscalStatus.issuerVerified === true && fiscalStatus.issuerRutMatches === true,
       idempotentIssuanceVerified:false,
       reason:'FISCAL_ISSUANCE_LOCKED',
