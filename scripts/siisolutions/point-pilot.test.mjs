@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createPointFiscalPilot } from '../../api/_lib/siisolutions-point-pilot.js';
+import { createPointFiscalPilot, createConfiguredPointFiscalPilot } from '../../api/_lib/siisolutions-point-pilot.js';
 
 const invoice = { id: 'sale-1', business_id: 'biz-1', status: 'pagada', total: 1000, currency: 'CLP' };
 const op = {
@@ -82,4 +82,23 @@ test('composition blocks issuer credentials belonging to another business', asyn
 
 test('composition refuses missing fiscal issuer resolver', () => {
   assert.throws(() => createPointFiscalPilot({ admin: admin() }));
+});
+
+test('configured pilot denies missing business-specific credentials before loading sales', async () => {
+  let accessed = false;
+  const trustedAdmin = {
+    from() { accessed = true; throw new Error('Unexpected database access'); },
+    rpc() { accessed = true; throw new Error('Unexpected RPC'); },
+  };
+  const pilot = createConfiguredPointFiscalPilot({
+    admin: trustedAdmin,
+    env: { SIISOLUTIONS_EMISSION_ENABLED: 'simulation', SIISOLUTIONS_PILOT_ISSUERS_JSON: '{}' },
+    sandboxBaseUrl: 'https://sandbox.example.org',
+  });
+  const result = await pilot({
+    businessId: '11111111-1111-4111-8111-111111111111',
+    invoiceId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+  });
+  assert.deepEqual(result, { state: 'blocked', reason: 'ISSUER_NOT_AUTHORIZED' });
+  assert.equal(accessed, false);
 });
