@@ -36,7 +36,7 @@ export default async function handler(req,res) {
     taxMappingVerified:taxVerified,
     taxItemCount:taxMapping.itemCount,
     taxVerifiedItemCount:taxMapping.verifiedItemCount,
-    reason:data.saleChecksPassed && !taxVerified ? 'TAX_MAPPING_NOT_VERIFIED' : data.reason,
+    reason:!data.saleChecksPassed ? data.reason : !taxVerified ? 'TAX_MAPPING_NOT_VERIFIED' : !data.issuerVerified ? 'ISSUER_NOT_VERIFIED' : !data.issuerEnabled ? 'ISSUER_NOT_ENABLED' : 'PROVIDER_CONTRACT_NOT_VERIFIED',
     eligible:false,emissionEnabled:false
   });
  } catch {
