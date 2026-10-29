@@ -5,7 +5,7 @@ const {normalizePointPayment}=require('./point-provider-verification.cjs');
 async function fetchPointPayment({accessToken,pointPaymentId,businessId,saleId,expectedOrderId,
  fetchImpl=globalThis.fetch,signal}) {
  if(typeof accessToken!=='string'||!accessToken.trim()||
-    !/^\\d+$/.test(String(pointPaymentId||''))||
+    !/^[0-9]+$/.test(String(pointPaymentId||''))||
     !businessId||!saleId||!expectedOrderId||typeof fetchImpl!=='function')
   throw new Error('POINT_VERIFICATION_CONFIG_INVALID');
  const response=await fetchImpl('https://api.mercadopago.com/v1/payments/'+encodeURIComponent(String(pointPaymentId)),{
