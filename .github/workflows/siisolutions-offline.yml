@@ -1,0 +1,34 @@
+name: SII Solutions pilot - offline tests
+
+on:
+  push:
+    branches:
+      - feat/siisolutions-adapter-pilot
+    paths:
+      - 'api/_lib/siisolutions-*.js'
+      - 'scripts/siisolutions/**'
+      - '.github/workflows/siisolutions-offline.yml'
+  pull_request:
+    paths:
+      - 'api/_lib/siisolutions-*.js'
+      - 'scripts/siisolutions/**'
+      - '.github/workflows/siisolutions-offline.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fiscal-offline:
+    name: Fiscal pilot unit and offline integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      SIISOLUTIONS_EMISSION_ENABLED: disabled
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run fiscal tests (no credentials, printer or external API)
+        run: node --test scripts/siisolutions/*.test.mjs
