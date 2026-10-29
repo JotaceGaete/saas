@@ -22,4 +22,17 @@ function decidePointFiscalAction({sale, payment, businessId, expectedAmount, pay
  return {action:'prepare_fiscal',reason:'POINT_APPROVED',operationKey:`${businessId}:${sale.id}:39`,
          emissionEnabled:false,requiresProviderContractVerification:true};
 }
-module.exports={decidePointFiscalAction};
+// Trusted backend orchestration: never accept verifiedByServer from a browser.
+// fetchVerifiedPayment must query Mercado Pago using the merchant's server-side token,
+// independently bind order/payment to the sale, and return normalized fields.
+async function assessPointConfirmation({businessId,sale,expectedAmount,paymentAlreadyLinked,pointPaymentId,fetchVerifiedPayment}) {
+ if(typeof fetchVerifiedPayment!=='function' || !pointPaymentId || typeof pointPaymentId!=='string')
+  return {action:'block',reason:'SERVER_VERIFIER_NOT_CONFIGURED'};
+ let payment;
+ try { payment=await fetchVerifiedPayment({businessId,saleId:sale?.id,pointPaymentId}); }
+ catch { return {action:'block',reason:'POINT_VERIFICATION_UNAVAILABLE'}; }
+ if(!payment || payment.id!==pointPaymentId || payment.verifiedByServer!==true)
+  return {action:'block',reason:'POINT_PAYMENT_NOT_VERIFIED'};
+ return decidePointFiscalAction({businessId,sale,expectedAmount,paymentAlreadyLinked,payment});
+}
+module.exports={decidePointFiscalAction,assessPointConfirmation};
