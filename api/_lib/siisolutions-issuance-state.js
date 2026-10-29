@@ -56,8 +56,10 @@ export function reconcileProviderOutcome({ statusCode, response, networkError })
     };
   }
   if (statusCode >= 200 && statusCode < 300 &&
-      Number.isSafeInteger(response?.folio) && typeof response?.xmlBase64 === 'string' && response.xmlBase64.length) {
-    return { state: FISCAL_STATES.issued, folio: response.folio, xmlBase64: response.xmlBase64 };
+      Number.isSafeInteger(response?.folio) && response.folio > 0 &&
+      typeof response?.xmlBase64 === 'string' && response.xmlBase64.length > 0 &&
+      typeof response?.pdfBase64 === 'string' && response.pdfBase64.length > 0) {
+    return { state: FISCAL_STATES.issued, folio: response.folio, xmlBase64: response.xmlBase64, pdfBase64: response.pdfBase64 };
   }
   // Even 4xx errors are not automatically retried without verifying provider behavior.
   return { state: FISCAL_STATES.unknown, requiresManualReconciliation: true };
