@@ -41,9 +41,9 @@ async function emitirBoleta({ apiKey, payload, signal, fetchImpl = fetch }) {
     body: JSON.stringify(payload), signal
   });
   const data = await response.json().catch(() => null);
-  if (response.status === 409) {
-    if (!data?.folioExistente) throw new Error('Conflicting operation without recoverable folio');
-    return { status: 'already_issued', folio: data.folioExistente, response: data };
+  if (response.status === 400) {\n    const error = new Error('SII Solutions validation rejected the request');\n    error.code = 'PROVIDER_VALIDATION_REJECTED';\n    error.status = 400;\n    error.details = typeof data?.error === 'string' ? data.error : null;\n    throw error;\n  }\n  if (response.status === 409) {
+    if (!Number.isSafeInteger(Number(data?.folioExistente)) || Number(data.folioExistente) <= 0) throw new Error('Conflicting operation without recoverable folio');
+    return { status: 'already_issued', folio: Number(data.folioExistente), response: data };
   }
   if (!response.ok || data?.success !== true) {
     const error = new Error(data?.error || `SII Solutions HTTP ${response.status}: unknown result`);
