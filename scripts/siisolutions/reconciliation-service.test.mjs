@@ -21,26 +21,36 @@ function fakeAdmin(row=ledger,rpcResult=true) {
 }
 test('reconciles unknown only with trusted original document',async()=>{
   const admin=fakeAdmin();
-  const reconcile=createManualFiscalReconciler({admin,loadOriginalDocument:async()=>original});
+  const reconcile=createManualFiscalReconciler({admin,loadOriginalDocument:async()=>original,verifyOriginalDocument:async()=>true});
   assert.deepEqual(await reconcile({businessId,saleId,operationId}),{state:'issued',folio:121});
   assert.equal(admin.calls.filter(c=>c[0]==='rpc').length,1);
 });
 test('issued ledger never loads document or calls RPC',async()=>{
   const admin=fakeAdmin({...ledger,status:'issued'});
   let fetched=false;
-  const reconcile=createManualFiscalReconciler({admin,loadOriginalDocument:async()=>{fetched=true;return original;}});
+  const reconcile=createManualFiscalReconciler({admin,loadOriginalDocument:async()=>{fetched=true;return original;},verifyOriginalDocument:async()=>true});
   assert.equal((await reconcile({businessId,saleId,operationId})).reason,'UNKNOWN_LEDGER_REQUIRED');
   assert.equal(fetched,false);
   assert.equal(admin.calls.filter(c=>c[0]==='rpc').length,0);
 });
 test('cross-tenant original cannot finalize ledger',async()=>{
   const admin=fakeAdmin();
-  const reconcile=createManualFiscalReconciler({admin,loadOriginalDocument:async()=>({...original,businessId:'other'})});
+  const reconcile=createManualFiscalReconciler({admin,loadOriginalDocument:async()=>({...original,businessId:'other'}),verifyOriginalDocument:async()=>true});
   assert.equal((await reconcile({businessId,saleId,operationId})).reason,'DOCUMENT_IDENTITY_NOT_VERIFIED');
   assert.equal(admin.calls.filter(c=>c[0]==='rpc').length,0);
 });
 test('concurrent state change fails closed',async()=>{
   const admin=fakeAdmin(ledger,false);
-  const reconcile=createManualFiscalReconciler({admin,loadOriginalDocument:async()=>original});
+  const reconcile=createManualFiscalReconciler({admin,loadOriginalDocument:async()=>original,verifyOriginalDocument:async()=>true});
   assert.equal((await reconcile({businessId,saleId,operationId})).reason,'ALREADY_RECONCILED_OR_STATE_CHANGED');
+});
+
+test('document with self-asserted verification cannot bypass independent verifier',async()=>{
+  const admin=fakeAdmin();
+  const reconcile=createManualFiscalReconciler({admin,loadOriginalDocument:async()=>original,verifyOriginalDocument:async()=>false});
+  assert.equal((await reconcile({businessId,saleId,operationId})).reason,'ORIGINAL_AUTHENTICITY_NOT_VERIFIED');
+  assert.equal(admin.calls.filter(c=>c[0]==='rpc').length,0);
+});
+test('reconciliation requires independent verifier',()=>{
+  assert.throws(()=>createManualFiscalReconciler({admin:fakeAdmin(),loadOriginalDocument:async()=>original}),/Trusted fiscal reconciliation/);
 });
