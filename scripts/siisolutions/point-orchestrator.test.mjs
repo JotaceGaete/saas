@@ -5,16 +5,16 @@ import { issueVerifiedPointBoleta } from '../../api/_lib/siisolutions-point-orch
 const businessId = '11111111-1111-4111-8111-111111111111';
 const saleId = '22222222-2222-4222-8222-222222222222';
 const sale = { id: saleId, business_id: businessId, total: 59500, status: 'pagada', items: [{ description: 'Servicio', unitPrice: 59500, quantity: 1, subtotal: 59500 }] };
-const payment = { business_id: businessId, sale_id: saleId, provider: 'mercado_pago', channel: 'point', verified_by_server: true, status: 'approved', provider_payment_id: '123', currency: 'CLP', amount: 59500 };
-const params = { sale, payment, businessId, issuerBusinessId: businessId, operatorRut: '76509283-3', apiKey: 'fake', simulationVerified: true };
+const payment = { method: 'mercado_pago', business_id: businessId, sale_id: saleId, provider: 'mercado_pago', channel: 'point', verified_by_server: true, status: 'approved', provider_payment_id: '123', currency: 'CLP', amount: 59500 };
+const params = { sale, payment, businessId, issuerBusinessId: businessId, operatorRut: '76509283-3', apiKey: 'fake', sandboxBaseUrl: 'https://sandbox.example.invalid' };
 
 test('blocks without verified simulation; does not send', async () => {
-  const result = await issueVerifiedPointBoleta({ ...params, simulationVerified: false });
-  assert.equal(result.reason, 'SIMULATION_NOT_VERIFIED');
+  const result = await issueVerifiedPointBoleta({ ...params, sandboxBaseUrl: undefined });
+  assert.equal(result.reason, 'SANDBOX_NOT_CONFIGURED');
 });
 test('blocks unverified payments', async () => {
   const result = await issueVerifiedPointBoleta({ ...params, payment: { ...payment, verified_by_server: false } });
-  assert.equal(result.reason, 'PAYMENT_UNVERIFIED');
+  assert.equal(result.reason, 'POINT_NOT_APPROVED');
 });
 test('duplicate claims never send', async () => {
   const prev = process.env.SIISOLUTIONS_EMISSION_ENABLED;
