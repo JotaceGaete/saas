@@ -20,11 +20,14 @@ function setup({operation=op,payment=pay,mpStatus='approved'}={}){
   counts:()=>({prepares,lookups})};
 }
 test('reconciles completed Point and prepares one fiscal operation without duplicate payment',async()=>{
+ process.env.SII_POINT_PAYMENT_LOOKUP_CONTRACT_VERIFIED='true';
  const h=setup(),result=await prepareFinalizedPointFiscal(h.args);
  assert.equal(result.status,'prepared');assert.equal(result.emissionEnabled,false);
  assert.deepEqual(h.counts(),{prepares:1,lookups:1});
+ delete process.env.SII_POINT_PAYMENT_LOOKUP_CONTRACT_VERIFIED;
 });
 test('pending Point, rejected MP and wrong CRM reference cannot prepare',async()=>{
+ process.env.SII_POINT_PAYMENT_LOOKUP_CONTRACT_VERIFIED='true';
  for(const options of [
   {operation:{...op,mp_status:'pending'}},{mpStatus:'rejected'},
   {payment:{...pay,reference:'Point other'}},{payment:{...pay,voided_at:'2026-10-29'}}
@@ -32,4 +35,12 @@ test('pending Point, rejected MP and wrong CRM reference cannot prepare',async()
   const h=setup(options),result=await prepareFinalizedPointFiscal(h.args);
   assert.equal(result.status,'blocked');assert.equal(h.counts().prepares,0);
  }
+ delete process.env.SII_POINT_PAYMENT_LOOKUP_CONTRACT_VERIFIED;
+});
+
+test('real Point contract remains blocked by default even after CRM finalization',async()=>{
+ delete process.env.SII_POINT_PAYMENT_LOOKUP_CONTRACT_VERIFIED;
+ const h=setup();const result=await prepareFinalizedPointFiscal(h.args);
+ assert.equal(result.reason,'POINT_PROVIDER_CONTRACT_UNVERIFIED');
+ assert.deepEqual(h.counts(),{prepares:0,lookups:0});
 });
