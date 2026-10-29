@@ -1,8 +1,14 @@
 -- Pilot fiscal issuance ledger. No automatic emission is enabled.
+-- Composite invoice key prevents cross-business fiscal ledger rows even from
+-- privileged writers that bypass application validation.
+create unique index if not exists crm_invoices_id_business_fiscal_key
+  on public.crm_invoices (id, business_id);
 create table if not exists public.crm_fiscal_issuances (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references public.wa_businesses(id),
-  sale_id uuid not null references public.crm_invoices(id),
+  sale_id uuid not null,
+  constraint crm_fiscal_sale_business_fk foreign key (sale_id, business_id)
+    references public.crm_invoices(id, business_id),
   provider text not null default 'siisolutions' check (provider = 'siisolutions'),
   dte_type integer not null default 39 check (dte_type = 39),
   operation_id text not null,
