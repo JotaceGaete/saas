@@ -14,12 +14,16 @@ node --test scripts/siisolutions/adapter.test.mjs
 - Only use a dedicated **simulation account**. The environment is selected in
   the provider's portal; the endpoint itself does not guarantee simulation.
 - The adapter additionally requires `SIISOLUTIONS_EMISSION_ENABLED=simulation`
-  and rejects responses without `esSimulacion: true`. A request might already
-  have emitted before this response check; do **not** point it at production.
+  and requires a separate HTTPS sandbox host. The adapter does **not** verify
+  `esSimulacion` in provider responses; sandbox authorization must be confirmed
+  independently before any request. Never point this pilot at production.
 - API keys must stay on the server; never put them in Vite `VITE_*` variables.
-- Verify whether `folio` is optional, whether gross boleta prices are expected,
-  what `medioPago` codes are valid, and whether `idBoletaOperacion` enforces
-  idempotency. The sample docs are not sufficient to guarantee these behaviors.
+- Provider documentation states `folio` is optional on requests, gross boleta
+  prices are used, and `medioPago` accepts EF/PE/TF/CQ/OT. The `409 Conflict`
+  duplicate-operation safeguard requires the provider's operation-ID validation
+  option to be enabled. Verify that configuration for each issuer before use.
+- A `409` with `folioExistente` is **not** proof that the original XML/PDF was
+  recovered: keep the issuance `unknown` until an authorized reconciliation.
 - Implement authenticated tenant-to-credential lookup (ARTEMA / ARTES), persistent
   per-sale issuance state, a unique issuance lock and recovery of ambiguous timeouts
   **before** wiring the payment-approved callback.

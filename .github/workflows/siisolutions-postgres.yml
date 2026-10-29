@@ -1,0 +1,54 @@
+name: SII Solutions PostgreSQL migration checks
+
+on:
+  push:
+    branches:
+      - feat/siisolutions-adapter-pilot
+      - fix/siisolutions-409-reconciliation-20261029
+    paths:
+      - 'supabase/migrations/20261029110000_sii_issuance_pilot.sql'
+      - 'scripts/siisolutions/fiscal-postgres-*'
+      - '.github/workflows/siisolutions-postgres.yml'
+  pull_request:
+    paths:
+      - 'supabase/migrations/20261029110000_sii_issuance_pilot.sql'
+      - 'scripts/siisolutions/fiscal-postgres-*'
+      - '.github/workflows/siisolutions-postgres.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  postgres-migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: test-only
+          POSTGRES_DB: fiscal_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d fiscal_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: test-only
+      PGDATABASE: fiscal_test
+    steps:
+      - uses: actions/checkout@v4
+      - name: Apply fixture, production migration, and behavioral assertions
+        run: |
+          psql -v ON_ERROR_STOP=1 -f scripts/siisolutions/fiscal-postgres-fixture.sql
+          psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261029110000_sii_issuance_pilot.sql
+          psql -v ON_ERROR_STOP=1 -f scripts/siisolutions/fiscal-postgres-assertions.sql
+      - name: Verify concurrent fiscal claims using separate PostgreSQL connections
+        run: bash scripts/siisolutions/fiscal-postgres-concurrency.sh

@@ -52,5 +52,5 @@ export async function issueCheckoutBoleta({
   }
   // Unknown outcomes must be reconciled; never resend payment or fiscal request.
   await repository.finalize({ businessId, saleId: sale.id, operationId, ...outcome });
-  return { state: outcome.state, folio: outcome.folio ?? null, operationId };
+  return { state: outcome.state, folio: outcome.folio ?? null, operationId, reason: outcome.reason ?? null, existingFolio: outcome.existingFolio ?? null };
 }

@@ -41,3 +41,33 @@ test('cash and Point both use same fiscal claim, without a second charge', async
     else process.env.SIISOLUTIONS_EMISSION_ENABLED = old;
   }
 });
+
+test('409 existing operation is never marked issued or automatically resent', async () => {
+  const previous = process.env.SIISOLUTIONS_EMISSION_ENABLED;
+  process.env.SIISOLUTIONS_EMISSION_ENABLED = 'simulation';
+  try {
+    let requests = 0;
+    let finalState;
+    const result = await issueCheckoutBoleta({
+      ...common, payment: cash,
+      repository: {
+        claimPending: async () => true,
+        finalize: async (data) => { finalState = data; },
+      },
+      fetchImpl: async () => {
+        requests++;
+        return { status: 409, json: async () => ({
+          success: false, folioExistente: 1234,
+        }) };
+      },
+    });
+    assert.equal(requests, 1);
+    assert.equal(result.state, 'unknown');
+    assert.equal(result.existingFolio, 1234);
+    assert.equal(result.folio, null);
+    assert.equal(finalState.state, 'unknown');
+  } finally {
+    if (previous === undefined) delete process.env.SIISOLUTIONS_EMISSION_ENABLED;
+    else process.env.SIISOLUTIONS_EMISSION_ENABLED = previous;
+  }
+});

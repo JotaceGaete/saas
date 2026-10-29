@@ -42,9 +42,24 @@ export function reconcileProviderOutcome({ statusCode, response, networkError })
   if (networkError || !Number.isInteger(statusCode) || statusCode >= 500) {
     return { state: FISCAL_STATES.unknown, requiresManualReconciliation: true };
   }
+  // The provider may return 409 for an already-issued operation. A folio
+  // alone is NOT enough to mark it issued: retrieve and verify the original
+  // XML/PDF via a separately authorized reconciliation flow first.
+  if (statusCode === 409) {
+    const existingFolio = response?.folioExistente;
+    return {
+      state: FISCAL_STATES.unknown,
+      requiresManualReconciliation: true,
+      reason: 'PROVIDER_OPERATION_ALREADY_EXISTS',
+      ...(Number.isSafeInteger(existingFolio) && existingFolio > 0
+        ? { existingFolio } : {}),
+    };
+  }
   if (statusCode >= 200 && statusCode < 300 &&
-      Number.isSafeInteger(response?.folio) && typeof response?.xmlBase64 === 'string' && response.xmlBase64.length) {
-    return { state: FISCAL_STATES.issued, folio: response.folio, xmlBase64: response.xmlBase64 };
+      Number.isSafeInteger(response?.folio) && response.folio > 0 &&
+      typeof response?.xmlBase64 === 'string' && response.xmlBase64.length > 0 &&
+      typeof response?.pdfBase64 === 'string' && response.pdfBase64.length > 0) {
+    return { state: FISCAL_STATES.issued, folio: response.folio, xmlBase64: response.xmlBase64, pdfBase64: response.pdfBase64 };
   }
   // Even 4xx errors are not automatically retried without verifying provider behavior.
   return { state: FISCAL_STATES.unknown, requiresManualReconciliation: true };
