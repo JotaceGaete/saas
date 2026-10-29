@@ -5,7 +5,7 @@ const PILOT='cda904a1-e331-4bd4-9f33-a6715687d3dd';
 async function processPointFiscalOutboxItem({
  item,db,loadSale,getMerchantAccessToken,prepareFiscal,fetchImpl
 }) {
- if(!item||item.business_id!==PILOT||item.status!=='pending'||
+ if(!item||item.business_id!==PILOT||item.status!=='processing'||
     !item.point_operation_id||!item.sale_id)
   return {status:'blocked',reason:'OUTBOX_NOT_ELIGIBLE',emissionEnabled:false};
  const result=await prepareFinalizedPointFiscal({
