@@ -12,7 +12,7 @@ async function runPointFiscalOutboxBatch({db,loadSale,getMerchantAccessToken,pre
   let outcome;
   try{
    outcome=await processPointFiscalOutboxItem({
-    item:{...item,status:'pending'},db,loadSale,getMerchantAccessToken,prepareFiscal,fetchImpl
+    item:{...item,status:'processing'},db,loadSale,getMerchantAccessToken,prepareFiscal,fetchImpl
    });
   }catch{
    outcome={status:'blocked',reason:'WORKER_EXCEPTION',emissionEnabled:false};
