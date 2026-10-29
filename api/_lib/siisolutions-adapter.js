@@ -67,14 +67,17 @@ export function buildBoletaPayload(sale) {
   };
 }
 
-export async function sendBoletaSimulation({ sale, apiKey, fetchImpl = fetch }) {
+export async function sendBoletaSimulation({ sale, apiKey, fetchImpl = fetch, sandboxBaseUrl }) {
   if (process.env.SIISOLUTIONS_EMISSION_ENABLED !== 'simulation') {
     throw new Error('SII Solutions emission disabled: explicit simulation-only gate required');
+  }
+  if (!sandboxBaseUrl || !/^https:\/\//.test(sandboxBaseUrl) || new URL(sandboxBaseUrl).hostname === new URL(SII_BASE_URL).hostname) {
+    throw new Error('Provider sandbox URL required; production endpoint is not a simulation');
   }
   if (!apiKey) throw new Error('Missing server-side SII Solutions API key');
   const payload = buildBoletaPayload(sale);
   // No client-supplied URL, folio, operator RUT, issue date or tenant credentials.
-  const response = await fetchImpl(`${SII_BASE_URL}${SII_EMISSION_PATHS[39]}`, {
+  const response = await fetchImpl(`${sandboxBaseUrl.replace(/\/$/, '')}${SII_EMISSION_PATHS[39]}`, {
     method: 'POST',
     headers: { 'x-api-key': apiKey, 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
