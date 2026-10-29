@@ -506,7 +506,7 @@ export default function CrmThermalTicket({
                   fiscalPreflight.status === 'ready' ? (fiscalPreflight.data?.saleChecksPassed
                     ? 'Venta y pagos conciliados.' : 'Venta o pagos requieren revisión.') : 'Sin diagnóstico.'}</div>
                 {fiscalPreflight.status === 'ready' && <div style={{ marginTop: 4 }}>
-                  IVA: {fiscalPreflight.data?.reason === 'TAX_MAPPING_NOT_VERIFIED' ? 'clasificación pendiente de verificar' : fiscalPreflight.data?.reason || 'pendiente'}
+                  IVA: {fiscalPreflight.data?.taxMappingVerified ? 'todos los productos verificados' : `verificados ${fiscalPreflight.data?.taxVerifiedItemCount ?? 0} de ${fiscalPreflight.data?.taxItemCount ?? '—'}`}
                   {' · '}Emisor: {fiscalPreflight.data?.issuerVerified ? 'verificado' : 'no verificado'}
                   {' · '}Emisión: bloqueada
                 </div>}
