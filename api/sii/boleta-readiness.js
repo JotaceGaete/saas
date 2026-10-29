@@ -1,8 +1,8 @@
 // Read-only DTE39 pilot readiness. Never issues documents or reserves folios.
 // Uses user JWT for identity; private fiscal registry read requires service role server-side.
-const { createClient } = require('@supabase/supabase-js');
+import { createClient } from '@supabase/supabase-js';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-module.exports = async function handler(req,res) {
+export default async function handler(req,res) {
   res.setHeader('Cache-Control','no-store');
   if(req.method !== 'POST') return res.status(405).json({error:'METHOD_NOT_ALLOWED'});
   const token = /^Bearer (.+)$/i.exec(req.headers.authorization || '')?.[1];
