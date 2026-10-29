@@ -35,7 +35,7 @@ create or replace function public.crm_claim_fiscal_issuance(
 ) returns boolean language plpgsql security invoker set search_path = public as $$
 declare v_id uuid;
 begin
-  if p_dte_type <> 39 or nullif(trim(p_operation_id), '') is null or
+  if p_dte_type is distinct from 39 or nullif(trim(p_operation_id), '') is null or
      not exists (select 1 from public.crm_invoices i where i.id = p_sale_id and i.business_id = p_business_id) then
     raise exception 'Invalid fiscal issuance claim';
   end if;
@@ -56,7 +56,7 @@ create or replace function public.crm_finalize_fiscal_issuance(
 ) returns boolean language plpgsql security invoker set search_path = public as $$
 declare v_count integer;
 begin
-  if p_status not in ('issued', 'unknown') or
+  if p_status is null or p_status not in ('issued', 'unknown') or
      (p_status = 'issued' and (p_folio is null or p_folio <= 0 or
        nullif(p_xml_base64, '') is null or nullif(p_pdf_base64, '') is null)) then
     raise exception 'Invalid fiscal outcome';
