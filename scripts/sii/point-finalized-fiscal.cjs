@@ -1,7 +1,7 @@
 // Server-side bridge for EXISTING Walinka Point finalization.
 // crm_finalize_point_sale has already written crm_invoices + crm_payments.
 // Never create a second CRM payment or attempt DTE emission here.
-const {fetchPointPayment}=require('./mercado-pago-point-payment.cjs');
+const {fetchVerifiedPointOrder}=require('./point-orders-verification.cjs');
 const {loadWalinkaPointBinding,isWalinkaPointPaymentLinked}=require('./point-walinka-ledger-adapter.cjs');
 async function prepareFinalizedPointFiscal({
  db,businessId,saleId,loadSale,getMerchantAccessToken,prepareFiscal,fetchImpl
@@ -20,14 +20,12 @@ async function prepareFinalizedPointFiscal({
      !Number.isSafeInteger(Number(sale.total))||Number(sale.total)<=0||
      Number(sale.total)!==binding.amount)
    return {status:'blocked',reason:'SALE_NOT_SETTLED',emissionEnabled:false};
-  // The live Point integration uses Mercado Pago Orders API and status 'processed'.
-  // The /v1/payments endpoint may not expose an order.id for these Point orders.
-  // Until the provider contract is verified, do not assume the payment lookup proves the order.
-  if(process.env.SII_POINT_PAYMENT_LOOKUP_CONTRACT_VERIFIED!=='true')
-   return {status:'blocked',reason:'POINT_PROVIDER_CONTRACT_UNVERIFIED',emissionEnabled:false};
   const accessToken=await getMerchantAccessToken({businessId});
-  const payment=await fetchPointPayment({accessToken,pointPaymentId:binding.paymentId,
-   businessId,saleId,expectedOrderId:binding.orderId,fetchImpl});
+  const payment=await fetchVerifiedPointOrder({accessToken,businessId,saleId,
+   operation:{business_id:businessId,crm_invoice_id:saleId,mp_order_id:binding.orderId,
+    external_reference:binding.externalReference,mp_payment_id:binding.paymentId,
+    mp_status:binding.pointStatus,finalized_at:binding.finalizedAt,
+    amount:binding.amount,currency:'CLP'},fetchImpl});
   if(payment.status!=='approved'||payment.amount!==Number(sale.total))
    return {status:'blocked',reason:'POINT_NOT_APPROVED',emissionEnabled:false};
   const linked=await isWalinkaPointPaymentLinked({db,businessId,saleId,pointPaymentId:binding.paymentId});
