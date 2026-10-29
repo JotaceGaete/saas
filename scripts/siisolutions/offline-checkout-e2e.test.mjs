@@ -89,7 +89,7 @@ test('offline: provider timeout remains unknown and is never printable', async (
   assert.equal(result.state, 'unknown');
   assert.equal(saved.requiresManualReconciliation, true);
   assert.equal(getFiscalPrintDecision({ status: saved.state }).printable, false);
-});
+}));
 
 test('offline: unverified Point is blocked before contacting any provider', async () => inSimulation(async () => {
   let called = false;
