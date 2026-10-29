@@ -29,3 +29,12 @@ test('provider non-200 response is not treated as an original document',async()=
   const transport=createDteCoreDocumentTransport({apiKey:'test',fetchImpl:async()=>({ok:false,status:404})});
   assert.deepEqual(await transport.getXml(42),{ok:false,status:404});
 });
+
+test('API key cannot be sent to an arbitrary HTTPS host',()=>{
+  assert.throws(()=>createDteCoreDocumentTransport({
+    apiKey:'secret',baseUrl:'https://attacker.example/',fetchImpl:async()=>{},
+  }),/Invalid DTECore base URL/);
+  assert.throws(()=>createDteCoreDocumentTransport({
+    apiKey:'secret',baseUrl:'https://api.siisolutions.cl:8443/',fetchImpl:async()=>{},
+  }),/Invalid DTECore base URL/);
+});
