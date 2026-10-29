@@ -145,7 +145,8 @@ describe('Concurrencia (escenario 11) — mecanismo presente, NO probado end-to-
   });
 
   it('crm_create_pos_sale bloquea la fila de wa_products (FOR UPDATE) ANTES de comparar contra la cantidad pedida', () => {
-    const lockIdx = posSaleFnMatch[0].indexOf('FOR UPDATE;\n\n    IF NOT FOUND THEN');
+    const lockMatch = /FROM public\.wa_products\s+WHERE id = v_agg\.product_id AND business_id = p_business_id\s+FOR UPDATE;\s+IF NOT FOUND THEN/.exec(posSaleFnMatch[0]);
+    const lockIdx = lockMatch?.index ?? -1;
     const compareIdx = posSaleFnMatch[0].indexOf('IF v_stock_actual IS NOT NULL AND v_stock_actual < v_agg.total_qty THEN');
     expect(lockIdx).toBeGreaterThan(-1);
     expect(compareIdx).toBeGreaterThan(-1);

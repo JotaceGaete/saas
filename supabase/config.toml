@@ -125,3 +125,51 @@ verify_jwt = false
 # cualquier rechazo de la signaturePromise por ese mensaje genérico.
 [functions.qz-sign]
 verify_jwt = false
+
+
+[functions.mp-point-terminals]
+verify_jwt = false
+
+
+[functions.mp-point-oauth-start]
+verify_jwt = false
+
+
+[functions.mp-point-oauth-callback]
+verify_jwt = false
+
+
+[functions.mp-point-setup-terminal]
+verify_jwt = false
+
+
+[functions.mp-point-create-order]
+verify_jwt = false
+
+
+[functions.mp-point-get-order]
+verify_jwt = false
+
+
+[functions.mp-point-cancel-order]
+verify_jwt = false
+
+
+[functions.mp-point-webhook]
+verify_jwt = false
+
+
+# Point: CORS preflight sin JWT; el handler valida el JWT de usuario internamente.
+[functions.mp-point-connection]
+verify_jwt = false
+
+
+# Point: CORS preflight sin JWT; el handler valida el JWT de usuario internamente.
+[functions.mp-point-terminal-preference]
+verify_jwt = false
+
+
+# Point: reconciliador interno invocado por pg_cron. El gateway queda sin JWT
+# porque la autenticación real es x-point-reconcile-secret, validada fail-closed.
+[functions.mp-point-reconcile]
+verify_jwt = false

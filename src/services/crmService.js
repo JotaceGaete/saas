@@ -962,6 +962,95 @@ export async function createPosInvoice(businessId, {
   return { data: invoice, error: null };
 }
 
+
+// ─────────────────────────────────────────────────────────────────────────────
+// POS-HELD-SALES-1 — ventas TPV en espera.
+// Estas funciones solo persisten/restauran el carrito. No crean invoice,
+// pago, movimiento de caja ni reserva/descuento de stock.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function mapHeldSaleError(error) {
+  const raw = [error?.message, error?.details, error?.hint].filter(Boolean).join(' ');
+  const messages = {
+    HELD_SALE_NOT_FOUND: 'La venta en espera ya no existe.',
+    HELD_SALE_ALREADY_CLAIMED: 'Esta venta ya fue retomada en otra caja.',
+    HELD_SALE_CLAIM_MISMATCH: 'La recuperación de esta venta ya no es válida.',
+    HELD_SALE_NOT_AVAILABLE: 'La venta en espera ya no está disponible.',
+    CUSTOMER_NOT_FOUND: 'El cliente de la venta en espera ya no existe.',
+    PRODUCT_NOT_FOUND: 'Uno de los productos ya no está disponible.',
+    INVALID_ITEMS: 'La venta contiene artículos inválidos.',
+    INVALID_LABEL: 'La referencia de la venta en espera es demasiado larga.',
+    INVALID_DISCOUNT: 'El descuento de la venta en espera no es válido.',
+  };
+  const code = Object.keys(messages).find((key) => raw.includes(key));
+  return { message: code ? messages[code] : 'No se pudo procesar la venta en espera.' };
+}
+
+export async function holdPosSale(businessId, {
+  customerId = null, items = [], discount = 0, notes = null, label = null,
+}) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return { data: null, error: { message: 'El carrito está vacío.' } };
+  }
+  const mappedItems = items.map((it) => ({
+    product_id: it.product_id || null,
+    name: it.name,
+    unit_price: Number(it.unit_price),
+    quantity: Number(it.quantity),
+    note: it.note || null,
+  }));
+  const { data, error } = await supabase.rpc('crm_hold_pos_sale', {
+    p_business_id: businessId,
+    p_items: mappedItems,
+    p_customer_id: customerId || null,
+    p_discount: Math.max(0, Number(discount) || 0),
+    p_notes: notes || null,
+    p_label: label?.trim() || null,
+  });
+  return error ? { data: null, error: mapHeldSaleError(error) } : { data, error: null };
+}
+
+export async function listHeldPosSales(businessId) {
+  const { data, error } = await supabase.rpc('crm_list_held_pos_sales', {
+    p_business_id: businessId,
+  });
+  return error ? { data: null, error: mapHeldSaleError(error) } : { data: data || [], error: null };
+}
+
+export async function claimHeldPosSale(businessId, heldSaleId) {
+  const { data, error } = await supabase.rpc('crm_claim_held_pos_sale', {
+    p_business_id: businessId,
+    p_held_sale_id: heldSaleId,
+  });
+  return error ? { data: null, error: mapHeldSaleError(error) } : { data, error: null };
+}
+
+export async function releaseClaimedPosSale(businessId, heldSaleId, claimToken) {
+  const { error } = await supabase.rpc('crm_release_claimed_pos_sale', {
+    p_business_id: businessId,
+    p_held_sale_id: heldSaleId,
+    p_claim_token: claimToken,
+  });
+  return error ? { error: mapHeldSaleError(error) } : { error: null };
+}
+
+export async function consumeClaimedPosSale(businessId, heldSaleId, claimToken) {
+  const { error } = await supabase.rpc('crm_consume_claimed_pos_sale', {
+    p_business_id: businessId,
+    p_held_sale_id: heldSaleId,
+    p_claim_token: claimToken,
+  });
+  return error ? { error: mapHeldSaleError(error) } : { error: null };
+}
+
+export async function discardHeldPosSale(businessId, heldSaleId) {
+  const { error } = await supabase.rpc('crm_discard_held_pos_sale', {
+    p_business_id: businessId,
+    p_held_sale_id: heldSaleId,
+  });
+  return error ? { error: mapHeldSaleError(error) } : { error: null };
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PUENTE CATÁLOGO → CRM
 // Requiere migración en Supabase Dashboard:
@@ -3384,3 +3473,92 @@ export async function getPeriodSummary(businessId, fromDate, toDate) {
     },
   };
 }
+
+// ── Mercado Pago Point Smart 2 ──────────────────────────────────────────────
+async function invokePointFunction(name, body = {}) {
+  const { data, error } = await supabase.functions.invoke(name, { body });
+  if (!error) return { data, error: null };
+
+  // functions.invoke puede traer el JSON del handler dentro de context.
+  let payload = null;
+  try {
+    if (error?.context && typeof error.context.json === 'function') payload = await error.context.json();
+  } catch { /* fallback estable abajo */ }
+
+  return {
+    data: payload,
+    error: {
+      message: payload?.error || error?.message || 'No se pudo comunicar con Mercado Pago Point.',
+      reason: payload?.reason || null,
+      status: error?.context?.status || null,
+    },
+  };
+}
+
+export async function startPointOauth() {
+  return invokePointFunction('mp-point-oauth-start', {});
+}
+
+export async function getPointConnection() {
+  return invokePointFunction('mp-point-connection', { action: 'get' });
+}
+
+export async function disconnectPointConnection() {
+  return invokePointFunction('mp-point-connection', { action: 'disconnect' });
+}
+
+export async function getPointTerminals() {
+  return invokePointFunction('mp-point-terminals', {});
+}
+
+export async function getPointTerminalPreference() {
+  return invokePointFunction('mp-point-terminal-preference', { action: 'get' });
+}
+
+export async function selectPointTerminal(terminalId) {
+  return invokePointFunction('mp-point-terminal-preference', { action: 'select', terminalId });
+}
+
+export async function unlinkPointTerminal() {
+  return invokePointFunction('mp-point-terminal-preference', { action: 'unlink' });
+}
+
+export async function verifyPointTerminal(terminalId) {
+  return invokePointFunction('mp-point-terminal-preference', { action: 'verify', terminalId });
+}
+
+export async function setupPointTerminal(terminalId) {
+  return invokePointFunction('mp-point-setup-terminal', { terminalId });
+}
+
+export async function createPointOrder({
+  terminalId, items, customerId = null, discount = 0, notes = null,
+  createIdempotencyKey, saleIdempotencyKey, issueDate = getLocalDateString(),
+}) {
+  return invokePointFunction('mp-point-create-order', {
+    terminalId,
+    items: (items || []).map((it) => ({
+      product_id: it.product_id || null,
+      name: it.name,
+      unit_price: it.unit_price,
+      quantity: it.quantity,
+      note: it.note || null,
+    })),
+    customerId,
+    discount,
+    notes,
+    createIdempotencyKey,
+    saleIdempotencyKey,
+    issueDate,
+  });
+}
+
+export async function getPointOrder(operationId) {
+  return invokePointFunction('mp-point-get-order', { operationId });
+}
+
+export async function cancelPointOrder(operationId) {
+  return invokePointFunction('mp-point-cancel-order', { operationId });
+}
+
+
