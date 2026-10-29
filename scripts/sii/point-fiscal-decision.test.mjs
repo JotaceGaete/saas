@@ -42,3 +42,9 @@ test('Point confirmation requires server-side lookup and exact payment identity'
  const unavailable=await assessPointConfirmation({...args,fetchVerifiedPayment:async()=>{throw Error('provider offline');}});
  assert.equal(unavailable.reason,'POINT_VERIFICATION_UNAVAILABLE');
 });
+
+test('Mercado Pago numeric payment IDs are matched against canonical string IDs',async()=>{
+ const args={businessId,sale,expectedAmount:100,paymentAlreadyLinked:true,pointPaymentId:'123456789'};
+ const result=await assessPointConfirmation({...args,fetchVerifiedPayment:async()=>({...payment,id:123456789})});
+ assert.equal(result.action,'prepare_fiscal');
+});
