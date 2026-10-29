@@ -20,6 +20,11 @@ async function prepareFinalizedPointFiscal({
      !Number.isSafeInteger(Number(sale.total))||Number(sale.total)<=0||
      Number(sale.total)!==binding.amount)
    return {status:'blocked',reason:'SALE_NOT_SETTLED',emissionEnabled:false};
+  // The live Point integration uses Mercado Pago Orders API and status 'processed'.
+  // The /v1/payments endpoint may not expose an order.id for these Point orders.
+  // Until the provider contract is verified, do not assume the payment lookup proves the order.
+  if(process.env.SII_POINT_PAYMENT_LOOKUP_CONTRACT_VERIFIED!=='true')
+   return {status:'blocked',reason:'POINT_PROVIDER_CONTRACT_UNVERIFIED',emissionEnabled:false};
   const accessToken=await getMerchantAccessToken({businessId});
   const payment=await fetchPointPayment({accessToken,pointPaymentId:binding.paymentId,
    businessId,saleId,expectedOrderId:binding.orderId,fetchImpl});
