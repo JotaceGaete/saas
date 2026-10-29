@@ -3,10 +3,10 @@
 // The atomic claim MUST check issuer, payment, tax verification and tenant authorization.
 const { emitirBoleta } = require('./siiSolutionsBoleta.cjs');
 const { recordProviderResult, recordUncertainResult } = require('./sii-fiscal-ledger-bridge.cjs');
-async function submitPreparedBoleta({ db, operationId, payload, apiKey, beginSubmission, emit = emitirBoleta }) {
+async function submitPreparedBoleta({ db, operationId, payload, apiKey, beginSubmission, providerContractVerified = false, emit = emitirBoleta }) {
   if (typeof beginSubmission !== 'function' || !db?.rpc || !apiKey ||
       !payload?.idBoletaOperacion || !operationId) throw Error('FISCAL_SUBMISSION_NOT_CONFIGURED');
-  // Claim first: if a previous call already claimed, NEVER call the provider again.
+  // The provider folio contract and idempotency must be independently confirmed first.\n  // Do not claim a fiscal operation if this administrative gate is missing.\n  if (providerContractVerified !== true) throw Error('PROVIDER_CONTRACT_NOT_VERIFIED');\n  // Claim first: if a previous call already claimed, NEVER call the provider again.
   const claim = await beginSubmission(operationId);
   if (!claim || claim.status !== 'submitting' || claim.operationId !== operationId ||
       claim.operationKey !== payload.idBoletaOperacion || claim.emissionAuthorized !== true)
