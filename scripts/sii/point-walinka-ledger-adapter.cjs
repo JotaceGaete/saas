@@ -3,7 +3,7 @@
 async function loadWalinkaPointBinding({db,businessId,saleId}) {
  if(!db||!businessId||!saleId) throw Error('POINT_BINDING_ARGS_INVALID');
  const {data,error}=await db.from('crm_pos_point_operations')
-  .select('id,business_id,crm_invoice_id,mp_order_id,mp_payment_id,mp_status,amount,currency,finalized_at')
+  .select('id,business_id,crm_invoice_id,mp_order_id,mp_payment_id,mp_status,amount,currency,finalized_at,external_reference')
   .eq('business_id',businessId).eq('crm_invoice_id',saleId)
   .limit(2);
  if(error) throw Error('POINT_BINDING_LOOKUP_FAILED');
@@ -15,7 +15,8 @@ async function loadWalinkaPointBinding({db,businessId,saleId}) {
     !Number.isSafeInteger(Number(row.amount))||Number(row.amount)<=0)
   throw Error('POINT_BINDING_INCOMPLETE');
  return {businessId,saleId,operationId:row.id,orderId:String(row.mp_order_id),
-  paymentId:String(row.mp_payment_id),pointStatus:row.mp_status,amount:Number(row.amount)};
+  paymentId:String(row.mp_payment_id),pointStatus:row.mp_status,
+  externalReference:row.external_reference,finalizedAt:row.finalized_at,amount:Number(row.amount)};
 }
 async function isWalinkaPointPaymentLinked({db,businessId,saleId,pointPaymentId}) {
  if(!db||!businessId||!saleId||!pointPaymentId) return false;
