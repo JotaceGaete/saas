@@ -36,6 +36,9 @@ function buildBoletaPayload({ businessId, saleId, operatorRut, items, paymentMet
 async function emitirBoleta({ apiKey, payload, signal, fetchImpl = fetch }) {
   if (!apiKey) throw new Error('Missing server-side SII Solutions API key');
   if (!payload?.idBoletaOperacion) throw new Error('Missing idempotency key');
+  // Never transmit an assumed folio. Provider folio assignment remains unverified.
+  if (Object.hasOwn(payload,'folio')) throw new Error('MANUAL_FOLIO_NOT_ALLOWED');
+  if (!Array.isArray(payload.detalles) || payload.detalles.length === 0) throw new Error('INVALID_DTE_PAYLOAD');
   const response = await fetchImpl(`${API_URL}/dte/boletas/emitir`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', 'x-api-key': apiKey },
     body: JSON.stringify(payload), signal
