@@ -21,7 +21,7 @@ async function coordinatePointFiscalPreparation({
   if(initial.action!=='record_payment_first')
    return {status:'blocked',reason:initial.reason,emissionEnabled:false};
   const alreadyLinked=await isPaymentLinked({businessId,saleId,pointPaymentId});
-  if(!alreadyLinked) await recordPayment({businessId,saleId,pointPaymentId,payment});
+  if(alreadyLinked!==true) await recordPayment({businessId,saleId,pointPaymentId,payment});
   // Re-read authoritative sale and ledger after the payment transaction.
   const settled=await loadSale({businessId,saleId});
   const linked=await isPaymentLinked({businessId,saleId,pointPaymentId});
@@ -31,7 +31,7 @@ async function coordinatePointFiscalPreparation({
   if(decision.action!=='prepare_fiscal')
    return {status:'blocked',reason:decision.reason,emissionEnabled:false};
   const prepared=await prepareFiscal({businessId,saleId,operationKey:decision.operationKey});
-  if(!prepared || prepared.operationKey!==decision.operationKey)
+  if(!prepared || prepared.operationKey!==decision.operationKey || prepared.status!=='pending')
    return {status:'blocked',reason:'FISCAL_PREPARATION_UNCONFIRMED',emissionEnabled:false};
   return {status:'prepared',operationKey:decision.operationKey,emissionEnabled:false};
  } catch {
