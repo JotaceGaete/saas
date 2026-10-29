@@ -47,8 +47,9 @@ export default async function handler(req,res){
      throw Error('ISSUER_NOT_VERIFIED');
     const {data:op,error}=await db.rpc('sii_pilot_claim_operation',{
      p_business_id:businessId,p_sale_id:saleId});
-    if(error||!op?.operationId) throw Error('FISCAL_CLAIM_FAILED');
-    return {operationKey,status:op.status};
+    if(error||!op?.operationId||op.operationKey!==operationKey||op.status!=='pending'||
+       op.emissionEnabled!==false) throw Error('FISCAL_CLAIM_FAILED');
+    return {operationKey:op.operationKey,status:op.status};
    }
   });
   return res.status(result.status==='prepared'?200:409).json(result);
