@@ -20,12 +20,12 @@ function deps(){
    transactions:{payments:[{id:'123',status:'approved',amount:'100'}]}})}),
   count:()=>calls};
 }
-test('pilot pending task prepares fiscal operation without emission',async()=>{
+test('pilot claimed task prepares fiscal operation without emission',async()=>{
  const d=deps(),r=await processPointFiscalOutboxItem({
- item:{business_id:PILOT,sale_id:saleId,point_operation_id:'op1',status:'pending'},...d});
+ item:{business_id:PILOT,sale_id:saleId,point_operation_id:'op1',status:'processing'},...d});
  assert.equal(r.status,'prepared');assert.equal(r.emissionEnabled,false);assert.equal(d.count(),1);
 });
-test('wrong merchant and nonpending tasks are ignored without any fiscal call',async()=>{
+test('wrong merchant and unclaimed tasks are ignored without any fiscal call',async()=>{
  for(const item of [{business_id:'other',sale_id:saleId,point_operation_id:'op1',status:'pending'},
   {business_id:PILOT,sale_id:saleId,point_operation_id:'op1',status:'prepared'}]){
   const d=deps(),r=await processPointFiscalOutboxItem({item,...d});
