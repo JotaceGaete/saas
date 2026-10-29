@@ -7,12 +7,12 @@ on:
       - fix/siisolutions-409-reconciliation-20261029
     paths:
       - 'supabase/migrations/20261029110000_sii_issuance_pilot.sql'
-      - 'scripts/siisolutions/fiscal-postgres-*.sql'
+      - 'scripts/siisolutions/fiscal-postgres-*'
       - '.github/workflows/siisolutions-postgres.yml'
   pull_request:
     paths:
       - 'supabase/migrations/20261029110000_sii_issuance_pilot.sql'
-      - 'scripts/siisolutions/fiscal-postgres-*.sql'
+      - 'scripts/siisolutions/fiscal-postgres-*'
       - '.github/workflows/siisolutions-postgres.yml'
   workflow_dispatch:
 
@@ -50,3 +50,5 @@ jobs:
           psql -v ON_ERROR_STOP=1 -f scripts/siisolutions/fiscal-postgres-fixture.sql
           psql -v ON_ERROR_STOP=1 -f supabase/migrations/20261029110000_sii_issuance_pilot.sql
           psql -v ON_ERROR_STOP=1 -f scripts/siisolutions/fiscal-postgres-assertions.sql
+      - name: Verify concurrent fiscal claims using separate PostgreSQL connections
+        run: bash scripts/siisolutions/fiscal-postgres-concurrency.sh
