@@ -1,7 +1,7 @@
 -- Pilot fiscal issuance ledger. No automatic emission is enabled.
 create table if not exists public.crm_fiscal_issuances (
   id uuid primary key default gen_random_uuid(),
-  business_id uuid not null references public.wa_businesses(id),
+  business_id uuid not null, -- FK pending confirmation of canonical business table
   sale_id uuid not null,
   provider text not null default 'siisolutions' check (provider = 'siisolutions'),
   dte_type integer not null default 39 check (dte_type = 39),
