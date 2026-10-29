@@ -186,6 +186,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/sii/boleta-prepare",
+      "destination": "/api/sii/boleta-prepare"
+    },
+    {
       "source": "/api/sii/boleta-readiness",
       "destination": "/api/sii/boleta-readiness"
     },
