@@ -18,17 +18,24 @@ async function loadWalinkaPointBinding({db,businessId,saleId}) {
 async function isWalinkaPointPaymentLinked({db,businessId,saleId,pointPaymentId}) {
  if(!db||!businessId||!saleId||!pointPaymentId) return false;
  const {data,error}=await db.from('crm_pos_point_operations')
-  .select('id,mp_payment_id,crm_invoice_id,mp_status')
+  .select('id,mp_payment_id,mp_order_id,crm_invoice_id,mp_status,amount,currency,finalized_at')
   .eq('business_id',businessId).eq('crm_invoice_id',saleId)
   .eq('mp_payment_id',String(pointPaymentId)).limit(2);
  if(error) throw Error('POINT_LEDGER_LOOKUP_FAILED');
- if(!Array.isArray(data)||data.length!==1||data[0].mp_status!=='approved') return false;
+ if(!Array.isArray(data)||data.length!==1) return false;
+ const op=data[0];
+ // Walinka's crm_finalize_point_sale only finalizes status "processed".
+ if(op.mp_status!=='processed'||!op.finalized_at||!op.mp_order_id||op.currency!=='CLP')
+  return false;
  const {data:payments,error:payError}=await db.from('crm_payments')
-  .select('id,invoice_id,business_id,amount,payment_status,voided_at,reference')
+  .select('id,invoice_id,business_id,amount,currency,payment_method,payment_status,voided_at,reference')
   .eq('business_id',businessId).eq('invoice_id',saleId).limit(20);
  if(payError) throw Error('CRM_PAYMENT_LOOKUP_FAILED');
- // Reference semantics differ across POS versions; do not assume it stores MP payment ID.
- // Fail closed until a durable payment-to-Point-operation mapping is established.
- return false;
+ // Exact reference written by crm_finalize_point_sale: 'Point ' || mp_order_id.
+ const matches=(payments||[]).filter(p=>p.business_id===businessId&&p.invoice_id===saleId&&
+  p.reference==='Point '+op.mp_order_id&&p.payment_method==='mercado_pago'&&
+  p.payment_status==='received'&&!p.voided_at&&p.currency===op.currency&&
+  Number.isSafeInteger(Number(p.amount))&&Number(p.amount)===Number(op.amount));
+ return matches.length===1;
 }
 module.exports={loadWalinkaPointBinding,isWalinkaPointPaymentLinked};
