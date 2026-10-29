@@ -11,7 +11,7 @@ function harness(overrides={}){
  const args={businessId,saleId,pointPaymentId,loadSale:async()=>sale,
   verifyPointPayment:async()=>payment,isPaymentLinked:async()=>linked,
   recordPayment:async()=>{records++;linked=true;},
-  prepareFiscal:async({operationKey})=>{prepares++;return {operationKey};},...overrides};
+  prepareFiscal:async({operationKey})=>{prepares++;return {operationKey,status:'pending'};},...overrides};
  return {args,counts:()=>({records,prepares})};
 }
 test('approved Point payment is durably linked before fiscal preparation, no issuance',async()=>{
@@ -36,4 +36,10 @@ test('payment persistence uncertainty blocks fiscal preparation',async()=>{
  const h=harness({recordPayment:async()=>{throw Error('db unavailable');}});
  const result=await coordinatePointFiscalPreparation(h.args);
  assert.equal(result.reason,'RECONCILIATION_REQUIRED');assert.equal(h.counts().prepares,0);
+});
+
+test('provider preparation must confirm a pending operation before success',async()=>{
+ const h=harness({prepareFiscal:async({operationKey})=>({operationKey,status:'submitted'})});
+ const result=await coordinatePointFiscalPreparation(h.args);
+ assert.equal(result.status,'blocked');assert.equal(result.reason,'FISCAL_PREPARATION_UNCONFIRMED');
 });
