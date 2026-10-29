@@ -10,7 +10,7 @@ function normalizePointOrder({raw,operation,businessId,saleId}) {
  const amount=Number(payment.amount);
  if(String(raw.id)!==String(operation.mp_order_id)||
   String(raw.external_reference)!==String(operation.external_reference)||
-  raw.status!=='processed'||payment.status!=='approved'||
+  raw.status!=='processed'||!['approved','processed'].includes(payment.status)||
   String(payment.id)!==String(operation.mp_payment_id)||
   !Number.isSafeInteger(amount)||amount<=0||amount!==Number(operation.amount)) return null;
  return {id:String(payment.id),order_id:String(raw.id),business_id:businessId,
