@@ -9,15 +9,17 @@ import { issueVerifiedPointBoleta } from './siisolutions-point-checkout.js';
 /**
  * Trusted server composition root for a Point DTE 39 pilot.
  * admin must be a server-created Supabase service-role client.
- * operatorRut and provider credentials must come from server config.
+ * resolveIssuer must load and authorize credentials for the EXACT business
+ * being issued; a global API key/operator RUT is unsafe for multi-tenancy.
  *
  * No HTTP route, cron or Point webhook calls this function yet.
  * Emission remains subject to the simulation-only gate in the issuer.
  */
 export function createPointFiscalPilot({
-  admin, operatorRut, apiKey, sandboxBaseUrl, fetchImpl = fetch,
+  admin, resolveIssuer, sandboxBaseUrl, fetchImpl = fetch,
 }) {
   if (!admin?.from || !admin?.rpc) throw new Error('Trusted admin client required');
+  if (typeof resolveIssuer !== 'function') throw new Error('Business-scoped fiscal issuer resolver required');
   const loadPersisted = createPointFiscalSaleLoader(admin);
   const loadConnection = createFiscalPointConnectionLoader(admin);
   const fetchProviderOrder = createFiscalPointOrderFetcher({ loadConnection, fetchImpl });
@@ -25,10 +27,16 @@ export function createPointFiscalPilot({
 
   return async function issuePointSale({ businessId, invoiceId }) {
     if (!businessId || !invoiceId) return { state: 'blocked', reason: 'SALE_IDENTITY_REQUIRED' };
+    const issuer = await resolveIssuer({ businessId });
+    if (!issuer || issuer.businessId !== businessId || issuer.authorized !== true ||
+        !issuer.operatorRut || !issuer.apiKey) {
+      return { state: 'blocked', reason: 'ISSUER_NOT_AUTHORIZED' };
+    }
     return issueVerifiedPointBoleta({
-      businessId, invoiceId, issuerBusinessId: businessId,
+      businessId, invoiceId, issuerBusinessId: issuer.businessId,
       loadPersisted, fetchProviderOrder, repository,
-      operatorRut, apiKey, sandboxBaseUrl, fetchImpl,
+      operatorRut: issuer.operatorRut, apiKey: issuer.apiKey,
+      sandboxBaseUrl, fetchImpl,
     });
   };
 }
