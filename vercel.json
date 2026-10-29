@@ -186,6 +186,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/sii/boleta-verify-tax",
+      "destination": "/api/sii/boleta-verify-tax"
+    },
+    {
       "source": "/api/sii/boleta-preflight",
       "destination": "/api/sii/boleta-preflight"
     },
