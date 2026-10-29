@@ -25,7 +25,6 @@ test('reconciles completed Point and prepares one fiscal operation without dupli
  assert.deepEqual(h.counts(),{prepares:1,lookups:1});
 });
 test('pending Point, rejected MP and wrong CRM reference cannot prepare',async()=>{
- process.env.SII_POINT_PAYMENT_LOOKUP_CONTRACT_VERIFIED='true';
  for(const options of [
   {operation:{...op,mp_status:'pending'}},{mpStatus:'rejected'},
   {payment:{...pay,reference:'Point other'}},{payment:{...pay,voided_at:'2026-10-29'}}
@@ -33,7 +32,24 @@ test('pending Point, rejected MP and wrong CRM reference cannot prepare',async()
   const h=setup(options),result=await prepareFinalizedPointFiscal(h.args);
   assert.equal(result.status,'blocked');assert.equal(h.counts().prepares,0);
  }
- delete process.env.SII_POINT_PAYMENT_LOOKUP_CONTRACT_VERIFIED;
 });
 
 
+
+test('repeated finalization uses the same fiscal idempotency key',async()=>{
+ const keys=[];
+ const h=setup();
+ h.args.prepareFiscal=async({operationKey})=>{keys.push(operationKey);return {operationKey,status:'pending'};};
+ const first=await prepareFinalizedPointFiscal(h.args);
+ const second=await prepareFinalizedPointFiscal(h.args);
+ assert.equal(first.status,'prepared');assert.equal(second.status,'prepared');
+ assert.deepEqual(keys,['b1:s1:39','b1:s1:39']);
+});
+test('fiscal claim mismatch or non-pending operation is rejected',async()=>{
+ for(const prepared of [{operationKey:'other',status:'pending'},
+  {operationKey:'b1:s1:39',status:'issued'},null]){
+  const h=setup();h.args.prepareFiscal=async()=>prepared;
+  const result=await prepareFinalizedPointFiscal(h.args);
+  assert.equal(result.status,'blocked');assert.equal(result.emissionEnabled,false);
+ }
+});
