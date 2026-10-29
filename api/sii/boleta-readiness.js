@@ -27,13 +27,22 @@ export default async function handler(req,res) {
       .select('id,business_id,status,paid_at,total').eq('id',saleId).eq('business_id',businessId).maybeSingle();
     if(saleError) throw saleError;
     if(!sale) return res.status(404).json({error:'SALE_NOT_FOUND'});
+    const { data: fiscalStatus, error: fiscalError } = await db.rpc('sii_pilot_fiscal_status', { p_business_id: businessId, p_sale_id: saleId });
+    if (fiscalError || !fiscalStatus || fiscalStatus.issuerRegistered !== true) {
+      return res.status(503).json({ error: 'FISCAL_REGISTRY_UNAVAILABLE' });
+    }
     // Private fiscal schema is not exposed by default. Never assume a public Data API route.
     // Emission requires a dedicated server-side DB connection and reviewed atomic claim.
     return res.status(200).json({
       documentType:39, emissionEnabled:false, eligible:false,
       salePaid:sale.status==='pagada' && Boolean(sale.paid_at),
       providerConfigured:Boolean(process.env.SII_SOLUTIONS_API_KEY_BONITA_CASUALIDAD),
-      privateFiscalRegistryVerified:false,
+      issuerRegistered:fiscalStatus.issuerRegistered === true,
+      issuerVerified:fiscalStatus.issuerVerified === true,
+      issuerEnabled:fiscalStatus.issuerEnabled === true,
+      issuerRutMatches:fiscalStatus.issuerRutMatches === true,
+      fiscalOperationStatus:fiscalStatus.operationStatus || null,
+      privateFiscalRegistryVerified:fiscalStatus.issuerVerified === true && fiscalStatus.issuerRutMatches === true,
       idempotentIssuanceVerified:false,
       reason:'FISCAL_ISSUANCE_LOCKED',
       next:'Verify issuer RUT, provider key, private DB access and durable idempotency'
