@@ -9,6 +9,12 @@ import { createConfiguredFiscalReconciliation } from './siisolutions-reconciliat
  * A trusted operator supplies the folio from a verified 409/ledger lookup.
  * This function never issues, retries or trusts a browser-supplied folio.
  */
+function isPlausibleBase64(value) {
+  if (typeof value !== 'string' || value.length < 4 || value.length % 4 !== 0 ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(value)) return false;
+  return true;
+}
+
 export function createDteCoreFiscalReconciliation({
   admin, apiKey, resolveExistingFolio, decodeOriginalDocuments,
   verifyOriginal, fetchImpl, env = process.env,
@@ -30,8 +36,8 @@ export function createDteCoreFiscalReconciliation({
       if (!pdf.ok) return null;
       const decoded = await decodeOriginalDocuments({ xml: xml.body, pdf: pdf.body, folio });
       if (!decoded || decoded.folio !== folio ||
-          typeof decoded.xmlBase64 !== 'string' ||
-          typeof decoded.pdfBase64 !== 'string') return null;
+          !isPlausibleBase64(decoded.xmlBase64) ||
+          !isPlausibleBase64(decoded.pdfBase64)) return null;
       return {
         source: 'authenticated-provider-read',
         businessId, saleId, operationId, provider: 'siisolutions',
