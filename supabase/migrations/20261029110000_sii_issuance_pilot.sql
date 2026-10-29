@@ -21,3 +21,47 @@ alter table public.crm_fiscal_issuances enable row level security;
 -- Intentionally no client policies: all writes require trusted backend.
 revoke all on public.crm_fiscal_issuances from anon, authenticated;
 comment on table public.crm_fiscal_issuances is 'Server-only issuance ledger. Unknown means reconciliation required before any retry; never automatically reissue.';
+
+-- Atomic claim: only a newly inserted pending operation may transition to sending.
+-- Existing operations, including unknown, must never be resent automatically.
+create or replace function public.crm_claim_fiscal_issuance(
+  p_business_id uuid, p_sale_id uuid, p_operation_id text, p_dte_type integer default 39
+) returns boolean language plpgsql security invoker set search_path = public as $$
+declare v_id uuid;
+begin
+  if p_dte_type <> 39 or nullif(trim(p_operation_id), '') is null then
+    raise exception 'Invalid fiscal issuance claim';
+  end if;
+  insert into public.crm_fiscal_issuances (business_id, sale_id, operation_id, dte_type, status)
+  values (p_business_id, p_sale_id, p_operation_id, p_dte_type, 'sending')
+  on conflict (business_id, sale_id, dte_type) do nothing
+  returning id into v_id;
+  return v_id is not null;
+end;
+$$;
+revoke all on function public.crm_claim_fiscal_issuance(uuid,uuid,text,integer) from public, anon, authenticated;
+grant execute on function public.crm_claim_fiscal_issuance(uuid,uuid,text,integer) to service_role;
+
+create or replace function public.crm_finalize_fiscal_issuance(
+  p_business_id uuid, p_sale_id uuid, p_operation_id text,
+  p_status text, p_folio integer default null,
+  p_xml_base64 text default null, p_pdf_base64 text default null
+) returns boolean language plpgsql security invoker set search_path = public as $$
+declare v_count integer;
+begin
+  if p_status not in ('issued', 'unknown') then
+    raise exception 'Invalid fiscal outcome';
+  end if;
+  update public.crm_fiscal_issuances
+  set status = p_status, folio = case when p_status = 'issued' then p_folio else null end,
+      xml_base64 = case when p_status = 'issued' then p_xml_base64 else null end,
+      pdf_base64 = case when p_status = 'issued' then p_pdf_base64 else null end,
+      updated_at = now()
+  where business_id = p_business_id and sale_id = p_sale_id
+    and operation_id = p_operation_id and status = 'sending';
+  get diagnostics v_count = row_count;
+  return v_count = 1;
+end;
+$$;
+revoke all on function public.crm_finalize_fiscal_issuance(uuid,uuid,text,text,integer,text,text) from public, anon, authenticated;
+grant execute on function public.crm_finalize_fiscal_issuance(uuid,uuid,text,text,integer,text,text) to service_role;
