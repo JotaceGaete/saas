@@ -36,14 +36,16 @@ export default async function handler(req,res){
    getMerchantAccessToken:async({businessId})=>{
     const {data,error}=await db.rpc('wa_get_mp_point_connection',{p_business_id:businessId});
     const conn=Array.isArray(data)?data[0]:null;
-    if(error||!conn?.access_token||conn.token_expires_at&&Date.parse(conn.token_expires_at)<=Date.now())
+    if(error||!conn?.access_token||conn.live_mode!==true||
+       !conn.token_expires_at||!Number.isFinite(Date.parse(conn.token_expires_at))||
+       Date.parse(conn.token_expires_at)<=Date.now())
      throw Error('POINT_TOKEN_UNAVAILABLE');
     return conn.access_token;
    },
    prepareFiscal:async({businessId,saleId,operationKey})=>{
     const {data:status,error:statusError}=await db.rpc('sii_pilot_fiscal_status',{
      p_business_id:businessId,p_sale_id:saleId});
-    if(statusError||!status?.issuerRegistered||!status?.issuerRutMatches)
+    if(statusError||status?.issuerRegistered!==true||status?.issuerRutMatches!==true)
      throw Error('ISSUER_NOT_VERIFIED');
     const {data:op,error}=await db.rpc('sii_pilot_claim_operation',{
      p_business_id:businessId,p_sale_id:saleId});
