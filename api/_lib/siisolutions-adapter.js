@@ -19,15 +19,16 @@ const integer = (value, name) => {
 export function buildBoletaPayload(sale) {
   if (!sale || typeof sale !== 'object') throw new Error('Sale required');
   if (!sale.id || typeof sale.id !== 'string') throw new Error('Unique sale id required');
+  if (!/^\\d{7,8}-[0-9Kk]$/.test(String(sale.operatorRut || ''))) throw new Error('Authorized operator RUT required');
   if (!Array.isArray(sale.items) || !sale.items.length) throw new Error('Sale items required');
   const details = sale.items.map((item, i) => {
     const quantity = Number(item.quantity);
-    if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('Invalid quantity');
+    if (!Number.isSafeInteger(quantity) || quantity <= 0) throw new Error('Invalid quantity');
     const price = integer(item.unitPrice, 'unitPrice');
     const subtotal = integer(item.subtotal, 'subtotal');
     if (!item.description || typeof item.description !== 'string' || item.description.length > 80) throw new Error('Invalid description');
-    // The provider's examples show gross prices for boletas. This assumption
-    // MUST be validated against simulation before enabling real emission.
+    // Provider field reference explicitly requires IVA-inclusive prices for DTE 39.
+    // Confirm actual tax totals in simulation before real emission.
     if (Math.round(price * quantity) !== subtotal) throw new Error('Line subtotal mismatch; discounts not supported in pilot');
     return {
       linea: i + 1,
@@ -45,10 +46,15 @@ export function buildBoletaPayload(sale) {
   const total = integer(sale.total, 'total');
   if (details.reduce((sum, d) => sum + d.precioSubtotal, 0) !== total) throw new Error('Sale total does not match lines');
   return {
+    rutOperador: sale.operatorRut,
     idBoletaOperacion: sale.id,
     total,
     descuentoGlobal: 0,
-    medioPago: sale.paymentMethod === 'cash' ? 'EF' : 'OT',
+    medioPago: sale.paymentMethod === 'cash' ? 'EF' : ['mercado_pago', 'card', 'debit_card', 'credit_card'].includes(sale.paymentMethod) ? 'PE' : sale.paymentMethod === 'bank_transfer' ? 'TF' : 'OT',
+    retornarPdf: true,
+    formatoPdf: '80mm',
+    modoPdfSalida: 'base64',
+    retornarXml: true,
     montoPago: String(total),
     vuelto: '0',
     enviarCorreo: false,
