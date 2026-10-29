@@ -48,10 +48,10 @@ export function createWalinkaFiscalAdapter({ db, issuerRegistry, taxMapping, res
         .eq('id', saleId).eq('business_id', businessId));
       if (!sale || sale.id !== saleId || sale.business_id !== businessId) return null;
       const { data: items, error: itemsError } = await db.from('crm_invoice_items')
-        .select('id, invoice_id, quantity, unit_price, subtotal')
+        .select('id, invoice_id, name, description, quantity, unit_price, subtotal, discount_pct, discount_type, sort_order')
         .eq('invoice_id', saleId);
       if (itemsError) throw Error('Fiscal sale items unavailable');
-      const assessment = assessWalinkaCrmSale({ sale, items, businessId });
+      // The CRM persists the sold item name/description; never reconstruct it from mutable catalog data.\n      const assessment = assessWalinkaCrmSale({ sale, items, businessId });\n      const descriptionsComplete = Array.isArray(items) && items.every(i =>\n        typeof (i.name || i.description) === 'string' && (i.name || i.description).trim().length > 0);
       let reconciliation={eligible:false,reason:'SALE_PRECHECK_FAILED'};
       if(assessment.eligible){
         const {data:payments,error:paymentError}=await db.from('crm_payments')
@@ -73,7 +73,7 @@ export function createWalinkaFiscalAdapter({ db, issuerRegistry, taxMapping, res
       // authorization remain required. Deliberately deny folio reservation.
       return { id: sale.id, businessId: sale.business_id,
         issuerRut: null, fiscalEligible: false,
-        preEligible: assessment.eligible, preEligibilityReason: assessment.reason,
+        preEligible: assessment.eligible && descriptionsComplete,\n        preEligibilityReason: !descriptionsComplete ? 'ITEM_DESCRIPTION_MISSING' : assessment.reason,
         reconciled:reconciliation.eligible,reconciliationReason:reconciliation.reason };
     },
     // Diagnostic-only: caller must supply independently verified, transactionally
