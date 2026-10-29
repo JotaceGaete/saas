@@ -17,6 +17,7 @@ function admin() {
     from(table) {
       const rows = {
         crm_invoices: invoice,
+        wa_businesses: { id: 'biz-1', currency: 'CLP', country_code: 'CL' },
         crm_invoice_items: [{ name: 'Producto', unit_price: 1000, quantity: 1, subtotal: 1000 }],
         crm_payments: [{ payment_method: 'mercado_pago', payment_status: 'received', amount: 1000 }],
         crm_pos_point_operations: [op],
