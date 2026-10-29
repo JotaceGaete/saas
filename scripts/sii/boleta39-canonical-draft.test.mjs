@@ -29,7 +29,7 @@ test('rejects tampered official certification data',()=>{
  assert.equal(result.reason,'UNTRUSTED_CERTIFICATION_CASE');
 });
 test('invalid header fails closed',()=>{
- const result=buildBoleta39CanonicalDraft({issuer:{...issuer,rut:'1-9'},operation,certificationCase:cases[0]});
+ const result=buildBoleta39CanonicalDraft({issuer:{...issuer,rut:'1-8'},operation,certificationCase:cases[0]});
  assert.equal(result.ok,false);
  assert.equal(result.reason,'INVALID_ISSUER_RUT');
 });
