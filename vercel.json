@@ -186,6 +186,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/sii/point-outbox-run",
+      "destination": "/api/sii/point-outbox-run"
+    },
+    {
       "source": "/api/sii/point-prepare",
       "destination": "/api/sii/point-prepare"
     },
