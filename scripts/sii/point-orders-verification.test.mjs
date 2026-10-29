@@ -24,3 +24,11 @@ test('rejects mismatched order, payment, reference, amount and unfinalized opera
  await assert.rejects(check(order),/POINT_ORDER_VERIFICATION_FAILED/);
  await assert.rejects(check(raw,{...operation,finalized_at:null}),/POINT_ORDER_VERIFICATION_FAILED/);
 });
+
+test('accepts processed Point transaction when its parent order is processed',async()=>{
+ const p=await check({...raw,transactions:{payments:[{id:'123',status:'processed',amount:'100'}]}});
+ assert.equal(p.status,'approved');assert.equal(p.verifiedByServer,true);
+});
+test('processed transaction is not enough when parent order is incomplete',async()=>{
+ await assert.rejects(check({...raw,status:'at_terminal',transactions:{payments:[{id:'123',status:'processed',amount:'100'}]}}),/POINT_ORDER_VERIFICATION_FAILED/);
+});
