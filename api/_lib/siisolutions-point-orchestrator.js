@@ -43,10 +43,13 @@ export async function issueVerifiedPointBoleta({
     });
     const body = await response.json().catch(() => null);
     outcome = reconcileProviderOutcome({ statusCode: response.status, response: body });
+    if (outcome.state === 'issued' && typeof body?.pdfBase64 === 'string') {
+      outcome.pdfBase64 = body.pdfBase64;
+    }
   } catch {
     outcome = reconcileProviderOutcome({ networkError: true });
   }
   // If finalize fails, do NOT re-send: the provider may already have issued.
-  await repository.finalize({ businessId, saleId: sale.id, operationId, ...outcome });
+  await repository.finalize({ businessId, saleId: sale.id, operationId, ...outcome, pdfBase64: outcome.pdfBase64 ?? null });
   return { state: outcome.state, folio: outcome.folio ?? null, operationId };
 }
