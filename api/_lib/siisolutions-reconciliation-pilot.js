@@ -7,8 +7,11 @@ import { createFiscalOriginalDocumentLoader } from './siisolutions-original-docu
  * No emission API or automatic retry is called.
  */
 export function createConfiguredFiscalReconciliation({
-  admin, retrieveOriginal, verifyOriginal,
+  admin, retrieveOriginal, verifyOriginal, env = process.env,
 }) {
+  if (env?.SIISOLUTIONS_RECONCILIATION_ENABLED !== 'verified-readonly') {
+    throw new Error('Fiscal reconciliation is disabled until provider retrieval is verified');
+  }
   const { loadOriginalDocument, verifyOriginalDocument } =
     createFiscalOriginalDocumentLoader({ retrieveOriginal, verifyOriginal });
   return createManualFiscalReconciler({
