@@ -86,7 +86,11 @@ export default function CrmThermalTicket({
           headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session.access_token}` },
           body: JSON.stringify({ businessId: business.id, saleId: sale.id }),
         });
-        const data = await response.json();
+        const contentType = response.headers.get('content-type') || '';
+        if (!contentType.toLowerCase().includes('application/json')) {
+          throw new Error(`FISCAL_API_NON_JSON_HTTP_${response.status}`);
+        }
+        const data = await response.json().catch(() => { throw new Error(`FISCAL_API_INVALID_JSON_HTTP_${response.status}`); });
         if (!response.ok) throw new Error(data?.error || `HTTP_${response.status}`);
         if (active) setFiscalCheck({ status: 'ready', data, error: null });
       } catch (error) {
