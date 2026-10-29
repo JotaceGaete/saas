@@ -45,3 +45,23 @@ test('ambiguous 200 and unrecoverable 409 fail closed',async()=>{
   await assert.rejects(()=>emitirBoleta({apiKey:'test-only',payload,
     fetchImpl:async()=>({ok:false,status:409,json:async()=>({success:false})})}),/recoverable folio/);
 });
+
+test('400 validation error is explicit and does not count as issuance',async()=>{
+  const payload=buildBoletaPayload(base);
+  await assert.rejects(()=>emitirBoleta({apiKey:'test-only',payload,
+    fetchImpl:async()=>({ok:false,status:400,json:async()=>({success:false,error:'Campo requerido'})})}),
+    error=>error.status===400 && error.code==='PROVIDER_VALIDATION_REJECTED' && error.details==='Campo requerido');
+});
+test('409 requires a valid positive numeric existing folio',async()=>{
+  const payload=buildBoletaPayload(base);
+  await assert.rejects(()=>emitirBoleta({apiKey:'test-only',payload,
+    fetchImpl:async()=>({ok:false,status:409,json:async()=>({folioExistente:'no disponible'})})}),/recoverable folio/);
+});
+test('network timeout propagates without automatic retry',async()=>{
+  let calls=0;
+  const payload=buildBoletaPayload(base);
+  await assert.rejects(()=>emitirBoleta({apiKey:'test-only',payload,fetchImpl:async()=>{
+    calls++; throw new Error('network timeout');
+  }}),/network timeout/);
+  assert.equal(calls,1);
+});
