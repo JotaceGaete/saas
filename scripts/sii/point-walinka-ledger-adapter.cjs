@@ -10,7 +10,7 @@ async function loadWalinkaPointBinding({db,businessId,saleId}) {
  if(!Array.isArray(data)||data.length!==1) throw Error('POINT_BINDING_NOT_UNIQUE');
  const row=data[0];
  if(row.business_id!==businessId||row.crm_invoice_id!==saleId||
-    !row.mp_order_id||!row.mp_payment_id||row.currency!=='CLP'||
+    !row.mp_order_id||!row.mp_payment_id||!row.external_reference||row.currency!=='CLP'||
     row.mp_status!=='processed'||!row.finalized_at||
     !Number.isSafeInteger(Number(row.amount))||Number(row.amount)<=0)
   throw Error('POINT_BINDING_INCOMPLETE');
@@ -35,10 +35,12 @@ async function isWalinkaPointPaymentLinked({db,businessId,saleId,pointPaymentId}
   return false;
  const {data:payments,error:payError}=await db.from('crm_payments')
   .select('id,invoice_id,business_id,amount,currency,payment_method,payment_status,voided_at,reference')
-  .eq('business_id',businessId).eq('invoice_id',saleId).limit(20);
+  .eq('business_id',businessId).eq('invoice_id',saleId)
+  .eq('reference','Point '+op.mp_order_id).limit(2);
  if(payError) throw Error('CRM_PAYMENT_LOOKUP_FAILED');
  // Exact reference written by crm_finalize_point_sale: 'Point ' || mp_order_id.
- const matches=(payments||[]).filter(p=>p.business_id===businessId&&p.invoice_id===saleId&&
+ if(!Array.isArray(payments)||payments.length!==1) return false;
+ const matches=payments.filter(p=>p.business_id===businessId&&p.invoice_id===saleId&&
   p.reference==='Point '+op.mp_order_id&&p.payment_method==='mercado_pago'&&
   p.payment_status==='received'&&!p.voided_at&&p.currency===op.currency&&
   Number.isSafeInteger(Number(p.amount))&&Number(p.amount)===Number(op.amount));
