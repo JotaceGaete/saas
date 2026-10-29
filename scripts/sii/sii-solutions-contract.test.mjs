@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
-const { buildBoletaPayload, emitirBoleta } = require('../../api/lib/siiSolutionsBoleta.js');
+const { buildBoletaPayload, emitirBoleta } = require('./siiSolutionsBoleta.cjs');
 const base = {businessId:'bonita',saleId:'sale-001',operatorRut:'11111111-1',items:[{description:'Producto real',unitPrice:100,quantity:1}],paymentMethod:'cash',paidAmount:100};
 test('payload DTE39 has stable operation id and no manually assigned folio',()=>{
   const a=buildBoletaPayload(base);
