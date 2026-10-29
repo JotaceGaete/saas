@@ -13,16 +13,24 @@ export function createPointFiscalSaleLoader(admin) {
     const invoice = invoiceResult.data;
     if (!invoice) return null;
 
-    const [itemResult, paymentResult, operationResult] = await Promise.all([
+    const [businessResult, itemResult, paymentResult, operationResult] = await Promise.all([
+      admin.from('wa_businesses').select('id, currency, country_code').eq('id', businessId).maybeSingle(),
       admin.from('crm_invoice_items').select('*').eq('invoice_id', invoiceId),
       admin.from('crm_payments').select('*').eq('invoice_id', invoiceId)
         .eq('business_id', businessId),
       admin.from('crm_pos_point_operations').select('*')
         .eq('crm_invoice_id', invoiceId).eq('business_id', businessId).limit(2),
     ]);
-    if (itemResult.error || paymentResult.error || operationResult.error) {
+    if (businessResult.error || itemResult.error || paymentResult.error || operationResult.error) {
       throw new Error('Could not read persisted fiscal sale records');
     }
+    // CRM invoices have no currency column. Resolve it from the owning
+    // business, and fail closed unless the fiscal pilot currency is CLP.
+    if (!businessResult.data || businessResult.data.currency !== 'CLP' ||
+        businessResult.data.country_code !== 'CL') {
+      return { invoice: null, items: [], payments: [], operation: null };
+    }
+    invoice.currency = businessResult.data.currency;
     // Multiple Point operations associated with the same invoice require
     // investigation; never select one arbitrarily.
     if (operationResult.data?.length !== 1) return {
