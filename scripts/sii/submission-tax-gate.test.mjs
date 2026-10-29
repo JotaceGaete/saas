@@ -10,3 +10,11 @@ test('only service role may initiate submission',()=>{
  assert.match(sql,/revoke all on function public\.sii_pilot_begin_submission\(uuid\) from public, anon, authenticated/);
  assert.match(sql,/grant execute on function public\.sii_pilot_begin_submission\(uuid\) to service_role/);
 });
+
+test('tax evidence is bound to all invoiced line fields and old evidence is invalid',()=>{
+ assert.match(sql,/add column if not exists line_fingerprint text/);
+ assert.match(sql,/t\.line_fingerprint = md5\(jsonb_build_array\(i\.product_id,i\.name,i\.description,i\.unit_price,i\.quantity,i\.discount_pct,i\.subtotal,i\.sort_order,i\.discount_type\)::text\)/);
+ assert.match(sql,/v_fingerprint:=md5\(jsonb_build_array\(v_item\.product_id,v_item\.name,v_item\.description,v_item\.unit_price,v_item\.quantity,v_item\.discount_pct,v_item\.subtotal,v_item\.sort_order,v_item\.discount_type\)::text\)/);
+ assert.match(sql,/line_fingerprint=excluded\.line_fingerprint/);
+ assert.match(sql,/for share/);
+});
