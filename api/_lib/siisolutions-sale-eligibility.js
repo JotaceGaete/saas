@@ -2,7 +2,7 @@
 // Only a verified provider-approved payment may qualify for automatic Point issuance.
 export function assessPointBoletaEligibility({ sale, payment, businessId, issuerBusinessId }) {
   if (!businessId || businessId !== issuerBusinessId) return { eligible: false, reason: 'ISSUER_MISMATCH' };
-  if (!sale?.id || sale.business_id !== businessId || sale.status === 'anulada') return { eligible: false, reason: 'SALE_MISMATCH' };
+  if (!sale?.id || sale.business_id !== businessId || sale.status !== 'pagada') return { eligible: false, reason: 'SALE_MISMATCH' };
   if (!payment || payment.business_id !== businessId || payment.sale_id !== sale.id) return { eligible: false, reason: 'PAYMENT_MISMATCH' };
   if (payment.provider !== 'mercado_pago' || payment.channel !== 'point') return { eligible: false, reason: 'NOT_POINT' };
   // This flag must be populated by trusted server-to-server MP verification,
