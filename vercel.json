@@ -186,6 +186,10 @@
   ],
   "rewrites": [
     {
+      "source": "/api/sii/boleta-preflight",
+      "destination": "/api/sii/boleta-preflight"
+    },
+    {
       "source": "/api/sii/boleta-prepare",
       "destination": "/api/sii/boleta-prepare"
     },
