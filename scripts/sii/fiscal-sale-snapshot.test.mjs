@@ -67,3 +67,12 @@ test('denies missing item discount classification',()=>{
  const f=fixture();delete f.items[0].discount_pct;
  assert.equal(buildFiscalSaleSnapshot(f).reason,'INVALID_LINE');
 });
+
+test('denies mismatched multiplication even if sale and payment totals match',()=>{
+ const f=fixture();f.items[0].quantity=2;
+ assert.equal(buildFiscalSaleSnapshot(f).reason,'LINE_ARITHMETIC_MISMATCH');
+});
+test('denies non-cash payment in DTE39 pilot',()=>{
+ const f=fixture();f.payments[0].payment_method='card';
+ assert.equal(buildFiscalSaleSnapshot(f).reason,'NON_CASH_PAYMENT_NOT_SUPPORTED');
+});
