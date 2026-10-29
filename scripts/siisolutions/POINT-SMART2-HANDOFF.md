@@ -35,3 +35,21 @@ outbox/worker keyed by business, invoice and DTE type.
 
 ## Current status
 This is an integration contract, not an active Point-to-DTE connection.
+
+## Confirmed data-model gap (2026-10-29)
+The Point finalizer migration
+`20260923170000_point_finalize_reservations_cash_guard.sql` writes
+`crm_payments.payment_method = 'mercado_pago'` and
+`payment_status = 'received'`, but does **not** persist
+`mp_payment_id` in that payment row. It is stored on
+`crm_pos_point_operations.mp_payment_id`. The fiscal bridge must join
+the operation by `crm_invoice_id` and verify the provider transaction
+before producing trusted Point proof. Do not infer approval from the
+`received` payment row alone.
+
+The Point shared sanitizer exposes both order `status` and payment
+`payment_status`; these are different fields. The finalizer checks
+order status `processed`, not a separately verified fiscal payment
+status. A fiscal worker must explicitly validate both the authoritative
+provider payment state and amount, then bind that evidence to the
+correct operation, invoice and business.
