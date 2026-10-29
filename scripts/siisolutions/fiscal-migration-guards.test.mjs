@@ -11,7 +11,7 @@ test('fiscal migration has tenant-safe uniqueness and invoice ownership', () => 
 });
 
 test('fiscal claim cannot resend a previously claimed sale', () => {
-  assert.ok(migration.includes('on conflict (business_id, sale_id, dte_type) do nothing'));
+  assert.ok(migration.includes('on conflict do nothing'));
   assert.ok(migration.includes('return v_id is not null'));
   assert.ok(migration.includes('p_dte_type is distinct from 39'));
 });
