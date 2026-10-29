@@ -19,7 +19,16 @@ test('missing, ambiguous and cross-tenant bindings are rejected',async()=>{
  for(const rows of [[],[row,row],[{...row,business_id:'b2'}]])
  await assert.rejects(loadWalinkaPointBinding({db:db(rows),businessId:'b1',saleId:'s1'}));
 });
-test('CRM payment link remains unverified until durable mapping exists',async()=>{
+test('CRM payment link stays blocked for non-finalized Point operation',async()=>{
  const result=await isWalinkaPointPaymentLinked({db:db([row],[{id:'p1'}]),businessId:'b1',saleId:'s1',pointPaymentId:'123'});
  assert.equal(result,false);
+});
+
+test('reconciles finalized Point operation with exact CRM payment reference',async()=>{
+ const op={...row,mp_status:'processed',finalized_at:'2026-10-29T12:00:00Z'};
+ const pay={id:'p1',business_id:'b1',invoice_id:'s1',amount:100,currency:'CLP',
+ payment_method:'mercado_pago',payment_status:'received',voided_at:null,reference:'Point o1'};
+ assert.equal(await isWalinkaPointPaymentLinked({db:db([op],[pay]),businessId:'b1',saleId:'s1',pointPaymentId:'123'}),true);
+ for(const wrong of [{reference:'Point wrong'},{amount:200},{voided_at:'2026-10-29'},{payment_status:'pending'}])
+ assert.equal(await isWalinkaPointPaymentLinked({db:db([op],[{...pay,...wrong}]),businessId:'b1',saleId:'s1',pointPaymentId:'123'}),false);
 });
