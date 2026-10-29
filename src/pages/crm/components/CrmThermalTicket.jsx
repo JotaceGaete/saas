@@ -100,6 +100,32 @@ export default function CrmThermalTicket({
     return () => { active = false; };
   }, [showFiscalPilot, business?.id, sale?.id]);
 
+  const [fiscalPreflight, setFiscalPreflight] = useState({ status: 'idle', data: null, error: null });
+  useEffect(() => {
+    if (!showFiscalPilot || !sale?.id) return;
+    let active = true;
+    setFiscalPreflight({ status: 'checking', data: null, error: null });
+    (async () => {
+      try {
+        const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError || !sessionData?.session?.access_token) throw new Error('SESSION_UNAVAILABLE');
+        const response = await fetch('/api/sii/boleta-preflight', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${sessionData.session.access_token}` },
+          body: JSON.stringify({ businessId: business.id, saleId: sale.id }),
+        });
+        if (!(response.headers.get('content-type') || '').includes('application/json'))
+          throw new Error(`FISCAL_PREFLIGHT_NON_JSON_${response.status}`);
+        const data = await response.json();
+        if (!response.ok) throw new Error(data?.error || `HTTP_${response.status}`);
+        if (active) setFiscalPreflight({ status: 'ready', data, error: null });
+      } catch (error) {
+        if (active) setFiscalPreflight({ status: 'error', data: null, error: String(error?.message || 'NETWORK_ERROR').slice(0, 100) });
+      }
+    })();
+    return () => { active = false; };
+  }, [showFiscalPilot, business?.id, sale?.id]);
+
   const [fiscalPreparation, setFiscalPreparation] = useState({ status: 'idle', error: null });
   const prepareFiscalOperation = async () => {
     if (!showFiscalPilot || !sale?.id || fiscalPreparation.status === 'working') return;
@@ -473,6 +499,18 @@ export default function CrmThermalTicket({
                   {fiscalPreparation.status === 'prepared' && <div style={{ marginTop: 4 }}>Operación registrada. No se emitió ninguna boleta ni se asignó folio.</div>}
                 </div>
               )}
+              <div style={{ marginTop: 8, padding: 8, background: '#fff', border: '1px solid #e5e7eb', borderRadius: 7 }}>
+                <strong>Diagnóstico tributario de la venta</strong>
+                <div>{fiscalPreflight.status === 'checking' ? 'Revisando productos y pagos…' :
+                  fiscalPreflight.status === 'error' ? `No disponible: ${fiscalPreflight.error}` :
+                  fiscalPreflight.status === 'ready' ? (fiscalPreflight.data?.saleChecksPassed
+                    ? 'Venta y pagos conciliados.' : 'Venta o pagos requieren revisión.') : 'Sin diagnóstico.'}</div>
+                {fiscalPreflight.status === 'ready' && <div style={{ marginTop: 4 }}>
+                  IVA: {fiscalPreflight.data?.reason === 'TAX_MAPPING_NOT_VERIFIED' ? 'clasificación pendiente de verificar' : fiscalPreflight.data?.reason || 'pendiente'}
+                  {' · '}Emisor: {fiscalPreflight.data?.issuerVerified ? 'verificado' : 'no verificado'}
+                  {' · '}Emisión: bloqueada
+                </div>}
+              </div>
               <button type="button" disabled style={{ marginTop: 9, padding: '8px 12px', borderRadius: 7, border: '1px solid #d1d5db', color: '#6b7280', background: '#e5e7eb', cursor: 'not-allowed' }}>Emitir boleta electrónica (próximamente)</button>
               <div style={{ marginTop: 6, color: '#6b7280', fontSize: 11 }}>No se envían documentos al SII ni se consumen folios.</div>
             </section>
