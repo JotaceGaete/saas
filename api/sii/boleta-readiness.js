@@ -32,6 +32,9 @@ export default async function handler(req,res) {
     return res.status(200).json({
       documentType:39, emissionEnabled:false, eligible:false,
       salePaid:sale.status==='pagada' && Boolean(sale.paid_at),
+      providerConfigured:Boolean(process.env.SII_SOLUTIONS_API_KEY_BONITA_CASUALIDAD),
+      privateFiscalRegistryVerified:false,
+      idempotentIssuanceVerified:false,
       reason:'FISCAL_ISSUANCE_LOCKED',
       next:'Verify issuer RUT, provider key, private DB access and durable idempotency'
     });
