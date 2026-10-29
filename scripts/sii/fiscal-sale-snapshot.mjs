@@ -12,7 +12,7 @@ export function buildFiscalSaleSnapshot({businessId, issuerRut, sale, items, pay
   if (!text(businessId) || !text(issuerRut) || !sale ||
       sale.business_id !== businessId || !text(sale.id)) return deny('IDENTITY_MISMATCH');
   if (sale.status !== 'pagada' || !text(sale.paid_at) ||
-      !integer(sale.total) || sale.total <= 0) return deny('SALE_NOT_SETTLED');
+      !integer(sale.total) || amount(sale.total) <= 0) return deny('SALE_NOT_SETTLED');
   if (!Array.isArray(items) || items.length === 0 ||
       !Array.isArray(payments) || payments.length === 0 ||
       !Array.isArray(taxes) || taxes.length !== items.length) return deny('INCOMPLETE_DATA');
@@ -35,7 +35,7 @@ export function buildFiscalSaleSnapshot({businessId, issuerRut, sale, items, pay
         !Number.isFinite(Number(i.unit_price)) || Number(i.unit_price) < 0 ||
         !taxById.has(i.id)) return deny('INVALID_LINE');
     seen.add(i.id);
-    total += amount(i.subtotal);
+    if (!Number.isSafeInteger(Number(i.quantity)) || !Number.isSafeInteger(Number(i.unit_price)) ||\n        Number(i.unit_price) * Number(i.quantity) !== amount(i.subtotal)) return deny('LINE_ARITHMETIC_MISMATCH');\n    total += amount(i.subtotal);
     if (!Number.isSafeInteger(total)) return deny('OVERFLOW');
     lines.push(Object.freeze({id:i.id,name:i.name.trim(),description:typeof i.description === 'string' ? i.description.trim() : null,
       quantity:Number(i.quantity),unitPrice:amount(i.unit_price),subtotal:amount(i.subtotal),
@@ -49,9 +49,9 @@ export function buildFiscalSaleSnapshot({businessId, issuerRut, sale, items, pay
   let received = 0;
   for (const p of payments) {
     if (!p || p.invoice_id !== sale.id || p.payment_status !== 'received' ||
-        p.voided_at != null || !integer(p.amount) || p.amount <= 0 ||
+        p.voided_at != null || !integer(p.amount) || amount(p.amount) <= 0 ||
         !VALID_METHODS.has(p.payment_method)) return deny('INVALID_PAYMENT');
-    received += amount(p.amount);
+    if (p.payment_method !== 'cash') return deny('NON_CASH_PAYMENT_NOT_SUPPORTED');\n    received += amount(p.amount);
     if (!Number.isSafeInteger(received)) return deny('OVERFLOW');
   }
   if (received !== total) return deny('PAYMENT_TOTAL_MISMATCH');
