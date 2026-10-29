@@ -42,7 +42,7 @@ test('composed Point pilot checks provider then blocks disabled fiscal emission'
   const urls = [];
   try {
     const pilot = createPointFiscalPilot({
-      admin: admin(), operatorRut: '12345678-5', apiKey: 'private-key',
+      admin: admin(), resolveIssuer: async ({ businessId }) => ({ businessId, authorized: true, operatorRut: '12345678-5', apiKey: 'private-key' }),
       sandboxBaseUrl: 'https://sandbox.example.org',
       fetchImpl: async (url, opts) => {
         urls.push(url);
@@ -62,4 +62,23 @@ test('composed Point pilot checks provider then blocks disabled fiscal emission'
 
 test('composition refuses missing service-role client', () => {
   assert.throws(() => createPointFiscalPilot({ admin: null }));
+});
+
+test('composition blocks issuer credentials belonging to another business', async () => {
+  let queried = false;
+  const pilot = createPointFiscalPilot({
+    admin: admin(),
+    resolveIssuer: async () => ({
+      businessId: 'another-business', authorized: true,
+      operatorRut: '12345678-5', apiKey: 'private-key',
+    }),
+    fetchImpl: async () => { queried = true; throw Error('unexpected'); },
+  });
+  const result = await pilot({ businessId: 'biz-1', invoiceId: 'sale-1' });
+  assert.equal(result.reason, 'ISSUER_NOT_AUTHORIZED');
+  assert.equal(queried, false);
+});
+
+test('composition refuses missing fiscal issuer resolver', () => {
+  assert.throws(() => createPointFiscalPilot({ admin: admin() }));
 });
