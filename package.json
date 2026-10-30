@@ -59,7 +59,8 @@
     "paypal:auth": "node ./scripts/paypal-auth-diagnostic.js",
     "paypal:bootstrap": "node ./scripts/paypal-catalog-bootstrap.js",
     "paypal:mapping": "node ./scripts/paypal-plan-mapping-diagnostic.js",
-    "paypal:setup": "node ./scripts/paypal-auth-diagnostic.js && node ./scripts/paypal-catalog-bootstrap.js && node ./scripts/paypal-catalog-bootstrap.js && node ./scripts/paypal-plan-mapping-diagnostic.js"
+    "paypal:setup": "node ./scripts/paypal-auth-diagnostic.js && node ./scripts/paypal-catalog-bootstrap.js && node ./scripts/paypal-catalog-bootstrap.js && node ./scripts/paypal-plan-mapping-diagnostic.js",
+    "test:sii-dte39": "vitest run api/sii/lib/dtecore39.test.js api/sii/lib/preparePosDte39.test.js api/sii/lib/posDte39Payment.test.js api/sii/lib/previewPaidPosDte39.test.js"
   },
   "eslintConfig": {
     "extends": [
