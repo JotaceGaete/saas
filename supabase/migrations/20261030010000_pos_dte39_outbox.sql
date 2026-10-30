@@ -24,7 +24,4 @@ create index if not exists pos_dte39_outbox_pending_idx
 revoke all on fiscal.pos_dte39_outbox from public, anon, authenticated;
 alter table fiscal.pos_dte39_outbox enable row level security;
 
--- Deliberately no trigger here. The current POS sale RPC is also used by
--- Mercado Pago Point; a generic crm_invoices trigger would enqueue Point sales.
--- A separate, verified payment-provenance gate must be integrated before
--- enqueueing fiscal work. This migration cannot emit or enqueue any DTE.
+-- No automatic trigger yet: cash/card/Point sales must all enqueue only after\n-- verified payment completion. Point payment finalization is asynchronous.\n-- Fiscal issuance must use the gross sale total, never net Point settlement.\n-- No provider calls are enabled by this migration.\n
