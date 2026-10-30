@@ -1,0 +1,22 @@
+name: DTE39 fiscal safety tests
+on:
+  pull_request:
+    paths:
+      - 'api/sii/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/dte39-tests.yml'
+  workflow_dispatch:
+jobs:
+  fiscal-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run test:sii-dte39
