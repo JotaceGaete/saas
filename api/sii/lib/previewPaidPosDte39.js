@@ -7,7 +7,11 @@ import { buildDte39Payload } from './dtecore39.js';
 export function previewPaidPosDte39({job, invoice, business, issuer, taxConfig, items, payments}) {
   if (!job || job.document_type !== 39 || job.invoice_id !== invoice?.id ||
       job.business_id !== invoice?.business_id) throw new Error('JOB_INVOICE_MISMATCH');
-  // A Chilean card/Point voucher may itself be the fiscal receipt.\n  // Never prepare a second DTE39 without a verified per-transaction voucher decision.\n  if (payments?.some(p => ['card','debit_card','credit_card','mercado_pago'].includes(p.payment_method)))\n    throw new Error('CARD_VOUCHER_CLASSIFICATION_REQUIRED');\n  const paymentCode = resolveDte39PaymentCode(payments, invoice.total);
+  // A Chilean card/Point voucher may itself be the fiscal receipt.
+  // Never prepare a second DTE39 without a verified per-transaction voucher decision.
+  if (payments?.some(p => ['card','debit_card','credit_card','mercado_pago'].includes(p.payment_method)))
+    throw new Error('CARD_VOUCHER_CLASSIFICATION_REQUIRED');
+  const paymentCode = resolveDte39PaymentCode(payments, invoice.total);
   const sale = preparePosDte39({
     invoice, business, issuer, taxConfig, items,
     operationId: job.operation_id, paymentCode
