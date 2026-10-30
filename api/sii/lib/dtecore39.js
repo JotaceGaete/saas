@@ -7,7 +7,7 @@ export function resolveDtecoreBaseUrl(value) {
   try { parsed = new URL(value.trim()); } catch { throw new Error('DTECORE_BASE_URL_INVALID'); }
   if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password ||
       parsed.search || parsed.hash || parsed.pathname !== '/' ||
-      parsed.port || /^(localhost|127\\.|10\\.|192\\.168\\.|169\\.254\\.)/i.test(parsed.hostname))
+      parsed.port || /^(localhost|127\.|10\.|192\.168\.|169\.254\.)/i.test(parsed.hostname))
     throw new Error('DTECORE_BASE_URL_INVALID');
   return parsed.origin;
 }
