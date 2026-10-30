@@ -59,3 +59,53 @@ test('unauthorized cashier blocks before loading sale or claiming issuance', asy
   });
   assert.equal(db.reads, 0);
 });
+
+test('voided historical payment is ignored and the active cash receipt is verified', async () => {
+  const voided = {
+    id: 'old', invoice_id: invoiceId, business_id: businessId,
+    created_by: actorId, payment_method: 'cash', payment_status: 'received',
+    amount: 1000, voided_at: '2026-10-29T12:00:00Z',
+  };
+  const current = {
+    id: 'current', invoice_id: invoiceId, business_id: businessId,
+    created_by: actorId, payment_method: 'cash', payment_status: 'received',
+    amount: 1000, voided_at: null,
+  };
+  const records = {
+    crm_invoices: { data: { id: invoiceId, business_id: businessId, status: 'pagada', total: 1000 }, error: null },
+    wa_businesses: { data: { id: businessId, country_code: 'CL', currency: 'CLP' }, error: null },
+    crm_invoice_items: { data: [{ name: 'Producto', unit_price: 1000, quantity: 1, subtotal: 1000 }], error: null },
+    crm_payments: { data: [voided, current], error: null },
+  };
+  const verified = [];
+  const db = {
+    from(table) {
+      const result = records[table];
+      if (!result) throw Error('Unexpected table: ' + table);
+      const chain = {
+        select() { return chain; },
+        eq() { return chain; },
+        maybeSingle: async () => result,
+        then(resolve, reject) { return Promise.resolve(result).then(resolve, reject); },
+      };
+      return chain;
+    },
+    rpc() { throw Error('Fiscal RPC must not be invoked'); },
+  };
+  const pilot = createManualCashFiscalPilot({
+    admin: db,
+    resolveIssuer: async () => ({
+      businessId, authorized: true, operatorRut: '12345678-5', apiKey: 'test-key',
+    }),
+    authorizeCashier: async ({ verifyReceipt, payment }) => {
+      if (!verifyReceipt) return true;
+      verified.push(payment);
+      return false;
+    },
+  });
+  assert.deepEqual(await pilot({ businessId, invoiceId, actorId }), {
+    state: 'blocked', reason: 'CASH_RECEIPT_NOT_VERIFIED',
+  });
+  assert.equal(verified.length, 1);
+  assert.equal(verified[0].id, 'current');
+});
