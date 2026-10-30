@@ -38,3 +38,15 @@ test('missing PDF is unknown and must never be retried automatically', () => {
   assert.equal(result.state,'unknown');
   assert.equal(result.requiresManualReconciliation,true);
 });
+
+test('real DTE Core response retains folio but remains unreconciled', () => {
+  const result = reconcileProviderOutcome({ statusCode: 200, response: {
+    folio: 51105, esSimulacion: false, xmlBase64: null, pdfBase64: null,
+    pdfEstado: 'no_solicitado',
+  } });
+  assert.equal(result.state, 'unknown');
+  assert.equal(result.folio, 51105);
+  assert.equal(result.requiresManualReconciliation, true);
+  assert.equal(result.reason, 'FOLIO_ASSIGNED_DOCUMENTS_PENDING');
+  assert.equal(maySendToProvider(result.state), false);
+});
