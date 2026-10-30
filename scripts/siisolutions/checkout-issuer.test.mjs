@@ -71,3 +71,29 @@ test('409 existing operation is never marked issued or automatically resent', as
     else process.env.SIISOLUTIONS_EMISSION_ENABLED = previous;
   }
 });
+
+test('assigned folio is passed to persistence and returned without claiming SII acceptance', async () => {
+  const previous = process.env.SIISOLUTIONS_EMISSION_ENABLED;
+  process.env.SIISOLUTIONS_EMISSION_ENABLED = 'simulation';
+  try {
+    let persisted;
+    const result = await issueCheckoutBoleta({
+      ...common, payment: cash,
+      repository: {
+        claimPending: async () => true,
+        finalize: async data => { persisted = data; return true; },
+      },
+      fetchImpl: async () => ({
+        status: 200,
+        json: async () => ({ folio: 51105, esSimulacion: true, pdfBase64: null, xmlBase64: null }),
+      }),
+    });
+    assert.equal(result.state, 'unknown');
+    assert.equal(result.folio, 51105);
+    assert.equal(persisted.folio, 51105);
+    assert.equal(persisted.state, 'unknown');
+  } finally {
+    if (previous === undefined) delete process.env.SIISOLUTIONS_EMISSION_ENABLED;
+    else process.env.SIISOLUTIONS_EMISSION_ENABLED = previous;
+  }
+});
