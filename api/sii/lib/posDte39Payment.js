@@ -1,8 +1,7 @@
 // Translate persisted Walinka payments to DTECore payment codes.
 // A mixed-tender sale cannot be represented safely by one inferred code.
 const CODES = Object.freeze({
-  cash:'EF', card:'TC', debit_card:'TD', credit_card:'TC',
-  mercado_pago:'TC'
+  cash:'EF', card:'TC', debit_card:'TD', credit_card:'TC'
 });
 export function resolveDte39PaymentCode(payments, invoiceTotal) {
   if (!Array.isArray(payments) || !payments.length) throw new Error('PAYMENTS_REQUIRED');
@@ -15,7 +14,10 @@ export function resolveDte39PaymentCode(payments, invoiceTotal) {
     if (!Number.isSafeInteger(amount) || amount <= 0)
       throw new Error('INVALID_PAYMENT_AMOUNT');
     sum += amount;
-    const code = CODES[payment.payment_method];
+    // Point can be debit or credit; require actual processor-confirmed card type.
+    const code = payment.payment_method === 'mercado_pago'
+      ? (payment.card_type === 'debit' ? 'TD' : payment.card_type === 'credit' ? 'TC' : null)
+      : CODES[payment.payment_method];
     if (!code) throw new Error('PAYMENT_METHOD_REQUIRES_MAPPING');
     codes.add(code);
   }
