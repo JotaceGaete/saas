@@ -84,7 +84,7 @@ test('composition refuses missing fiscal issuer resolver', () => {
   assert.throws(() => createPointFiscalPilot({ admin: admin() }));
 });
 
-test('configured pilot denies missing business-specific credentials before loading sales', async () => {
+test('configured pilot rejects empty issuer configuration before loading sales', async () => {
   let accessed = false;
   const trustedAdmin = {
     from() { accessed = true; throw new Error('Unexpected database access'); },
@@ -99,6 +99,6 @@ test('configured pilot denies missing business-specific credentials before loadi
     businessId: '11111111-1111-4111-8111-111111111111',
     invoiceId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
   });
-  assert.deepEqual(result, { state: 'blocked', reason: 'ISSUER_NOT_AUTHORIZED' });
+  assert.deepEqual(result, { state: 'blocked', reason: 'INVALID_ISSUERS_JSON' });
   assert.equal(accessed, false);
 });
