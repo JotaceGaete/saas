@@ -4,7 +4,7 @@ import {previewPaidPosDte39} from './previewPaidPosDte39.js';
 // Snapshot of the commercial fields from a real CLP 1,000 POS sale.
 // No customer identifiers, credentials or provider calls.
 const sale=()=>({
- job:{document_type:39,invoice_id:'d74e417c-9c08-460a-98e8-1ad93000a454',business_id:'cda904a1-e331-4bd4-9f33-a6715687d3dd',operation_id:'WALINKA-DTE39-d74e417c-9c08-460a-98e8-1ad93000a454'},
+ job:{state:'pending',document_type:39,invoice_id:'d74e417c-9c08-460a-98e8-1ad93000a454',business_id:'cda904a1-e331-4bd4-9f33-a6715687d3dd',operation_id:'WALINKA-DTE39-d74e417c-9c08-460a-98e8-1ad93000a454'},
  invoice:{id:'d74e417c-9c08-460a-98e8-1ad93000a454',business_id:'cda904a1-e331-4bd4-9f33-a6715687d3dd',source:'pos',status:'pagada',paid_at:'2026-10-27T15:33:28Z',issue_date:'2026-10-27',total:1000},
  business:{country_code:'CL'},
  issuer:{issuer_rut:'77804207-K',enabled:false,verified:false},
