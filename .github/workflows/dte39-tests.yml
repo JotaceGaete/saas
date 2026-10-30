@@ -22,7 +22,9 @@ jobs:
           mkdir -p /tmp/walinka-fiscal-tests
           cd /tmp/walinka-fiscal-tests
           printf '{"private":true,"type":"module"}\n' > package.json
-          yarn add --non-interactive --no-lockfile vitest@4.1.1
+          yarn add --non-interactive --no-lockfile vitest@4.1.1 @supabase/supabase-js@2
           printf 'export default { test: { environment: "node" } };\n' > vitest.config.mjs
+      - name: Link isolated test dependencies
+        run: ln -s /tmp/walinka-fiscal-tests/node_modules node_modules
       - name: Run fiscal tests without app dependencies
-        run: /tmp/walinka-fiscal-tests/node_modules/.bin/vitest run --config /tmp/walinka-fiscal-tests/vitest.config.mjs api/sii/lib/dtecore39.test.js api/sii/lib/preparePosDte39.test.js api/sii/lib/posDte39Payment.test.js api/sii/lib/previewPaidPosDte39.test.js api/sii/lib/voucherSafety.test.js api/sii/lib/pilotSaleDryRun.test.js api/sii/lib/dte39Outcome.test.js api/sii/lib/planDte39Finish.test.js api/sii/lib/recordDte39PreflightFailure.test.js
+        run: /tmp/walinka-fiscal-tests/node_modules/.bin/vitest run --config /tmp/walinka-fiscal-tests/vitest.config.mjs api/sii/lib/dtecore39.test.js api/sii/lib/preparePosDte39.test.js api/sii/lib/posDte39Payment.test.js api/sii/lib/previewPaidPosDte39.test.js api/sii/lib/voucherSafety.test.js api/sii/lib/pilotSaleDryRun.test.js api/sii/lib/dte39Outcome.test.js api/sii/lib/planDte39Finish.test.js api/sii/lib/recordDte39PreflightFailure.test.js api/sii/lib/reconciliationEndpoint.test.js
