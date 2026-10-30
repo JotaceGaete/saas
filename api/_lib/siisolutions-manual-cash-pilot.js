@@ -4,6 +4,7 @@ import { issueCheckoutBoleta } from './siisolutions-checkout-issuer.js';
 import { createBusinessFiscalIssuerResolver } from './siisolutions-issuer-resolver.js';
 import { createFiscalPilotAuthorizationLoader } from './siisolutions-pilot-authorization.js';
 import { inspectDteCoreReadiness } from './siisolutions-readiness.js';
+import { createOwnerCashFiscalAuthorization } from './siisolutions-owner-cash-authorization.js';
 
 /**
  * Server-only manual cash pilot. No HTTP route is registered here.
@@ -71,7 +72,7 @@ export function createConfiguredManualCashFiscalPilot({
     loadAuthorization: createFiscalPilotAuthorizationLoader({ env }),
   });
   const pilot = createManualCashFiscalPilot({
-    admin, resolveIssuer, authorizeCashier, sandboxBaseUrl, fetchImpl,
+    admin, resolveIssuer, authorizeCashier: authorizeCashier ?? createOwnerCashFiscalAuthorization(admin), sandboxBaseUrl, fetchImpl,
   });
   return async args => {
     const readiness = inspectDteCoreReadiness(env);
