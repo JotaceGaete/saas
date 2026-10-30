@@ -1,6 +1,16 @@
 // Server-only DTECore adapter. Does not emit until called by a reviewed server workflow.
 // API reference: DTECore OpenAPI 3.0.3 /dte/boletas/emitir (DTE 39).
-const API_BASE = 'https://api.siisolutions.cl';
+// Each DTECore tenant has its own API endpoint. Never assume a shared host.
+export function resolveDtecoreBaseUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) throw new Error('DTECORE_BASE_URL_REQUIRED');
+  let parsed;
+  try { parsed = new URL(value.trim()); } catch { throw new Error('DTECORE_BASE_URL_INVALID'); }
+  if (parsed.protocol !== 'https:' || !parsed.hostname || parsed.username || parsed.password ||
+      parsed.search || parsed.hash || parsed.pathname !== '/' ||
+      parsed.port || /^(localhost|127\\.|10\\.|192\\.168\\.|169\\.254\\.)/i.test(parsed.hostname))
+    throw new Error('DTECORE_BASE_URL_INVALID');
+  return parsed.origin;
+}
 const MONEY = (n, name) => {
   if (typeof n !== 'number' || !Number.isSafeInteger(n) || n < 0)
     throw new Error('INVALID_' + name);
@@ -71,13 +81,14 @@ export function buildDte39Payload(sale) {
 
 // Must only run after a durable, atomic idempotency claim in Walinka's DB.
 // Network timeouts are UNKNOWN outcome, never automatically resend the POST.
-export async function emitDte39Claimed({payload, apiKey, fetchImpl = fetch}) {
+export async function emitDte39Claimed({payload, apiKey, baseUrl = process.env.DTECORE_BASE_URL, fetchImpl = fetch}) {
   if (process.env.DTECORE_ENABLE_EMISSION !== 'true')
     throw new Error('DTECORE_EMISSION_DISABLED');
   if (!apiKey || typeof apiKey !== 'string') throw new Error('DTECORE_KEY_MISSING');
   if (!payload?.idBoletaOperacion || !Array.isArray(payload.detalles))
     throw new Error('INVALID_DTE39_PAYLOAD');
-  const response = await fetchImpl(API_BASE + '/dte/boletas/emitir', {
+  const apiBase = resolveDtecoreBaseUrl(baseUrl);
+  const response = await fetchImpl(apiBase + '/dte/boletas/emitir', {
     method: 'POST',
     headers: {'Accept':'application/json','Content-Type':'application/json','X-Api-Key':apiKey},
     body: JSON.stringify(payload),
