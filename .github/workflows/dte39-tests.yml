@@ -17,5 +17,11 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - run: npm install --no-audit --no-fund
-      - run: npm run test:sii-dte39
+      - name: Install isolated test runner
+        run: |
+          mkdir -p /tmp/walinka-fiscal-tests
+          cd /tmp/walinka-fiscal-tests
+          npm init -y
+          npm install --no-audit --no-fund vitest@4.1.1
+      - name: Run fiscal tests without app dependencies
+        run: /tmp/walinka-fiscal-tests/node_modules/.bin/vitest run api/sii/lib/dtecore39.test.js api/sii/lib/preparePosDte39.test.js api/sii/lib/posDte39Payment.test.js api/sii/lib/previewPaidPosDte39.test.js
