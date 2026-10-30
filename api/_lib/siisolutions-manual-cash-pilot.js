@@ -49,10 +49,12 @@ export function createManualCashFiscalPilot({
     });
     if (!normalized.ready) return { state: 'blocked', reason: normalized.reason };
     if (normalized.payment.method !== 'cash') return { state: 'blocked', reason: 'CASH_ONLY' };
+    const activeCashReceipts = (payments.data || []).filter(p => p.payment_status === 'received' && !p.voided_at && p.payment_method === 'cash');
+    if (activeCashReceipts.length !== 1) return { state: 'blocked', reason: 'CASH_RECEIPT_NOT_VERIFIED' };
     // A second explicit authorization must confirm receipt, not merely role.
     const receiptVerified = await authorizeCashier({
       businessId, invoiceId, actorId, verifyReceipt: true,
-      payment: payments.data[0],
+      payment: activeCashReceipts[0],
     });
     if (receiptVerified !== true) return { state: 'blocked', reason: 'CASH_RECEIPT_NOT_VERIFIED' };
     return issueCheckoutBoleta({
