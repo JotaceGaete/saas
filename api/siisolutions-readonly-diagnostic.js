@@ -20,7 +20,7 @@ export default async function handler(req, res) {
   if (!expected || !provided || provided !== `Bearer ${expected}` || expected.length < 32) {
     return res.status(401).json({ error: 'UNAUTHORIZED' });
   }
-  const key = process.env.SIISOLUTIONS_DIAGNOSTIC_API_KEY;
+  const key = process.env.SII_SOLUTIONS_API_KEY_BONITA_CASUALIDAD;
   if (!key) return res.status(503).json({ error: 'DIAGNOSTIC_API_KEY_NOT_CONFIGURED' });
   const results = [];
   for (const path of PATHS) {
