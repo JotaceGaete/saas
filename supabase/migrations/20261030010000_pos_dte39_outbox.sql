@@ -24,28 +24,7 @@ create index if not exists pos_dte39_outbox_pending_idx
 revoke all on fiscal.pos_dte39_outbox from public, anon, authenticated;
 alter table fiscal.pos_dte39_outbox enable row level security;
 
-create or replace function fiscal.enqueue_paid_pos_dte39()
-returns trigger language plpgsql security definer
-set search_path = pg_catalog, public, fiscal
-as $$
-begin
-  -- The fiscal worker will separately validate issuer, provider, tax lines and
-  -- payment provenance; queued does NOT mean eligible or issued.
-  if new.source = 'pos' and new.status = 'pagada' and new.paid_at is not null
-     and exists (
-       select 1 from public.wa_businesses b
-       where b.id = new.business_id and b.country_code = 'CL'
-     )
-  then
-    insert into fiscal.pos_dte39_outbox(business_id,invoice_id,operation_id)
-    values(new.business_id,new.id,'WALINKA-DTE39-' || new.id::text)
-    on conflict (business_id,invoice_id,document_type) do nothing;
-  end if;
-  return new;
-end;
-$$;
-revoke all on function fiscal.enqueue_paid_pos_dte39() from public, anon, authenticated;
-drop trigger if exists crm_invoice_paid_pos_dte39_enqueue on public.crm_invoices;
-create trigger crm_invoice_paid_pos_dte39_enqueue
-  after insert or update of status, paid_at on public.crm_invoices
-  for each row execute function fiscal.enqueue_paid_pos_dte39();
+-- Deliberately no trigger here. The current POS sale RPC is also used by
+-- Mercado Pago Point; a generic crm_invoices trigger would enqueue Point sales.
+-- A separate, verified payment-provenance gate must be integrated before
+-- enqueueing fiscal work. This migration cannot emit or enqueue any DTE.
