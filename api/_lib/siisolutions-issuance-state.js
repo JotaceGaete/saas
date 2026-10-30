@@ -61,6 +61,9 @@ export function reconcileProviderOutcome({ statusCode, response, networkError })
       typeof response?.pdfBase64 === 'string' && response.pdfBase64.length > 0) {
     return { state: FISCAL_STATES.issued, folio: response.folio, xmlBase64: response.xmlBase64, pdfBase64: response.pdfBase64 };
   }
+  if (statusCode >= 200 && statusCode < 300 && Number.isSafeInteger(response?.folio) && response.folio > 0) {
+    return { state: FISCAL_STATES.unknown, folio: response.folio, requiresManualReconciliation: true, reason: 'FOLIO_ASSIGNED_DOCUMENTS_PENDING' };
+  }
   // Even 4xx errors are not automatically retried without verifying provider behavior.
   return { state: FISCAL_STATES.unknown, requiresManualReconciliation: true };
 }
