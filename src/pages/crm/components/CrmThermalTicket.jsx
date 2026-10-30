@@ -2,6 +2,7 @@ import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import Icon from 'components/AppIcon';
 import { formatMoney } from '../../../utils/formatMoney';
+import ManualFiscalSimulation from './ManualFiscalSimulation';
 
 const PAYMENT_LABELS = {
   cash: 'Efectivo',
@@ -404,6 +405,13 @@ export default function CrmThermalTicket({
 
           {/* Ticket preview (screen only) */}
           {ticketBody}
+
+          <ManualFiscalSimulation
+            businessId={business?.id}
+            invoiceId={sale?.id}
+            paymentMethod={normalizedPayments.length === 1 ? normalizedPayments[0].method : null}
+            pendingBalance={pendingAmount}
+          />
 
           {/* Action buttons */}
           <div style={{
