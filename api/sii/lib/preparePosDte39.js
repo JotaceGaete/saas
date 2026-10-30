@@ -1,5 +1,5 @@
 // Pure preparation gate. No provider calls, no database writes.
-export function preparePosDte39({invoice, business, issuer, taxConfig, items, operationId}) {
+export function preparePosDte39({invoice, business, issuer, taxConfig, items, operationId, paymentCode}) {
   if (!invoice?.id || invoice.source !== 'pos' || invoice.status !== 'pagada' || !invoice.paid_at)
     throw new Error('SALE_NOT_PAID');
   if (String(business?.country_code).toUpperCase() !== 'CL')
@@ -32,11 +32,12 @@ export function preparePosDte39({invoice, business, issuer, taxConfig, items, op
   // Global discounts, rounding or mixed tax require explicit reconciliation first.
   if (sum !== total) throw new Error('TOTAL_RECONCILIATION_REQUIRED');
   if (!operationId) throw new Error('OPERATION_ID_REQUIRED');
+  if (!paymentCode || typeof paymentCode !== 'string') throw new Error('PAYMENT_CODE_REQUIRED');
   return {
     operationId, rutOperador: issuer.issuer_rut,
     fechaEmision: invoice.issue_date,
     total, amountTendered: total,
-    paymentCode: 'EF', // Temporary placeholder: replace with verified tender mapping before emission.
+    paymentCode, // Must be derived from verified tender data by server.
     items: mapped
   };
 }
