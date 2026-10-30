@@ -25,4 +25,4 @@ jobs:
           yarn add --non-interactive --no-lockfile vitest@4.1.1
           printf 'export default { test: { environment: "node" } };\n' > vitest.config.mjs
       - name: Run fiscal tests without app dependencies
-        run: /tmp/walinka-fiscal-tests/node_modules/.bin/vitest run --config /tmp/walinka-fiscal-tests/vitest.config.mjs api/sii/lib/dtecore39.test.js api/sii/lib/preparePosDte39.test.js api/sii/lib/posDte39Payment.test.js api/sii/lib/previewPaidPosDte39.test.js
+        run: /tmp/walinka-fiscal-tests/node_modules/.bin/vitest run --config /tmp/walinka-fiscal-tests/vitest.config.mjs api/sii/lib/dtecore39.test.js api/sii/lib/preparePosDte39.test.js api/sii/lib/posDte39Payment.test.js api/sii/lib/previewPaidPosDte39.test.js api/sii/lib/voucherSafety.test.js
