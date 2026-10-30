@@ -7,6 +7,7 @@ import { buildDte39Payload } from './dtecore39.js';
 export function previewPaidPosDte39({job, invoice, business, issuer, taxConfig, items, payments}) {
   if (!job || job.document_type !== 39 || job.invoice_id !== invoice?.id ||
       job.business_id !== invoice?.business_id) throw new Error('JOB_INVOICE_MISMATCH');
+  if (!['pending','claimed'].includes(job.state)) throw new Error('FISCAL_JOB_NOT_PREVIEWABLE');
   // A Chilean card/Point voucher may itself be the fiscal receipt.
   // Never prepare a second DTE39 without a verified per-transaction voucher decision.
   if (payments?.some(p => ['card','debit_card','credit_card','mercado_pago'].includes(p.payment_method)))
