@@ -17,7 +17,6 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
     async function loadDocument() {
       setLoading(true);
       setError('');
-      setDocument(null);
 
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -38,11 +37,9 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
         let response = await fetchDocument(session.access_token);
         // A stale browser session can be renewed once. Never bypass the server ownership guard.
         if (response.status === 401) {
-          const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
-          if (refreshError || !refreshed?.session?.access_token) {
-            throw new Error('La sesión expiró. Cierra sesión y vuelve a ingresar a Walinka.');
-          }
-          response = await fetchDocument(refreshed.session.access_token);
+          // Avoid mutating a working panel session when Preview server auth is misconfigured.
+          // Refreshing can fail or invalidate the browser session without fixing the server.
+          throw new Error('El servidor tributario rechazó la sesión (HTTP 401). La sesión del panel puede seguir activa; revisaremos la configuración de autenticación del Preview.');
         }
 
         if (!response.ok) {
@@ -146,11 +143,11 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
   }
 
   if (loading) {
-    return <p className="text-sm text-gray-500">Consultando documento tributario...</p>;
+    return <div className="min-h-[96px] py-4" role="status"><p className="text-sm text-gray-500">Consultando documento tributario...</p></div>;
   }
 
   if (error) {
-    return <p role="alert" className="text-sm text-red-600">{error}</p>;
+    return <div className="min-h-[96px] py-4"><p role="alert" className="text-sm text-red-600">{error}</p></div>;
   }
 
   if (!document) return null;
