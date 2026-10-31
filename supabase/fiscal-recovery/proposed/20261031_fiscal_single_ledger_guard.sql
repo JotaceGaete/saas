@@ -217,7 +217,7 @@ comment on table fiscal.business_credentials is
 -- 5. Higiene de privilegios.
 -- ---------------------------------------------------------------------------
 revoke execute on function fiscal.dte39_evidence_append_only() from public, anon, authenticated;
-revoke select on public.crm_invoices from anon;
+REVOKE ALL ON TABLE public.crm_invoices FROM anon;
 
 -- ---------------------------------------------------------------------------
 -- 3c. Validación del medio de pago dentro de SQL (espejo de lib/eligibility.mjs).

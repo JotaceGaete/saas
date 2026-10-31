@@ -32,3 +32,15 @@
 
 ## Producción
 - No modificada. No se desplegó nada. No se emitió nada. No se consumieron folios.
+
+## Actualización (31-oct, 20:30)
+- Migración A: `REVOKE SELECT` sustituido por `REVOKE ALL ON TABLE public.crm_invoices FROM anon`.
+- Producción, `relacl` de crm_invoices: `anon=arwdDxtm`. Sin entrada para PUBLIC. Sin privilegios por columna.
+  `anon` no tiene membresías que le den privilegios. Ninguna función ejecutable por anon menciona crm_invoices.
+  Ninguna política RLS aplica a anon.
+- Copia reconstruida desde cero con A corregida: `anon` sin privilegios; SELECT y TRUNCATE como anon -> `permission denied`.
+  Suite DB 115/115.
+- Límite: la copia sigue partiendo de walinka_test, que ya contiene A–D. No es reproducción fiel de producción.
+- `fiscal.business_fiscal_roles` y `fiscal.admin_audit` no existen en producción: no hay rol `fiscal_owner` para Bonita Casualidad.
+  El comercio tiene `user_id` asignado, pero no existe la tabla de roles.
+- Emisión deshabilitada: `dte39_emission_control.enabled=false`; emisor `enabled=false, verified=false`.
