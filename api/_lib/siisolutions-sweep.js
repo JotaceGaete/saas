@@ -17,7 +17,7 @@ export function createPointFiscalSweeper({ listCandidates, verifySale, registerP
       typeof registerPending !== 'function') {
     throw new Error('Sweep dependencies required');
   }
-  return async function sweep({ limit = 50, dryRun = false } = {}) {
+  return async function sweep({ limit = 50, dryRun = true } = {}) {
     const max = Math.min(Math.max(1, Number(limit) || 50), 50);
     const report = {
       examined: 0, registered: 0, alreadyRegistered: 0, eligibleDryRun: 0,
@@ -70,15 +70,15 @@ export function createPointSweepCandidateLister(admin, { sinceDays = 14 } = {}) 
       .order('created_at', { ascending: false })
       .limit(limit * 4);
     if (opsError) throw new Error('Unable to list Point operations');
-    const pairs = [...new Map((ops || []).map(o => [o.crm_invoice_id, o])).values()];
+    const pairs = [...new Map((ops || []).map(o => [`${o.business_id}:${o.crm_invoice_id}`, o])).values()];
     if (pairs.length === 0) return [];
     const { data: ledger, error: ledgerError } = await admin.from('crm_fiscal_issuances')
-      .select('sale_id')
+      .select('business_id,sale_id')
       .in('sale_id', pairs.map(p => p.crm_invoice_id));
     if (ledgerError) throw new Error('Unable to read fiscal ledger');
-    const known = new Set((ledger || []).map(r => r.sale_id));
+    const known = new Set((ledger || []).map(r => `${r.business_id}:${r.sale_id}`));
     return pairs
-      .filter(p => !known.has(p.crm_invoice_id))
+      .filter(p => !known.has(`${p.business_id}:${p.crm_invoice_id}`))
       .slice(0, limit)
       .map(p => ({ businessId: p.business_id, invoiceId: p.crm_invoice_id }));
   };
