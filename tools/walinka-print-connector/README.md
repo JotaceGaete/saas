@@ -137,5 +137,5 @@ verificación en navegador con venta real y corte del Xprinter.
 9. Apagar el conector y cobrar: el TPV debe mostrar error, no imprimir por QZ Tray.
 
 Verificación de código hecha fuera de Windows: `node --test` sobre los módulos de
-impresión (46 pruebas en printRouting, localConnectorProvider y connectorConfigStorage),
+impresión (32 pruebas en printRouting, localConnectorProvider y connectorConfigStorage),
 y selftest del conector (53). No se ejecutó vitest ni `vite build` en este entorno.
