@@ -16,6 +16,25 @@ const PRODUCTION_ORIGIN = SII_BASE_URL; // fixed; never read from the environmen
 const SEND_TIMEOUT_MS = 15000;
 const DOCS_TIMEOUT_MS = 12000;
 
+const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
+
+/**
+ * Content check for provider bytes before any `issued` state. Fail-closed:
+ * the XML must decode to a DTE whose <Folio> equals the assigned folio, and
+ * the PDF must start with the %PDF- signature. Does not prove SII acceptance.
+ */
+export function validateDocumentBytes({ folio, xmlBase64, pdfBase64 }) {
+  if (typeof xmlBase64 !== 'string' || typeof pdfBase64 !== 'string' ||
+      xmlBase64.length % 4 !== 0 || pdfBase64.length % 4 !== 0 ||
+      !BASE64.test(xmlBase64) || !BASE64.test(pdfBase64)) return false;
+  const xml = Buffer.from(xmlBase64, 'base64').toString('latin1');
+  const pdf = Buffer.from(pdfBase64, 'base64');
+  if (!xml.includes('<DTE') || !xml.includes('</DTE>')) return false;
+  const folioMatch = xml.match(/<Folio>\s*(\d+)\s*<\/Folio>/);
+  if (!folioMatch || Number(folioMatch[1]) !== folio) return false;
+  return pdf.subarray(0, 5).toString('latin1') === '%PDF-';
+}
+
 const safeFolio = value => (Number.isSafeInteger(value) && value > 0 ? value : null);
 
 /**
@@ -46,11 +65,13 @@ export function classifyLiveIssuance({
   const inlineXml = typeof body.xmlBase64 === 'string' && body.xmlBase64.length > 0 ? body.xmlBase64 : null;
   const inlinePdf = typeof body.pdfBase64 === 'string' && body.pdfBase64.length > 0 ? body.pdfBase64 : null;
   if (inlineXml && inlinePdf) {
-    return { state: 'issued', folio, xmlBase64: inlineXml, pdfBase64: inlinePdf };
+    if (validateDocumentBytes({ folio, xmlBase64: inlineXml, pdfBase64: inlinePdf })) {
+      return { state: 'issued', folio, xmlBase64: inlineXml, pdfBase64: inlinePdf };
+    }
+    return { state: 'unknown', folio, reason: 'DOCUMENT_BYTES_INVALID' };
   }
   if (retrievedDocuments && retrievedDocuments.folio === folio &&
-      typeof retrievedDocuments.xmlBase64 === 'string' && retrievedDocuments.xmlBase64.length > 0 &&
-      typeof retrievedDocuments.pdfBase64 === 'string' && retrievedDocuments.pdfBase64.length > 0) {
+      validateDocumentBytes({ folio, xmlBase64: retrievedDocuments.xmlBase64, pdfBase64: retrievedDocuments.pdfBase64 })) {
     return { state: 'issued', folio, xmlBase64: retrievedDocuments.xmlBase64, pdfBase64: retrievedDocuments.pdfBase64 };
   }
   return { state: 'unknown', folio, reason: 'FOLIO_ASSIGNED_DOCUMENTS_NOT_RETRIEVED' };

@@ -1,12 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyLiveIssuance, createLiveSingleEmission } from './siisolutions-live-single-emission.js';
+import { classifyLiveIssuance, createLiveSingleEmission, validateDocumentBytes } from './siisolutions-live-single-emission.js';
 
 const BIZ = '11111111-1111-4111-8111-111111111111';
 const SALE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const AUTH = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
 const OWNER = '22222222-2222-4222-8222-222222222222';
 const OTHER = '33333333-3333-4333-8333-333333333333';
+const VALID_XML_B64 = 'PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iSVNPLTg4NTktMSI/PjxEVEUgdmVyc2lvbj0iMS4wIj48RG9jdW1lbnRvPjxFbmNhYmV6YWRvPjxJZERvYz48VGlwb0RURT4zOTwvVGlwb0RURT48Rm9saW8+NTExMDU8L0ZvbGlvPjwvSWREb2M+PC9FbmNhYmV6YWRvPjwvRG9jdW1lbnRvPjwvRFRFPg==';
+const VALID_PDF_B64 = 'JVBERi0xLjQKMSAwIG9iago8PD4+CmVuZG9iagolJUVPRgo=';
 const PROD_EMIT = 'https://api.siisolutions.cl/dte/boletas/emitir';
 const FORBIDDEN_TABLES = ['fiscal.pos_dte39_outbox', 'fiscal.operations', 'crm_point_fiscal_outbox'];
 
@@ -93,21 +95,21 @@ test('2xx with folio and no inline documents is unknown and KEEPS the folio', ()
 });
 
 test('2xx with folio and inline XML+PDF is issued with bytes', () => {
-  const r = classifyLiveIssuance({ statusCode: 200, body: issuedBody(51105, { xmlBase64: 'PHhtbA==', pdfBase64: 'JVBERg==' }) });
+  const r = classifyLiveIssuance({ statusCode: 200, body: issuedBody(51105, { xmlBase64: 'PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iSVNPLTg4NTktMSI/PjxEVEUgdmVyc2lvbj0iMS4wIj48RG9jdW1lbnRvPjxFbmNhYmV6YWRvPjxJZERvYz48VGlwb0RURT4zOTwvVGlwb0RURT48Rm9saW8+NTExMDU8L0ZvbGlvPjwvSWREb2M+PC9FbmNhYmV6YWRvPjwvRG9jdW1lbnRvPjwvRFRFPg==', pdfBase64: 'JVBERi0xLjQKMSAwIG9iago8PD4+CmVuZG9iagolJUVPRgo=' }) });
   assert.equal(r.state, 'issued');
   assert.equal(r.folio, 51105);
-  assert.equal(r.xmlBase64, 'PHhtbA==');
+  assert.equal(r.xmlBase64, 'PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iSVNPLTg4NTktMSI/PjxEVEUgdmVyc2lvbj0iMS4wIj48RG9jdW1lbnRvPjxFbmNhYmV6YWRvPjxJZERvYz48VGlwb0RURT4zOTwvVGlwb0RURT48Rm9saW8+NTExMDU8L0ZvbGlvPjwvSWREb2M+PC9FbmNhYmV6YWRvPjwvRG9jdW1lbnRvPjwvRFRFPg==');
 });
 
 test('retrieved documents matching the folio make it issued', () => {
   const r = classifyLiveIssuance({ statusCode: 200, body: issuedBody(51105),
-    retrievedDocuments: { folio: 51105, xmlBase64: 'PHhtbA==', pdfBase64: 'JVBERg==' } });
+    retrievedDocuments: { folio: 51105, xmlBase64: 'PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iSVNPLTg4NTktMSI/PjxEVEUgdmVyc2lvbj0iMS4wIj48RG9jdW1lbnRvPjxFbmNhYmV6YWRvPjxJZERvYz48VGlwb0RURT4zOTwvVGlwb0RURT48Rm9saW8+NTExMDU8L0ZvbGlvPjwvSWREb2M+PC9FbmNhYmV6YWRvPjwvRG9jdW1lbnRvPjwvRFRFPg==', pdfBase64: 'JVBERi0xLjQKMSAwIG9iago8PD4+CmVuZG9iagolJUVPRgo=' } });
   assert.equal(r.state, 'issued');
 });
 
 test('retrieved documents for a DIFFERENT folio are ignored', () => {
   const r = classifyLiveIssuance({ statusCode: 200, body: issuedBody(51105),
-    retrievedDocuments: { folio: 99999, xmlBase64: 'PHhtbA==', pdfBase64: 'JVBERg==' } });
+    retrievedDocuments: { folio: 99999, xmlBase64: 'PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iSVNPLTg4NTktMSI/PjxEVEUgdmVyc2lvbj0iMS4wIj48RG9jdW1lbnRvPjxFbmNhYmV6YWRvPjxJZERvYz48VGlwb0RURT4zOTwvVGlwb0RURT48Rm9saW8+NTExMDU8L0ZvbGlvPjwvSWREb2M+PC9FbmNhYmV6YWRvPjwvRG9jdW1lbnRvPjwvRFRFPg==', pdfBase64: 'JVBERi0xLjQKMSAwIG9iago8PD4+CmVuZG9iagolJUVPRgo=' } });
   assert.equal(r.state, 'unknown');
 });
 
@@ -229,13 +231,13 @@ test('success without inline documents: finalized as unknown WITH folio, one sen
 test('injected document retrieval that succeeds finalizes as issued with bytes', async () => {
   const db = fakeAdmin(baseData());
   const net = fakeFetch(() => ({ status: 200, body: issuedBody(51105) }));
-  const retrieveDocuments = async ({ folio }) => ({ folio, xmlBase64: 'PHhtbA==', pdfBase64: 'JVBERg==' });
+  const retrieveDocuments = async ({ folio }) => ({ folio, xmlBase64: 'PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iSVNPLTg4NTktMSI/PjxEVEUgdmVyc2lvbj0iMS4wIj48RG9jdW1lbnRvPjxFbmNhYmV6YWRvPjxJZERvYz48VGlwb0RURT4zOTwvVGlwb0RURT48Rm9saW8+NTExMDU8L0ZvbGlvPjwvSWREb2M+PC9FbmNhYmV6YWRvPjwvRG9jdW1lbnRvPjwvRFRFPg==', pdfBase64: 'JVBERi0xLjQKMSAwIG9iago8PD4+CmVuZG9iagolJUVPRgo=' });
   const r = await run({ admin: db, env: armedEnv(), fetchImpl: net, retrieveDocuments });
   assert.equal(r.state, 'issued');
   const fin = db.calls.rpcs.find(c => c.name === 'crm_finalize_fiscal_issuance').args;
   assert.equal(fin.p_status, 'issued');
   assert.equal(fin.p_folio, 51105);
-  assert.equal(fin.p_pdf_base64, 'JVBERg==');
+  assert.equal(fin.p_pdf_base64, 'JVBERi0xLjQKMSAwIG9iago8PD4+CmVuZG9iagolJUVPRgo=');
 });
 
 test('document retrieval that throws keeps the folio as unknown', async () => {
@@ -313,4 +315,33 @@ test('invalid identifiers are rejected before any work', async () => {
   const r = await run({ admin: db, env: armedEnv(), fetchImpl: net }, { businessId: 'not-a-uuid' });
   assert.equal(r.reason, 'IDENTITY_REQUIRED');
   assert.equal(db.calls.tables.length, 0);
+});
+
+// ---- Byte content validation -------------------------------------------
+
+test('valid XML with matching folio and PDF signature passes', () => {
+  assert.equal(validateDocumentBytes({ folio: 51105, xmlBase64: VALID_XML_B64, pdfBase64: VALID_PDF_B64 }), true);
+});
+test('XML folio different from the assigned folio fails closed', () => {
+  const wrong = Buffer.from(Buffer.from(VALID_XML_B64, 'base64').toString('latin1').replace('51105', '99999'), 'latin1').toString('base64');
+  assert.equal(validateDocumentBytes({ folio: 51105, xmlBase64: wrong, pdfBase64: VALID_PDF_B64 }), false);
+});
+test('XML without a DTE root fails closed (vendor example stub is not a document)', () => {
+  const stub = Buffer.from('<?xml version="1.0" encoding="ISO-8859-1"?>', 'latin1').toString('base64');
+  assert.equal(validateDocumentBytes({ folio: 51105, xmlBase64: stub, pdfBase64: VALID_PDF_B64 }), false);
+});
+test('PDF without %PDF- signature fails closed', () => {
+  const bad = Buffer.from('<html>not pdf</html>').toString('base64');
+  assert.equal(validateDocumentBytes({ folio: 51105, xmlBase64: VALID_XML_B64, pdfBase64: bad }), false);
+});
+test('non-base64 or misaligned input fails closed', () => {
+  assert.equal(validateDocumentBytes({ folio: 51105, xmlBase64: 'not base64!', pdfBase64: VALID_PDF_B64 }), false);
+  assert.equal(validateDocumentBytes({ folio: 51105, xmlBase64: 'PHhtbA=', pdfBase64: VALID_PDF_B64 }), false);
+});
+test('inline bytes that fail content validation are unknown with folio, not issued', () => {
+  const stub = Buffer.from('<?xml version="1.0"?>', 'latin1').toString('base64');
+  const r = classifyLiveIssuance({ statusCode: 200, body: issuedBody(51105, { xmlBase64: stub, pdfBase64: VALID_PDF_B64 }) });
+  assert.equal(r.state, 'unknown');
+  assert.equal(r.reason, 'DOCUMENT_BYTES_INVALID');
+  assert.equal(r.folio, 51105);
 });
