@@ -682,7 +682,7 @@ export default function CrmInvoiceEditor() {
           {!isNew && saved && business?.id && (
             <CrmFiscalDocument businessId={business.id} invoiceId={saved.id} />
           )}
-          {!isNew && saved && business?.id && <CrmFiscalEmitAction />}
+          {!isNew && saved && business?.id && <CrmFiscalEmitAction saleId={saved.id} />}
 
           {/* ── PAGOS RECIBIDOS (solo facturas guardadas) ── */}
           {!isNew && saved && (() => {
