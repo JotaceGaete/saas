@@ -31,21 +31,26 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
           invoiceId,
         });
 
-        const response = await fetch(
-          `/api/fiscal/document?${params}`,
-          {
-            headers: {
-              Authorization: `Bearer ${session.access_token}`,
-            },
+        const fetchDocument = (token) => fetch(`/api/fiscal/document?${params}`, {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: 'no-store',
+        });
+        let response = await fetchDocument(session.access_token);
+        // A stale browser session can be renewed once. Never bypass the server ownership guard.
+        if (response.status === 401) {
+          const { data: refreshed, error: refreshError } = await supabase.auth.refreshSession();
+          if (refreshError || !refreshed?.session?.access_token) {
+            throw new Error('La sesión expiró. Cierra sesión y vuelve a ingresar a Walinka.');
           }
-        );
+          response = await fetchDocument(refreshed.session.access_token);
+        }
 
         if (!response.ok) {
           const body = await response.json().catch(() => null);
           const code = typeof body?.error === 'string' ? body.error : '';
           const explanations = {
             SERVER_NOT_CONFIGURED: 'Falta configurar el servidor fiscal de esta versión de prueba.',
-            UNAUTHORIZED: 'La sesión no pudo validarse. Vuelve a iniciar sesión.',
+            UNAUTHORIZED: 'El servidor fiscal rechazó la sesión incluso después de renovarla. Puede haber una configuración de Supabase diferente entre el navegador y la función Preview; no vuelvas a emitir la boleta.',
             BUSINESS_NOT_AUTHORIZED: 'Tu cuenta no tiene autorización para consultar el documento de este comercio.',
             INVALID_REQUEST: 'Los identificadores enviados para consultar la boleta no son válidos.',
             INVOICE_NOT_FOUND: 'No se encontró la nota de venta para este comercio.',
