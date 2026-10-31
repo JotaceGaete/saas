@@ -86,6 +86,8 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
       }
       const url = URL.createObjectURL(blob);
       tab.location.replace(url);
+      // Browser PDF viewer handles printing: no QZ Tray dependency or silent-print promise.
+      // Opening the document is reliable; the user confirms Print in the PDF viewer.
       window.setTimeout(() => URL.revokeObjectURL(url), 300000);
     } catch (err) {
       tab.close();
@@ -177,9 +179,14 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
       </div>
       {document.status === 'issued' && document.folio && (
         <div className="mt-5 flex flex-wrap gap-2">
-          <button type="button" onClick={openFiscalPdf} disabled={openingPdf}
+          <button type="button" onClick={() => openFiscalPdf()} disabled={openingPdf}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
             {openingPdf ? 'Abriendo PDF...' : `Ver PDF oficial — Boleta ${document.folio}`}
+          </button>
+          <button type="button" onClick={() => openFiscalPdf()} disabled={openingPdf}
+            title="Abre la boleta fiscal para imprimirla desde el visor PDF del navegador"
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50">
+            Imprimir boleta
           </button>
           <button type="button" onClick={() => downloadFiscalFile('pdf')} disabled={!!downloading}
             className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50">
