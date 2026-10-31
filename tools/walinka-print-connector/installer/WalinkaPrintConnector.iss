@@ -46,6 +46,7 @@ Source: "..\README.md"; DestDir: "{app}"; DestName: "LEEME.md"; Flags: ignorever
 Name: "{group}\Reiniciar conector"; Filename: "{sys}\conhost.exe"; Parameters: "--headless ""{app}\{#AppExe}"" restart"; Comment: "Reinicia Walinka Print Connector"
 Name: "{group}\Detener conector"; Filename: "{app}\{#AppExe}"; Parameters: "stop"; Comment: "Detiene Walinka Print Connector"
 Name: "{group}\Estado del conector"; Filename: "{cmd}"; Parameters: "/k ""{app}\{#AppExe}"" status"; Comment: "Muestra el estado del conector"
+Name: "{group}\Emparejar con Walinka"; Filename: "{cmd}"; Parameters: "/k ""{app}\{#AppExe}"" pair"; Comment: "Muestra el código de 6 dígitos para conectar Walinka"
 Name: "{group}\Desinstalar {#AppName}"; Filename: "{uninstallexe}"
 
 [Registry]

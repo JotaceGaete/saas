@@ -146,7 +146,7 @@ y selftest del conector (53). No se ejecutó vitest ni `vite build` en este ento
 
 ## Decisiones
 
-- **Instalador: Inno Setup 6**, por usuario (`PrivilegesRequired=lowest`), sin administrador.
+- **Instalador: Inno Setup 6 o 7**, por usuario (`PrivilegesRequired=lowest`), sin administrador.
   Motivo: un solo `.exe` de instalación, desinstalador, entradas de menú Inicio y
   mantenimiento sencillo en un script `.iss`. WiX exige más infraestructura para lo mismo.
 - **Sin bandeja ni app residente (por ahora).** Un vigilante en segundo plano basta. Una
@@ -156,10 +156,14 @@ y selftest del conector (53). No se ejecutó vitest ni `vite build` en este ento
   ventana de consola (Windows 10 1903 o superior). No requiere administrador.
 - **Vigilante (`watch`)**: ejecuta `serve` como proceso hijo sin ventana. Si `serve`
   termina inesperadamente, lo reinicia con espera creciente (1, 2, 5, 10, 30 s). Un proceso
-  que estuvo sano al menos 1 minuto reinicia el contador. Log en
+  que estuvo sano al menos 1 minuto reinicia el contador. Tope absoluto: si `serve` se cae
+  más de 10 veces en una hora, el vigilante se rinde (código 5) y deja de reiniciarlo; hay que
+  corregir la causa y ejecutar `restart`. Log en
   `%LOCALAPPDATA%\WalinkaPrintConnector\logs\connector.log` (se recorta a 2 MB, sin tickets ni tokens).
 - **Instancia única**: mutex `Local\WalinkaPrintConnector.Watch` y `…Serve`. Un segundo
-  arranque responde "ya está en ejecución" y sale con código 4.
+  arranque responde "ya está en ejecución" y sale con código 4. `Local\` es por sesión de
+  inicio de sesión, no por cuenta de Windows. El puerto 47801 es de toda la máquina, así que
+  dos sesiones no pueden tener dos servicios activos a la vez (la segunda recibe código 3).
 - **Parada**: `WalinkaPrintConnector.exe stop` activa el evento
   `Local\WalinkaPrintConnector.Stop`; el vigilante y el servicio terminan limpiamente.
 - **Puerto ocupado**: si 47801 responde como Walinka Print Connector, `serve` sale con código 0.
@@ -204,7 +208,7 @@ Menú Inicio: Reiniciar conector, Detener conector, Estado del conector, Desinst
 ## Estado de las pruebas
 
 Verificado en este entorno (Linux, sin Windows):
-- `selftest`: 60 pruebas OK (incluye reglas de reinicio, nombres de instancia y orígenes de producción).
+- `selftest`: 87 pruebas OK (incluye reglas de reinicio, tope de reinicios, orígenes y ESC/POS).
 - Compilación del código del conector con Roslyn (csc) contra los paquetes de referencia .NET 8.
 - Puerto ocupado por otra aplicación: `serve` sale con código 3.
 - Sintaxis del script de build revisada a ojo; no se ejecutó.
@@ -251,8 +255,8 @@ solo garantiza la forma del flujo. El cajón no se abre desde ningún endpoint n
 
 ### Configuración inicial
 1. En Walinka: Configuración de impresión → Walinka Print Connector.
-2. Ejecutar en el equipo: `WalinkaPrintConnector.exe pair` (abrir PowerShell en la carpeta del conector).
-   Muestra un código de 6 dígitos válido 5 minutos.
+2. En el equipo: Menú Inicio → Walinka → "Emparejar con Walinka". Muestra un código de 6 dígitos
+   válido 5 minutos. No hace falta PowerShell.
 3. Escribir el código en Walinka y pulsar "Emparejar".
 4. Elegir la impresora (por ejemplo, la XP-80C) y activar "Usar para ventas".
 5. Pulsar "Imprimir ticket de prueba": debe salir completo y cortarse solo.
@@ -263,6 +267,8 @@ solo garantiza la forma del flujo. El cajón no se abre desde ningún endpoint n
 | Walinka dice "Conector no encontrado" | Menú Inicio → "Estado del conector". Si no responde, "Reiniciar conector". |
 | "Configuración inválida" en el log o en la consola | Revisar `%LOCALAPPDATA%\WalinkaPrintConnector\config.json` y corregirlo. El vigilante reintenta solo cada 30 s. |
 | "El puerto 47801 está ocupado" | Cerrar la aplicación que usa el puerto y reiniciar el conector. |
+| "se cayó más de 10 veces en una hora" en el log | El vigilante se detuvo a propósito. Revisar el log, corregir la causa y usar "Reiniciar conector". |
+| Walinka dice que el conector no está emparejado | Menú Inicio → "Emparejar con Walinka" → escribir el código en Walinka. |
 | "No hay impresoras" | Instalar la impresora en Windows (Configuración → Impresoras) y pulsar "Verificar conector". |
 | La impresora no corta | Probar "Probar corte" desde Walinka. Si no corta, revisar el modelo y la cola de Windows. |
 | El ticket no sale | Ver el log en `%LOCALAPPDATA%\WalinkaPrintConnector\logs\connector.log`. |
@@ -294,7 +300,7 @@ desarrollo que use `localhost:5173` debe agregar el flag a mano en su `config.js
 ## Estado de las pruebas
 
 ### Automatizadas (sin Windows)
-- `selftest` del conector: 83 pruebas OK (seguridad, pairing, cola, ESC/POS, configuración, vigilante).
+- `selftest` del conector: 87 pruebas OK (seguridad, pairing, cola, ESC/POS, configuración, vigilante, tope de reinicios).
 - Bytes reales de Walinka validados con `validate`: ticket de prueba, cortes moderno y legacy,
   raster de logo, imagen `ESC *`, posición absoluta.
 - Tests `node --test` del lado Walinka (cliente, configuración y enrutamiento): 39 OK.
