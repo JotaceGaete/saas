@@ -1,3 +1,4 @@
+import { fetchAdminBusinessDetail } from './businessBillingService';
 /**
  * Servicio admin: pagos, suscripciones, notificaciones y acciones.
  * Solo para usuarios con role admin. Usa wa_payments_admin_view, wa_admin_notifications, RPCs.
@@ -77,7 +78,7 @@ export async function getAdminPaymentDetail(paymentId) {
 /** Detalle de suscripción por negocio: negocio + últimos pagos + eventos recientes */
 export async function getAdminBusinessSubscription(businessId) {
   const [bizRes, paymentsRes, auditRes] = await Promise.all([
-    supabase.from('wa_businesses').select('*').eq('id', businessId).single(),
+    fetchAdminBusinessDetail(businessId),
     supabase.from('wa_payments').select('*').eq('business_id', businessId).order('created_at', { ascending: false }).limit(20),
     supabase.from('wa_admin_audit_log').select('*').eq('entity_type', 'business').eq('entity_id', businessId).order('created_at', { ascending: false }).limit(20),
   ]);

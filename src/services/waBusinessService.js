@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { BUSINESS_PUBLIC_COLUMNS, fetchOwnBusinessBilling, fetchBusinessEffectivePlan, fetchAdminBusinessBillingMap } from './businessBillingService';
 import { getSupabasePublishableKey } from '../lib/supabasePublishableKey';
 import { compressImageForUpload, generateProductImageUploadSet } from '../utils/imageUploadUtils';
 import { getValidToken } from '../lib/auth/getValidToken';
@@ -162,10 +163,10 @@ export function getActivePlan(subscription = {}) {
 }
 
 async function validateCountryUpdateAllowed({ businessId, userId }) {
-  const [{ data: businessRow, error: businessErr }, { count, error: ordersErr }] = await Promise.all([
+  const [{ data: countryRow, error: businessErr }, { count, error: ordersErr }, { data: billingRow }] = await Promise.all([
     supabase
       .from('wa_businesses')
-      .select('plan_slug, plan_expires_at, trial_expires_at, plan_started_at, country_code')
+      .select('country_code')
       .eq('id', businessId)
       .eq('user_id', userId)
       .maybeSingle(),
@@ -173,7 +174,9 @@ async function validateCountryUpdateAllowed({ businessId, userId }) {
       .from('wa_orders')
       .select('id', { count: 'exact', head: true })
       .eq('business_id', businessId),
+    fetchOwnBusinessBilling(businessId),
   ]);
+  const businessRow = countryRow ? { ...countryRow, ...(billingRow ?? {}) } : null;
 
   if (businessErr) return { allowed: false, message: businessErr.message || 'No se pudo validar el negocio.' };
   if (ordersErr) return { allowed: false, message: ordersErr.message || 'No se pudo validar pedidos del negocio.' };
@@ -605,9 +608,9 @@ export const getMyBusiness = async () => {
   // Orden + limit defensivo: si el usuario tiene filas duplicadas en wa_businesses
   // (PGRST116 con .maybeSingle()), esta consulta devuelve la más antigua sin explotar.
   // Diagnóstico de duplicados: supabase/diagnostics/wa_businesses_duplicates.sql
-  const { data, error } = await supabase
+  const { data: ownRow, error } = await supabase
     ?.from('wa_businesses')
-    ?.select('*')
+    ?.select(PUBLIC_BUSINESS_COLUMNS)
     ?.eq('user_id', user?.id)
     ?.order('created_at', { ascending: true })
     ?.limit(1)
@@ -621,6 +624,9 @@ export const getMyBusiness = async () => {
     }
     return { data: null, error };
   }
+  // Facturación (plan, trial, email) solo por RPC del dueño; no se lee desde la tabla.
+  const { data: billingRow } = ownRow?.id ? await fetchOwnBusinessBilling(ownRow.id) : { data: null };
+  const data = ownRow ? { ...ownRow, ...(billingRow ?? {}) } : null;
   console.log('[waBusinessService] getMyBusiness result:', data ? `found id=${data?.id}` : 'not found');
   const mapped = data ? mapBusinessFromDb(data) : null;
   if (typeof window !== 'undefined') {
@@ -641,11 +647,12 @@ export const getBusinessByIdForAdmin = async (businessId) => {
   if (!businessId) return { data: null, error: { message: 'businessId required' } };
   const { data, error } = await supabase
     ?.from('wa_businesses')
-    ?.select('*')
+    ?.select(BUSINESS_PUBLIC_COLUMNS)
     ?.eq('id', businessId)
     ?.maybeSingle();
   if (error) return { data: null, error };
-  return { data: data ? mapBusinessFromDb(data) : null, error: null };
+  const { data: billing } = data ? await fetchOwnBusinessBilling(businessId) : { data: null };
+  return { data: data ? mapBusinessFromDb({ ...data, ...(billing ?? {}) }) : null, error: null };
 };
 
 /**
@@ -662,18 +669,7 @@ export const getBusinessByIdForAdmin = async (businessId) => {
  * público verificado) -- no agregar columnas nuevas sin antes confirmar
  * que son seguras para un visitante anónimo.
  */
-const PUBLIC_BUSINESS_COLUMNS = [
-  'id', 'name', 'description', 'whatsapp', 'email', 'address',
-  'city', 'region', 'country', 'country_code', 'currency',
-  'logo_url', 'cover_image_url', 'design_settings', 'lat', 'lng', 'og_image_url',
-  'slug', 'is_active', 'rubro_id',
-  'seo_family_key', 'seo_content_override', 'seo_content_ai',
-  'instagram_url', 'tiktok_url', 'facebook_url', 'print_legend',
-  'operating_days', 'order_message_template',
-  'plan_slug', 'plan_expires_at', 'trial_expires_at', 'scheduled_plan_slug', 'scheduled_change_at',
-  'business_mode', 'document_title_type',
-  'created_at', 'updated_at',
-].join(', ');
+const PUBLIC_BUSINESS_COLUMNS = BUSINESS_PUBLIC_COLUMNS;
 
 export const getBusinessBySlug = async (slug) => {
   const { data, error } = await supabase
@@ -719,7 +715,7 @@ export const createBusiness = async (businessData) => {
       trial_expires_at:    trialEnd,
       scheduled_plan_slug: 'starter',
       scheduled_change_at: trialEnd,
-    })?.select()?.single();
+    })?.select(PUBLIC_BUSINESS_COLUMNS)?.single();
   if (error) return { data: null, error };
   if (data?.id) {
     console.log('[waBusinessService] createBusiness: triggerOgImageGeneration', { businessId: data?.id });
@@ -759,7 +755,7 @@ export const createBusinessForUser = async (userId, businessData) => {
       trial_expires_at:    trialEnd,
       scheduled_plan_slug: 'starter',
       scheduled_change_at: trialEnd,
-    })?.select()?.single();
+    })?.select(PUBLIC_BUSINESS_COLUMNS)?.single();
   if (error) return { data: null, error };
   if (data?.id) {
     console.log('[waBusinessService] createBusinessForUser: triggerOgImageGeneration', { businessId: data?.id });
@@ -847,7 +843,7 @@ export async function updateBusiness(businessId, updates) {
   if (updates?.planExpiresAt !== undefined)    dbUpdates.plan_expires_at = updates?.planExpiresAt ?? null;
   if (updates?.trialExpiresAt !== undefined)   dbUpdates.trial_expires_at = updates?.trialExpiresAt ?? null;
   console.log('[waBusinessService] updateBusiness: payload keys =', Object.keys(dbUpdates));
-  let { data, error } = await supabase?.from('wa_businesses')?.update(dbUpdates)?.eq('id', businessId)?.eq('user_id', user?.id)?.select()?.single();
+  let { data, error } = await supabase?.from('wa_businesses')?.update(dbUpdates)?.eq('id', businessId)?.eq('user_id', user?.id)?.select(PUBLIC_BUSINESS_COLUMNS)?.single();
   if (error) {
     console.error('[waBusinessService] updateBusiness error:', error?.message, '| code:', error?.code, '| details:', error?.details, '| hint:', error?.hint);
     // If the error is caused by document_title_type column not existing yet (migration pending),
@@ -857,7 +853,7 @@ export async function updateBusiness(businessId, updates) {
       console.warn('[waBusinessService] document_title_type column not found — retrying without it (migration may be pending)');
       const fallbackUpdates = { ...dbUpdates };
       delete fallbackUpdates.document_title_type;
-      const { data: d2, error: e2 } = await supabase?.from('wa_businesses')?.update(fallbackUpdates)?.eq('id', businessId)?.eq('user_id', user?.id)?.select()?.single();
+      const { data: d2, error: e2 } = await supabase?.from('wa_businesses')?.update(fallbackUpdates)?.eq('id', businessId)?.eq('user_id', user?.id)?.select(PUBLIC_BUSINESS_COLUMNS)?.single();
       if (e2) {
         console.error('[waBusinessService] updateBusiness fallback error:', e2?.message, '| code:', e2?.code);
         return { data: null, error: e2 };
@@ -867,6 +863,10 @@ export async function updateBusiness(businessId, updates) {
     } else {
       return { data: null, error };
     }
+  }
+  if (data?.id) {
+    const { data: billingAfterSave } = await fetchOwnBusinessBilling(data.id);
+    if (billingAfterSave) data = { ...data, ...billingAfterSave };
   }
   console.log('[waBusinessService] updateBusiness success: updated id =', data?.id);
   if (data?.id) {
@@ -977,7 +977,7 @@ function sendFirstProductCreatedEventIfNeeded({ businessId, activeBefore, active
       const [{ data: business }, { data: userData }, { count: ordersCount }] = await Promise.all([
         supabase
           ?.from('wa_businesses')
-          ?.select('id, name, country, country_code, plan_slug, business_mode')
+          ?.select('id, name, country, country_code, business_mode')
           ?.eq('id', businessId)
           ?.maybeSingle(),
         supabase?.auth?.getUser(),
@@ -1018,22 +1018,16 @@ function sendFirstProductCreatedEventIfNeeded({ businessId, activeBefore, active
 export const checkPlanLimits = async (businessId, type) => {
   try {
     if (type === 'products') {
-      const { data: biz } = await supabase
-        ?.from('wa_businesses')
-        ?.select('plan_slug')
-        ?.eq('id', businessId)
-        ?.single();
+      const { plan_slug: effectivePlanSlug } = await fetchBusinessEffectivePlan(businessId);
+      const biz = effectivePlanSlug ? { plan_slug: effectivePlanSlug, plan_expires_at: null, trial_expires_at: null } : null;
       const activePlan = getActivePlan(biz || {});
       const limit = getProductLimitByPlan(activePlan);
       const current = await getActiveProductCount(businessId);
       return { allowed: limit === null || current < limit, current, limit };
     }
     if (type === 'orders') {
-      const { data: biz } = await supabase
-        ?.from('wa_businesses')
-        ?.select('plan_slug, plan_expires_at, trial_expires_at')
-        ?.eq('id', businessId)
-        ?.single();
+      const { plan_slug: effectivePlanSlug } = await fetchBusinessEffectivePlan(businessId);
+      const biz = effectivePlanSlug ? { plan_slug: effectivePlanSlug, plan_expires_at: null, trial_expires_at: null } : null;
       const effectivePlan = getEffectivePlanSlug(
         biz?.plan_slug || 'starter',
         biz?.plan_expires_at ?? null,
@@ -1058,11 +1052,8 @@ export const checkPlanLimits = async (businessId, type) => {
 };
 
 export const createProduct = async (businessId, productData) => {
-  const { data: biz } = await supabase
-    ?.from('wa_businesses')
-    ?.select('plan_slug')
-    ?.eq('id', businessId)
-    ?.single();
+  const { plan_slug: effectivePlanSlug } = await fetchBusinessEffectivePlan(businessId);
+      const biz = effectivePlanSlug ? { plan_slug: effectivePlanSlug, plan_expires_at: null, trial_expires_at: null } : null;
   const activePlan = getActivePlan(biz || {});
   const maxProducts = getProductLimitByPlan(activePlan);
   const status = ['active', 'inactive', 'archived'].includes(productData?.status)
@@ -1167,11 +1158,8 @@ export const updateProduct = async (productId, productData) => {
     const { data: product } = await supabase?.from('wa_products')?.select('business_id, is_active, status, is_draft, is_main_featured')?.eq('id', productId)?.single();
     currentProduct = product || null;
     if (product?.business_id) {
-      const { data: biz } = await supabase
-        ?.from('wa_businesses')
-        ?.select('plan_slug')
-        ?.eq('id', product.business_id)
-        ?.single();
+      const { plan_slug: effectivePlanSlug } = await fetchBusinessEffectivePlan(product.business_id);
+      const biz = effectivePlanSlug ? { plan_slug: effectivePlanSlug, plan_expires_at: null, trial_expires_at: null } : null;
       const activePlan = getActivePlan(biz || {});
       const maxProducts = getProductLimitByPlan(activePlan);
       const productWasVisible = product?.status === 'active' && product?.is_draft !== true;
@@ -1445,11 +1433,8 @@ export const createOrder = async (businessId, orderData, items) => {
   const totalAmount = Number(orderData?.totalAmount) || 0;
 
   // ─── Validar límite de pedidos por mes del plan ───────────────────────────
-  const { data: biz } = await supabase
-    ?.from('wa_businesses')
-    ?.select('plan_slug, plan_expires_at, trial_expires_at')
-    ?.eq('id', businessId)
-    ?.single();
+  const { plan_slug: effectivePlanSlug } = await fetchBusinessEffectivePlan(businessId);
+      const biz = effectivePlanSlug ? { plan_slug: effectivePlanSlug, plan_expires_at: null, trial_expires_at: null } : null;
 
   if (biz) {
     const effectivePlan = getEffectivePlanSlug(biz?.plan_slug || 'starter', biz?.plan_expires_at ?? null, biz?.trial_expires_at ?? null);
@@ -2420,7 +2405,8 @@ export const getPlanUsage = async (businessId) => {
   const { data, error } = await supabase?.rpc('wa_get_plan_usage', { p_business_id: businessId });
   if (error) {
     // Fallback JS si la función RPC aún no fue creada
-    const { data: biz } = await supabase?.from('wa_businesses')?.select('plan_slug, plan_expires_at, trial_expires_at')?.eq('id', businessId)?.single();
+    const { plan_slug: effectivePlanSlug } = await fetchBusinessEffectivePlan(businessId);
+      const biz = effectivePlanSlug ? { plan_slug: effectivePlanSlug, plan_expires_at: null, trial_expires_at: null } : null;
     const planSlug      = biz?.plan_slug || 'starter';
     const effectivePlan = getEffectivePlanSlug(planSlug, biz?.plan_expires_at ?? null, biz?.trial_expires_at ?? null);
     const limits        = getPlanLimits(effectivePlan);
@@ -2478,10 +2464,11 @@ export const getBusinessesForAdmin = async () => {
   // Fallback
   const { data, error } = await supabase
     ?.from('wa_businesses')
-    ?.select('*')
+    ?.select(BUSINESS_PUBLIC_COLUMNS)
     ?.order('created_at', { ascending: false });
   if (error) return { data: null, error };
-  return { data: (data || []).map(mapBusinessFromDb), error: null };
+  const { map: billingById } = await fetchAdminBusinessBillingMap();
+  return { data: (data || []).map((row) => mapBusinessFromDb({ ...row, ...(billingById.get(row.id) ?? {}) })), error: null };
 };
 
 export const getAdminStats = async () => {
@@ -2495,9 +2482,8 @@ export const getAdminStats = async () => {
   // Distribución por plan desde la tabla (fallback si RPC no existe)
   let byPlan = planStats ?? {};
   if (!planStats || Object.keys(planStats).length === 0) {
-    const { data: planRows } = await supabase
-      ?.from('wa_businesses')
-      ?.select('plan_slug');
+    const { map: billingById, error: billingErr } = await fetchAdminBusinessBillingMap();
+    const planRows = billingErr ? null : [...billingById.values()];
     if (planRows) {
       byPlan = planRows.reduce((acc, r) => {
         const slug = r.plan_slug || 'starter';
@@ -2525,7 +2511,7 @@ export const getAdminSuspiciousInfo = async () => {
     // Fallback JS simple
     const { data: rows } = await supabase
       ?.from('wa_businesses')
-      ?.select('id, name, slug, plan_slug, user_id');
+      ?.select('id, name, slug, user_id');
     const counts = {};
     (rows || []).forEach(r => { counts[r.user_id] = (counts[r.user_id] || 0) + 1; });
     const multiUsers = Object.entries(counts)
