@@ -105,4 +105,18 @@ grep -q "permission denied" <<<"$out" || fail "authenticated can read authorizat
 out=$(psql -X -A -t -c "set role anon; select public.crm_begin_manual_single_emission('$A'::uuid,'$B'::uuid,'$S'::uuid,100,'x');" 2>&1 || true)
 grep -q "permission denied" <<<"$out" || fail "anon can execute begin ($out)"
 echo "ok - anon and authenticated are denied"
+
+# Test-sale marker: additive, idempotent, no update/delete, sale record untouched.
+psql -X -q -v ON_ERROR_STOP=1 -d "$db" -f "$root/supabase/migrations/20261031150000_fiscal_test_sale_marks.sql"
+M='ffffffff-ffff-4fff-8fff-ffffffffffff'
+q "insert into public.crm_invoices values ('$M','$B','pagada', now(), 100);" >/dev/null
+q "insert into public.fiscal_test_sales (business_id, sale_id) values ('$B','$M');" >/dev/null
+q "insert into public.fiscal_test_sales (business_id, sale_id) values ('$B','$M') on conflict (sale_id) do nothing;" >/dev/null
+[[ "$(q "select count(*) from public.fiscal_test_sales where sale_id='$M';" | tr -d ' ')" == 1 ]] || fail "marker not idempotent"
+out=$(psql -X -A -t -c "set role service_role; delete from public.fiscal_test_sales where sale_id='$M';" 2>&1 || true)
+grep -q "permission denied" <<<"$out" || fail "service_role can delete test markers ($out)"
+out=$(psql -X -A -t -c "set role service_role; update public.fiscal_test_sales set reason='PRUEBA_TECNICA_SII' where sale_id='$M';" 2>&1 || true)
+grep -q "permission denied" <<<"$out" || fail "service_role can update test markers ($out)"
+[[ "$(q "select count(*) from public.crm_invoices where id='$M';" | tr -d ' ')" == 1 ]] || fail "marking altered the sale record"
+echo "ok - test-sale marker is additive: idempotent, no update/delete, sale record intact"
 echo "ALL DISPOSABLE CHECKS PASSED"

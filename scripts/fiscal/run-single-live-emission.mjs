@@ -22,6 +22,26 @@ if (!url || !secret) {
 }
 
 const admin = createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
+
+// Sequential only: refuse if any earlier attempt for this business is still
+// unresolved (sending/unknown). Unknown outcomes are never repeated.
+const { data: open, error: openErr } = await admin.from('crm_fiscal_issuances')
+  .select('id,sale_id,status').eq('business_id', businessId).in('status', ['sending', 'unknown']);
+if (openErr || (open && open.length > 0)) {
+  console.error('Refusing: unresolved fiscal operation exists for this business. Reconcile first.');
+  process.exit(3);
+}
+
+// Mark the sale as a technical test BEFORE emitting, so a crash cannot leave
+// an unmarked test document. Idempotent; never updates or deletes.
+const { error: markErr } = await admin.from('fiscal_test_sales')
+  .upsert({ business_id: businessId, sale_id: saleId, reason: 'PRUEBA_TECNICA_SII' },
+    { onConflict: 'sale_id', ignoreDuplicates: true });
+if (markErr) {
+  console.error('Refusing: could not record the test-sale marker.');
+  process.exit(3);
+}
+
 const result = await createLiveSingleEmission({ admin })({
   businessId, saleId, authorizationId, amount,
 });
