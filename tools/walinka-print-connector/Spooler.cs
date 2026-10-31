@@ -2,7 +2,7 @@ using System.ComponentModel;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace WalinkaPrintProbe;
+namespace WalinkaPrintConnector;
 
 /// <summary>
 /// Envío RAW a la cola de impresión de Windows (winspool.drv).

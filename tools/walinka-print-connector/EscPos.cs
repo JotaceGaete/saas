@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace WalinkaPrintProbe;
+namespace WalinkaPrintConnector;
 
 /// <summary>
 /// Comandos ESC/POS usados por el prototipo E1. Los bytes de corte
