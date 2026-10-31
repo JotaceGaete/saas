@@ -1,3 +1,4 @@
+import { fetchOwnBusinessBilling } from '../../services/businessBillingService';
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation, useSearchParams } from 'react-router-dom';
 import PanelHeader from 'components/ui/PanelHeader';
@@ -383,11 +384,7 @@ export default function BusinessConfiguration() {
             .from('wa_orders')
             .select('id', { count: 'exact', head: true })
             .eq('business_id', bizId),
-          supabase
-            .from('wa_businesses')
-            .select('plan_slug, plan_expires_at, trial_expires_at, plan_started_at')
-            .eq('id', bizId)
-            .maybeSingle(),
+          fetchOwnBusinessBilling(bizId),
         ]);
         if (cancelled) return;
         const now = new Date();
