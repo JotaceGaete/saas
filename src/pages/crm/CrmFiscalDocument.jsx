@@ -52,7 +52,8 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
           if (detail?.error === 'AUTH_PROJECT_MISMATCH') {
             throw new Error('AUTH_PROJECT_MISMATCH: El navegador y la función fiscal usan proyectos de Supabase diferentes. Debemos corregir la configuración del Preview.');
           }
-          throw new Error('El servidor tributario rechazó la sesión (HTTP 401 · UNAUTHORIZED). La sesión del panel puede seguir activa; revisaremos la configuración de autenticación del Preview.');
+          const safeCode = typeof detail?.error === 'string' && /^[A-Z][A-Z0-9_]{1,64}$/.test(detail.error) ? detail.error : 'UNKNOWN_AUTH_ERROR';
+          throw new Error(`El servidor tributario rechazó la sesión (HTTP 401 · ${safeCode}). No se modificó la boleta.`);
         }
 
         if (!response.ok) {
