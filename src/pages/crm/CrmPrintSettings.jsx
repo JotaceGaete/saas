@@ -15,6 +15,7 @@ import {
 import { buildFinalValidationReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig, writePrinterConfig } from 'lib/printing/printerConfigStorage';
 import { listCompatibilityProfiles, getCompatibilityProfile, matchCompatibilityProfileId } from 'lib/printing/receipts/printerCompatibilityProfiles';
+import PrintConnectorSection from './components/PrintConnectorSection';
 
 // PRINT-1 — pantalla aislada de configuración/prueba de impresión térmica.
 // No toca CrmTerminal.jsx ni el flujo de cobro: solo permite elegir la
@@ -479,6 +480,8 @@ export default function CrmPrintSettings() {
             Los cambios se guardan para este equipo. Imprime un ticket de prueba para confirmar que todo quedó listo.
           </p>
         </section>
+
+        <PrintConnectorSection businessId={business?.id} />
       </DashboardLayoutContent>
     </DashboardAppShell>
   );

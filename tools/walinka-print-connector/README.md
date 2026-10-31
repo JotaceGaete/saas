@@ -1,4 +1,4 @@
-# Walinka Print Connector — prototipo E1
+# Walinka Print Connector — E2 (servicio local con emparejamiento)
 
 Fase E1 del diseño `docs/printing/walinka-print-connector.md`: demostrar impresión RAW, corte y apertura de cajón desde un programa Windows propio, sin QZ Tray.
 
@@ -91,3 +91,33 @@ El ticket usa ESC/POS. La Star debe estar en modo que interprete ESC/POS. No cam
 - `EscPos.cs`: bytes ESC/POS. El corte `GS V 66 0` coincide con la estrategia `gs-v-modern` ya validada en `src/lib/printing/receipts/escPosCapabilities.js`.
 - `TicketBuilder.cs`: ticket de prueba.
 - `COMPATIBILIDAD.md`: informe de compatibilidad y limitaciones.
+
+## E2 — servicio local (Walinka se conecta aquí)
+
+El ejecutable además corre como servicio HTTP en `http://127.0.0.1:47801`.
+Solo escucha en loopback y solo acepta orígenes permitidos (`https://go.ventalink.app`,
+`https://go.walinka.com`).
+
+```
+.\WalinkaPrintConnector.exe serve
+```
+
+Emparejamiento (una vez por equipo):
+
+1. En este equipo ejecuta `.\WalinkaPrintConnector.exe pair`. Muestra un código de 6 dígitos.
+2. En Walinka, Configuración de impresión → Walinka Print Connector → escribe ese código y pulsa "Emparejar". Vale 5 minutos.
+3. Tras 5 intentos fallidos el código caduca. Un código solo sirve una vez.
+4. El token queda guardado solo como hash SHA-256, ligado al origen que emparejó.
+
+Endpoints: `GET /v1/health`, `POST /v1/pair`, `GET /v1/printers`,
+`POST /v1/printers/test` (corte de prueba), `POST /v1/print` (ticket con `idempotencyKey`),
+`GET /v1/jobs/{key}`. No hay endpoint de cajón: `ESC p` no se expone.
+
+Idempotencia: el mismo `idempotencyKey` no vuelve a imprimirse mientras esté en
+`printing` o `sent_to_spooler`; solo se reenvía si quedó en `failed`.
+Estado `sent_to_spooler` significa "Windows aceptó el trabajo", no "la impresora cortó".
+
+Autoprueba sin impresora: `.\WalinkaPrintConnector.exe selftest` (53 pruebas).
+
+Pendiente antes de piloto: instalador, arranque automático, firma de código,
+verificación en navegador con venta real y corte del Xprinter.

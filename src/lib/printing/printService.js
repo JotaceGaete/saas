@@ -33,13 +33,20 @@ export const printService = {
   },
 
   /**
+   * E3 — `connector` es opcional: una instancia de localConnectorProvider
+   * (Walinka Print Connector). Sin ella se usa QZ Tray, como hasta ahora.
+   * Nunca hay fallback automático entre ambos: el que llama decide.
+   *
    * @param {import('./receipts/renderEscPosReceipt').Receipt} receipt
-   * @param {{ printerName: string, copies?: number }} target
+   * @param {{ printerName: string, copies?: number, idempotencyKey?: string, connector?: object }} target
    */
-  printReceipt: async (receipt, { printerName, copies } = {}) => {
+  printReceipt: async (receipt, { printerName, copies, idempotencyKey, connector } = {}) => {
     // PRINT-4: renderEscPosReceipt es async (el logo requiere cargar y
     // rasterizar una imagen) -- ver receipts/renderEscPosReceipt.js.
     const bytes = await renderEscPosReceipt(receipt);
+    if (connector) {
+      return connector.print(printerName, bytes, { copies, idempotencyKey });
+    }
     return provider.print(printerName, bytes, { copies });
   },
 };

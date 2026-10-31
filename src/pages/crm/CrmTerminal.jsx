@@ -24,6 +24,7 @@ import {
 import { printService } from 'lib/printing/printService';
 import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
+import { buildConnectorConfigKey, buildConnectorTarget, readConnectorConfig } from 'lib/printing/connectorConfigStorage';
 
 // CAJA-CIERRE-CONCILIACION-1 -- 'card' genérico se reemplaza por
 // debit_card/credit_card para ventas NUEVAS (permite conciliar cada
@@ -323,14 +324,26 @@ function CrmTerminalUI() {
   const [printStatus, setPrintStatus] = useState('idle');
   const [printErrorMessage, setPrintErrorMessage] = useState(null);
 
-  const printCurrentTicket = useCallback(async () => {
+  // E3 — con el Walinka Print Connector activo y emparejado, el ticket sale
+  // por el conector. La clave de idempotencia evita que una reconexión o un
+  // reintento automático imprima dos veces la misma venta: el automático usa
+  // `sale:<id>:ticket`; la reimpresión manual lleva una clave nueva, porque
+  // es una acción explícita del cajero y sí debe imprimir.
+  // Sin conector activo, todo sigue por QZ Tray como antes.
+  const printCurrentTicket = useCallback(async (options = {}) => {
     if (!ticketData) return;
     const printerConfig = readPrinterConfig(buildPrinterConfigKey(business?.id));
-    if (!printerConfig.printerName) {
+    const connectorTarget = buildConnectorTarget(readConnectorConfig(buildConnectorConfigKey(business?.id)));
+    const printerName = connectorTarget?.printerName ?? printerConfig.printerName;
+    if (!printerName) {
       setPrintStatus('missing_printer');
       setPrintErrorMessage(null);
       return;
     }
+    const saleKey = String(ticketData.sale?.id ?? ticketData.sale?.invoice_number);
+    const idempotencyKey = options.reprint
+      ? `sale:${saleKey}:reprint:${Date.now()}${Math.random().toString(36).slice(2, 8)}`
+      : `sale:${saleKey}:ticket`;
     setPrintStatus('printing');
     setPrintErrorMessage(null);
     try {
@@ -348,7 +361,13 @@ function CrmTerminalUI() {
         cutStrategyId: printerConfig.cutStrategyId,
         effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,
       });
-      await printService.printReceipt(receipt, { printerName: printerConfig.printerName });
+      await printService.printReceipt(receipt, {
+        printerName,
+        idempotencyKey,
+        connector: connectorTarget?.connector,
+      });
+      // Un duplicado significa que el conector ya lo había enviado: para el
+      // cajero es éxito, y no se vuelve a imprimir.
       setPrintStatus('success');
     } catch (err) {
       // PRINT-3A-BUG1: QZ Tray reemplaza cualquier rechazo de la firma por
@@ -1387,9 +1406,12 @@ function CrmTerminalUI() {
   // Reutilizada tanto por "Reimprimir" como por "Reintentar impresión":
   // ambas reenvían el mismo ticket ya construido, nunca vuelven a crear
   // la venta ni a tocar pagos/stock.
+  // E3: tras un error, el reintento reutiliza la clave original (el conector
+  // solo permite reenviar una clave en estado `failed`); una reimpresión
+  // normal, con la venta ya impresa, usa una clave nueva.
   const handleReprint = useCallback(() => {
-    printCurrentTicket();
-  }, [printCurrentTicket]);
+    printCurrentTicket({ reprint: printStatus !== 'error' });
+  }, [printCurrentTicket, printStatus]);
 
   const handleGoToPrintSettings = useCallback(() => {
     navigate('/crm/impresion');

@@ -40,6 +40,7 @@ import {
 import { printService } from 'lib/printing/printService';
 import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
+import { buildConnectorConfigKey, buildConnectorTarget, readConnectorConfig } from 'lib/printing/connectorConfigStorage';
 
 const METHOD_ORDER = ['cash', 'card', 'bank_transfer', 'check', 'other'];
 
@@ -1931,7 +1932,10 @@ export default function CrmCash() {
     if (!payment?.invoice_id || reprintingId) return;
     setReprintError('');
     const printerConfig = readPrinterConfig(buildPrinterConfigKey(business?.id));
-    if (!printerConfig.printerName) {
+    // E3: con el conector activo se usa su impresora; si no, QZ como antes.
+    const connectorTarget = buildConnectorTarget(readConnectorConfig(buildConnectorConfigKey(business?.id)));
+    const printerName = connectorTarget?.printerName ?? printerConfig.printerName;
+    if (!printerName) {
       setReprintError('No hay una impresora configurada en este equipo. Configúrala en Configuración de impresión.');
       return;
     }
@@ -1970,7 +1974,13 @@ export default function CrmCash() {
         cutStrategyId: printerConfig.cutStrategyId,
         effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,
       });
-      await printService.printReceipt(receipt, { printerName: printerConfig.printerName });
+      // Reimpresión explícita: clave nueva por intento, para que sí imprima.
+      const nonce = Math.random().toString(36).slice(2, 10);
+      await printService.printReceipt(receipt, {
+        printerName,
+        idempotencyKey: `sale:${invoice.id}:reprint:${Date.now()}${nonce}`,
+        connector: connectorTarget?.connector,
+      });
     } catch (err) {
       setReprintError(err?.message || 'No se pudo reimprimir el comprobante.');
     } finally {
