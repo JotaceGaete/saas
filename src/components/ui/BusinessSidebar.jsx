@@ -33,6 +33,7 @@ const NAV_ITEMS = [
       { label: 'Clientes',         path: '/crm/clientes' },
       { label: 'Presupuestos',     path: '/crm/presupuestos' },
       { label: 'Notas de venta',   path: '/crm/facturas' },
+      { label: 'Cola fiscal',      path: '/crm/fiscal' },
       { label: 'TPV',              path: '/crm/terminal', highlight: true },
       { label: 'Impresión',        path: '/crm/impresion' },
       { label: 'Caja',             path: '/crm/caja' },

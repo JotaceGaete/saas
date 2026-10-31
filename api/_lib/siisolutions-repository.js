@@ -13,6 +13,16 @@ export function createFiscalIssuanceRepository(supabaseAdmin) {
       if (error) throw new Error('Unable to claim fiscal issuance');
       return data === true;
     },
+    async registerPending({ businessId, saleId, operationId, dteType }) {
+      const { data, error } = await supabaseAdmin.rpc('crm_fiscal_register_pending', {
+        p_business_id: businessId,
+        p_sale_id: saleId,
+        p_operation_id: operationId,
+        p_dte_type: dteType,
+      });
+      if (error) throw new Error('Unable to register pending fiscal issuance');
+      return data === true;
+    },
     async finalize({ businessId, saleId, operationId, state, folio, xmlBase64, pdfBase64 }) {
       const { data, error } = await supabaseAdmin.rpc('crm_finalize_fiscal_issuance', {
         p_business_id: businessId,
