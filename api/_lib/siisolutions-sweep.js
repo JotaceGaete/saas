@@ -62,7 +62,9 @@ export function createPointFiscalSweeper({ listCandidates, verifySale, registerP
  */
 export function createPointSweepCandidateLister(admin, { sinceDays = 14 } = {}) {
   return async function listCandidates({ limit }) {
-    const since = new Date(Date.now() - sinceDays * 86400000).toISOString();
+    const rollingSince = Date.now() - sinceDays * 86400000;
+    const cutoff = notBefore ? Date.parse(notBefore) : NaN;
+    const since = new Date(Number.isFinite(cutoff) ? Math.max(rollingSince, cutoff) : rollingSince).toISOString();
     const { data: ops, error: opsError } = await admin.from('crm_pos_point_operations')
       .select('business_id,crm_invoice_id,created_at')
       .not('crm_invoice_id', 'is', null)
