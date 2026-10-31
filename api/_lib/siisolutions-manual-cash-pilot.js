@@ -79,7 +79,7 @@ export function createConfiguredManualCashFiscalPilot({
   return async args => {
     const readiness = inspectDteCoreReadiness(env);
     if (!readiness.issuerCredentialsConfigured) return { state: 'blocked', reason: readiness.configIssue };
-    if (!readiness.simulationEnabled) return { state: 'blocked', reason: 'SIMULATION_NOT_ENABLED' };
+    if (!readiness.simulationEnabled && env.SIISOLUTIONS_EMISSION_ENABLED !== 'live') return { state: 'blocked', reason: 'FISCAL_EMISSION_NOT_ENABLED' };
     return pilot(args);
   };
 }
