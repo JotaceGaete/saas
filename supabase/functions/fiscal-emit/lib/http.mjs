@@ -15,10 +15,14 @@ const ACTIONS = new Set(['emit', 'reprint']);
 const STATUS_BY_CODE = {
   SALE_NOT_FOUND: 404,
   NOT_ISSUED: 404,
+  FISCAL_ROLE_REQUIRED: 403,
   ALREADY_IN_PROGRESS: 409,
   NOT_EMITTABLE_IN_STATE: 409,
   UNKNOWN_REQUIRES_RECONCILIATION: 409,
   FISCAL_CROSS_PIPELINE_CONFLICT: 409,
+  // La operación está en 'sending' y la recuperación debe decidir. El cliente NO debe reintentar
+  // la emisión: un reintento daría 409 NOT_EMITTABLE_IN_STATE, que es lo correcto.
+  PERSIST_PENDING_RECOVERY: 409,
   PROVIDER_NOT_READY: 503,
   CREDENTIALS_MISSING: 503,
 };

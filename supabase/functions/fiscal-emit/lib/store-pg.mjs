@@ -4,7 +4,7 @@
 // GUARDA: createPgStore se niega a conectar salvo que la base sea local y se llame *_test.
 
 import pg from 'pg';
-import { mapCredentialRecord, mapEmissionContext, mapIssuance, mapRpcError } from './store-common.mjs';
+import { mapActorRole, mapCredentialRecord, mapEmissionContext, mapIssuance, mapRpcError, mapStaleList } from './store-common.mjs';
 
 const LOCAL_HOSTS = new Set(['', 'localhost', '127.0.0.1', '::1']);
 
@@ -106,6 +106,39 @@ export function createPgStore(cfg) {
       return Boolean(await scalar(
         `select public.crm_fiscal_mark_failed($1, $2, $3, $4) as ok`,
         [businessId, saleId, operationId, errorCode], 'ok',
+      ));
+    },
+
+    async loadActorRole(businessId, userId) {
+      return mapActorRole(await scalar(
+        `select public.crm_fiscal_actor_role($1, $2) as r`, [businessId, userId], 'r',
+      ));
+    },
+
+    async storeReceipt(businessId, saleId, operationId, doc) {
+      return Boolean(await scalar(
+        `select public.crm_fiscal_store_receipt($1, $2, $3, $4, $5, $6) as ok`,
+        [businessId, saleId, operationId, doc.folio, doc.xmlBase64, doc.pdfBase64], 'ok',
+      ));
+    },
+
+    async listStaleSending(before) {
+      return mapStaleList(await scalar(
+        `select public.crm_fiscal_list_stale_sending($1) as j`, [before.toISOString()], 'j',
+      ));
+    },
+
+    async finalizeFromReceipt(businessId, saleId, operationId) {
+      return Boolean(await scalar(
+        `select public.crm_fiscal_finalize_from_receipt($1, $2, $3) as ok`,
+        [businessId, saleId, operationId], 'ok',
+      ));
+    },
+
+    async markStaleUnknown(businessId, saleId, operationId, before) {
+      return Boolean(await scalar(
+        `select public.crm_fiscal_mark_stale_unknown($1, $2, $3, $4) as ok`,
+        [businessId, saleId, operationId, before.toISOString()], 'ok',
       ));
     },
 

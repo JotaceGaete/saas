@@ -101,3 +101,41 @@ test('reimpresión devuelve el PDF guardado solo al dueño', async () => {
 test('la clave de operación de la venta es WLK-<business>-<sale>', () => {
   assert.equal(operationIdFor('B', 'S'), 'WLK-B-S');
 });
+
+test('rol insuficiente -> 403 FISCAL_ROLE_REQUIRED, sin llamar al proveedor', async () => {
+  const { store, provider, handle } = build();
+  store.revokeRole(IDS.bizA, IDS.userA, 'fiscal_owner');
+  store.grantRole(IDS.bizA, IDS.userA, 'fiscal_viewer');
+  const r = await handle({ method: 'POST', authHeader: 'Bearer token-a', body: { action: 'emit', saleId: UUID_SALE } });
+  assert.equal(r.status, 403);
+  assert.deepEqual(r.body, { error: 'FISCAL_ROLE_REQUIRED' });
+  assert.equal(provider.calls, 0);
+});
+
+test('viewer puede reimprimir pero no emitir', async () => {
+  const { store, handle } = build();
+  await handle({ method: 'POST', authHeader: 'Bearer token-a', body: { action: 'emit', saleId: UUID_SALE } });
+  store.revokeRole(IDS.bizA, IDS.userA, 'fiscal_owner');
+  store.grantRole(IDS.bizA, IDS.userA, 'fiscal_viewer');
+  assert.equal((await handle({ method: 'POST', authHeader: 'Bearer token-a', body: { action: 'reprint', saleId: UUID_SALE } })).status, 200);
+});
+
+test('persistencia pendiente de recuperación -> 409 PERSIST_PENDING_RECOVERY (el cliente no reintenta)', async () => {
+  const { store, provider, handle } = build();
+  store.injectFault('finalize', { mode: 'before', times: 99 });
+  const r = await handle({ method: 'POST', authHeader: 'Bearer token-a', body: { action: 'emit', saleId: UUID_SALE } });
+  assert.equal(r.status, 409);
+  assert.deepEqual(r.body, { error: 'PERSIST_PENDING_RECOVERY' });
+  assert.equal(provider.calls, 1);
+  const again = await handle({ method: 'POST', authHeader: 'Bearer token-a', body: { action: 'emit', saleId: UUID_SALE } });
+  assert.equal(again.body.error, 'NOT_EMITTABLE_IN_STATE');
+  assert.equal(provider.calls, 1);
+});
+
+test('el manejador no tiene ruta de reconciliación ni de recuperación', async () => {
+  const { handle } = build();
+  for (const action of ['reconcile', 'recover', 'recoverStaleSending']) {
+    const r = await handle({ method: 'POST', authHeader: 'Bearer token-a', body: { action, saleId: UUID_SALE } });
+    assert.equal(r.body.error, 'UNKNOWN_ACTION', action);
+  }
+});

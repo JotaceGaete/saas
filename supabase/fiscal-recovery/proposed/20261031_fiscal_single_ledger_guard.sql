@@ -529,4 +529,248 @@ revoke all on function public.crm_fiscal_reconcile_with_evidence(uuid, uuid, tex
 grant execute on function public.crm_fiscal_reconcile_with_evidence(uuid, uuid, text, text, integer, text, text, text, text, text, text, timestamptz)
   to service_role;
 
+-- ---------------------------------------------------------------------------
+-- 3f. Roles fiscales por negocio. El dueño de wa_businesses ya no basta por sí solo:
+--     la acción exige además una fila activa con un rol fiscal. Se siembra 'fiscal_owner' para
+--     los dueños actuales, así que el alcance de hoy no cambia; cualquier otro rol hay que concederlo.
+-- ---------------------------------------------------------------------------
+create table if not exists fiscal.business_fiscal_roles (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references public.wa_businesses(id) on delete restrict,
+  user_id uuid not null,
+  role text not null check (role in ('fiscal_owner', 'fiscal_operator', 'fiscal_viewer')),
+  granted_by uuid,
+  granted_at timestamptz not null default now(),
+  revoked_at timestamptz
+);
+create unique index if not exists business_fiscal_roles_active_idx
+  on fiscal.business_fiscal_roles (business_id, user_id, role) where revoked_at is null;
+
+alter table fiscal.business_fiscal_roles enable row level security;
+revoke all on fiscal.business_fiscal_roles from public, anon, authenticated;
+grant select, insert, update on fiscal.business_fiscal_roles to service_role;
+
+insert into fiscal.business_fiscal_roles (business_id, user_id, role)
+select b.id, b.user_id, 'fiscal_owner' from public.wa_businesses b where b.user_id is not null
+on conflict do nothing;
+
+-- Rol efectivo de un usuario sobre un negocio. El permiso sale SOLO de fiscal.business_fiscal_roles
+-- (fila activa) y del negocio activo. wa_businesses.user_id no concede permisos por sí mismo: el
+-- dueño tiene su propia fila 'fiscal_owner' (sembrada abajo y por trigger en cada alta).
+-- Devuelve el rol de mayor privilegio o NULL.
+create or replace function fiscal.actor_role(p_business_id uuid, p_user_id uuid)
+returns text
+language sql
+stable
+security definer
+set search_path = pg_catalog, public, fiscal
+as $$
+  select r.role
+    from fiscal.business_fiscal_roles r
+    join public.wa_businesses b on b.id = r.business_id
+   where r.business_id = p_business_id and r.user_id = p_user_id and r.revoked_at is null
+     and b.is_active is not false
+   order by case r.role when 'fiscal_owner' then 1 when 'fiscal_operator' then 2 else 3 end
+   limit 1;
+$$;
+
+-- Negocios nuevos: el dueño recibe fiscal_owner al crearse. Sin esto, un alta posterior a esta
+-- migración quedaría sin ningún rol fiscal. (Cambios de dueño NO revocan roles: decisión pendiente.)
+create or replace function fiscal.seed_owner_role()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public, fiscal
+as $$
+begin
+  if new.user_id is not null then
+    insert into fiscal.business_fiscal_roles (business_id, user_id, role)
+    values (new.id, new.user_id, 'fiscal_owner')
+    on conflict do nothing;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists wa_businesses_seed_fiscal_owner on public.wa_businesses;
+create trigger wa_businesses_seed_fiscal_owner
+  after insert on public.wa_businesses
+  for each row execute function fiscal.seed_owner_role();
+
+revoke all on function fiscal.actor_role(uuid, uuid) from public, anon, authenticated;
+grant execute on function fiscal.actor_role(uuid, uuid) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 3g. Write-ahead de la respuesta del proveedor (solo-anexar). Se guarda ANTES de finalizar.
+--     Si la finalización falla, la respuesta queda y la recuperación finaliza desde aquí,
+--     sin volver a llamar al proveedor.
+-- ---------------------------------------------------------------------------
+create table if not exists fiscal.crm_fiscal_provider_receipts (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references public.wa_businesses(id) on delete restrict,
+  sale_id uuid not null,
+  operation_id text not null,
+  folio integer not null check (folio > 0),
+  xml_base64 text not null,
+  pdf_base64 text not null,
+  xml_sha256 text not null check (xml_sha256 ~ '^[0-9a-f]{64}$'),
+  pdf_sha256 text not null check (pdf_sha256 ~ '^[0-9a-f]{64}$'),
+  created_at timestamptz not null default now(),
+  constraint receipts_sale_fk foreign key (sale_id, business_id)
+    references public.crm_invoices(id, business_id),
+  constraint receipts_one_per_operation unique (business_id, sale_id, operation_id)
+);
+
+alter table fiscal.crm_fiscal_provider_receipts enable row level security;
+revoke all on fiscal.crm_fiscal_provider_receipts from public, anon, authenticated;
+grant select, insert on fiscal.crm_fiscal_provider_receipts to service_role;
+
+drop trigger if exists crm_provider_receipts_append_only on fiscal.crm_fiscal_provider_receipts;
+create trigger crm_provider_receipts_append_only
+  before update or delete on fiscal.crm_fiscal_provider_receipts
+  for each row execute function fiscal.dte39_evidence_append_only();
+
+create or replace function public.crm_fiscal_store_receipt(
+  p_business_id uuid, p_sale_id uuid, p_operation_id text,
+  p_folio integer, p_xml_base64 text, p_pdf_base64 text
+) returns boolean
+language plpgsql
+security invoker
+set search_path = public, fiscal
+as $$
+declare
+  v_status text;
+  v_xml text := encode(sha256(decode(p_xml_base64, 'base64')), 'hex');
+  v_pdf text := encode(sha256(decode(p_pdf_base64, 'base64')), 'hex');
+  v_existing fiscal.crm_fiscal_provider_receipts%rowtype;
+  v_inserted integer;
+begin
+  if p_folio is null or p_folio <= 0 or nullif(btrim(coalesce(p_operation_id, '')), '') is null then
+    raise exception 'Invalid fiscal receipt';
+  end if;
+  perform pg_advisory_xact_lock(hashtextextended('fiscal_sale:' || p_sale_id::text, 0));
+  select f.status into v_status from public.crm_fiscal_issuances f
+   where f.business_id = p_business_id and f.sale_id = p_sale_id and f.dte_type = 39
+     and f.operation_id = p_operation_id and f.provider = 'siisolutions'
+   for update;
+  if v_status is distinct from 'sending' then raise exception 'FISCAL_NOT_SENDING'; end if;
+
+  insert into fiscal.crm_fiscal_provider_receipts
+    (business_id, sale_id, operation_id, folio, xml_base64, pdf_base64, xml_sha256, pdf_sha256)
+  values (p_business_id, p_sale_id, p_operation_id, p_folio, p_xml_base64, p_pdf_base64, v_xml, v_pdf)
+  on conflict (business_id, sale_id, operation_id) do nothing;
+  get diagnostics v_inserted = row_count;
+  if v_inserted = 0 then
+    select * into v_existing from fiscal.crm_fiscal_provider_receipts
+     where business_id = p_business_id and sale_id = p_sale_id and operation_id = p_operation_id;
+    if v_existing.folio <> p_folio or v_existing.xml_sha256 <> v_xml or v_existing.pdf_sha256 <> v_pdf then
+      raise exception 'FISCAL_RECEIPT_CONFLICT';
+    end if;
+  end if;
+  return true;
+end;
+$$;
+
+revoke all on function public.crm_fiscal_store_receipt(uuid, uuid, text, integer, text, text) from public, anon, authenticated;
+grant execute on function public.crm_fiscal_store_receipt(uuid, uuid, text, integer, text, text) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 3h. Recuperación de 'sending'. NUNCA llama al proveedor ni reemite.
+--     - Con recibo: sending -> issued desde el recibo (el documento ya lo emitió el proveedor).
+--     - Sin recibo y vencida: sending -> unknown. Solo reconciliación manual decide después.
+-- ---------------------------------------------------------------------------
+create or replace function public.crm_fiscal_list_stale_sending(p_before timestamptz)
+returns jsonb
+language sql
+stable
+security invoker
+set search_path = public, fiscal
+as $$
+  select coalesce(jsonb_agg(jsonb_build_object(
+           'business_id', f.business_id, 'sale_id', f.sale_id,
+           'operation_id', f.operation_id, 'has_receipt', exists (
+             select 1 from fiscal.crm_fiscal_provider_receipts r
+              where r.business_id = f.business_id and r.sale_id = f.sale_id and r.operation_id = f.operation_id)
+         ) order by f.updated_at), '[]'::jsonb)
+    from public.crm_fiscal_issuances f
+   where f.status = 'sending' and f.dte_type = 39 and f.provider = 'siisolutions'
+     and f.updated_at < p_before;
+$$;
+
+revoke all on function public.crm_fiscal_list_stale_sending(timestamptz) from public, anon, authenticated;
+grant execute on function public.crm_fiscal_list_stale_sending(timestamptz) to service_role;
+
+create or replace function public.crm_fiscal_finalize_from_receipt(
+  p_business_id uuid, p_sale_id uuid, p_operation_id text
+) returns boolean
+language plpgsql
+security invoker
+set search_path = public, fiscal
+as $$
+declare
+  v_r fiscal.crm_fiscal_provider_receipts%rowtype;
+  v_count integer;
+begin
+  perform pg_advisory_xact_lock(hashtextextended('fiscal_sale:' || p_sale_id::text, 0));
+  select * into v_r from fiscal.crm_fiscal_provider_receipts
+   where business_id = p_business_id and sale_id = p_sale_id and operation_id = p_operation_id;
+  if not found then return false; end if;
+  update public.crm_fiscal_issuances
+     set status = 'issued', folio = v_r.folio, xml_base64 = v_r.xml_base64, pdf_base64 = v_r.pdf_base64,
+         error_code = null, updated_at = now()
+   where business_id = p_business_id and sale_id = p_sale_id and dte_type = 39
+     and operation_id = p_operation_id and provider = 'siisolutions' and status = 'sending';
+  get diagnostics v_count = row_count;
+  return v_count = 1;
+end;
+$$;
+
+revoke all on function public.crm_fiscal_finalize_from_receipt(uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.crm_fiscal_finalize_from_receipt(uuid, uuid, text) to service_role;
+
+create or replace function public.crm_fiscal_mark_stale_unknown(
+  p_business_id uuid, p_sale_id uuid, p_operation_id text, p_before timestamptz
+) returns boolean
+language plpgsql
+security invoker
+set search_path = public, fiscal
+as $$
+declare v_count integer;
+begin
+  perform pg_advisory_xact_lock(hashtextextended('fiscal_sale:' || p_sale_id::text, 0));
+  -- Nunca si existe recibo: en ese caso hay que finalizar desde el recibo.
+  if exists (select 1 from fiscal.crm_fiscal_provider_receipts
+              where business_id = p_business_id and sale_id = p_sale_id and operation_id = p_operation_id) then
+    return false;
+  end if;
+  update public.crm_fiscal_issuances
+     set status = 'unknown', error_code = 'STALE_SENDING', updated_at = now()
+   where business_id = p_business_id and sale_id = p_sale_id and dte_type = 39
+     and operation_id = p_operation_id and provider = 'siisolutions'
+     and status = 'sending' and updated_at < p_before;
+  get diagnostics v_count = row_count;
+  return v_count = 1;
+end;
+$$;
+
+revoke all on function public.crm_fiscal_mark_stale_unknown(uuid, uuid, text, timestamptz) from public, anon, authenticated;
+grant execute on function public.crm_fiscal_mark_stale_unknown(uuid, uuid, text, timestamptz) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 3i. Wrapper público del rol efectivo. PostgREST solo expone el esquema public, así que
+--     supabase-js no puede llamar a fiscal.actor_role directamente.
+-- ---------------------------------------------------------------------------
+create or replace function public.crm_fiscal_actor_role(p_business_id uuid, p_user_id uuid)
+returns text
+language sql
+stable
+security invoker
+set search_path = public, fiscal
+as $$
+  select fiscal.actor_role(p_business_id, p_user_id);
+$$;
+
+revoke all on function public.crm_fiscal_actor_role(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.crm_fiscal_actor_role(uuid, uuid) to service_role;
+
 commit;

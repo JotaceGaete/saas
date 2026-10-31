@@ -31,7 +31,7 @@ export function createSimulatedProvider({ scenario = 'ok', folioStart = 1000, de
     const folio = next++;
     const doc = {
       folio: sc === 'no_folio' ? null : folio,
-      xmlBase64: 'PERTFPgo=',
+      xmlBase64: 'PERURS8+', // "<DTE/>" en base64 válido (antes era base64 mal formado)
       pdfBase64: sc === 'no_pdf' ? null : 'JVBERi0xLjQK',
     };
     byOperation.set(opId, doc);

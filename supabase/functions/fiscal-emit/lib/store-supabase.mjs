@@ -1,26 +1,37 @@
 // Almacén del emisor sobre supabase-js (cliente con service_role). Es el que usa index.ts
-// en Supabase Edge Functions. Lee y escribe solo mediante las RPC del ledger (ver migración
-// propuesta, sección 3d) y SELECT puntuales sobre tablas de public.
+// en Supabase Edge Functions. Lee y escribe solo mediante RPC de esquema public (PostgREST solo
+// expone public) y SELECT puntuales sobre tablas de public.
 //
 // Cualquier cliente que se pase aquí debe ser de service_role. Nunca un cliente de usuario.
+//
+// ESTADO DE VERIFICACIÓN: el comportamiento frente a errores reales de PostgREST está cubierto
+// por pruebas con respuestas en forma PostgREST (test/unit/store-supabase.test.mjs). NO está
+// verificado contra un servidor PostgREST real; ese paso sigue pendiente.
 
-import { mapCredentialRecord, mapEmissionContext, mapIssuance, mapRpcError } from './store-common.mjs';
+import { mapCredentialRecord, mapEmissionContext, mapIssuance, mapPostgrestError, mapActorRole, mapStaleList, StoreError } from './store-common.mjs';
 
 export function createSupabaseStore(client) {
   if (!client || typeof client.rpc !== 'function' || typeof client.from !== 'function') {
     throw new Error('createSupabaseStore needs a supabase-js client');
   }
 
-  async function rpc(fn, args) {
-    const { data, error } = await client.rpc(fn, args);
-    if (error) throw mapRpcError(new Error(error.message));
-    return data;
+  // supabase-js devuelve { data, error } para errores de PostgREST. Una excepción lanzada
+  // (fallo de red antes de recibir respuesta) se convierte en StoreError sin detalles.
+  async function call(run) {
+    let res;
+    try {
+      res = await run();
+    } catch {
+      throw new StoreError('STORE_UNAVAILABLE');
+    }
+    if (res?.error) throw mapPostgrestError(res.error);
+    return res?.data ?? null;
   }
 
+  const rpc = (fn, args) => call(() => client.rpc(fn, args));
+
   async function select(table, columns, column, value) {
-    const { data, error } = await client.from(table).select(columns).eq(column, value).maybeSingle();
-    if (error) throw mapRpcError(new Error(error.message));
-    return data;
+    return call(() => client.from(table).select(columns).eq(column, value).maybeSingle());
   }
 
   return {
@@ -41,6 +52,10 @@ export function createSupabaseStore(client) {
       return r && { id: r.id, userId: r.user_id, countryCode: r.country_code };
     },
 
+    async loadActorRole(businessId, userId) {
+      return mapActorRole(await rpc('crm_fiscal_actor_role', { p_business_id: businessId, p_user_id: userId }));
+    },
+
     async getIssuance(businessId, saleId) {
       return mapIssuance(await rpc('crm_fiscal_get_issuance', { p_business_id: businessId, p_sale_id: saleId }));
     },
@@ -59,6 +74,17 @@ export function createSupabaseStore(client) {
       }));
     },
 
+    async storeReceipt(businessId, saleId, operationId, doc) {
+      return Boolean(await rpc('crm_fiscal_store_receipt', {
+        p_business_id: businessId,
+        p_sale_id: saleId,
+        p_operation_id: operationId,
+        p_folio: doc.folio,
+        p_xml_base64: doc.xmlBase64,
+        p_pdf_base64: doc.pdfBase64,
+      }));
+    },
+
     async finalize(businessId, saleId, operationId, out) {
       return Boolean(await rpc('crm_finalize_fiscal_issuance', {
         p_business_id: businessId,
@@ -74,6 +100,25 @@ export function createSupabaseStore(client) {
     async markFailed(businessId, saleId, operationId, errorCode) {
       return Boolean(await rpc('crm_fiscal_mark_failed', {
         p_business_id: businessId, p_sale_id: saleId, p_operation_id: operationId, p_error_code: errorCode,
+      }));
+    },
+
+    async listStaleSending(before) {
+      return mapStaleList(await rpc('crm_fiscal_list_stale_sending', { p_before: before.toISOString() }));
+    },
+
+    async finalizeFromReceipt(businessId, saleId, operationId) {
+      return Boolean(await rpc('crm_fiscal_finalize_from_receipt', {
+        p_business_id: businessId, p_sale_id: saleId, p_operation_id: operationId,
+      }));
+    },
+
+    async markStaleUnknown(businessId, saleId, operationId, before) {
+      return Boolean(await rpc('crm_fiscal_mark_stale_unknown', {
+        p_business_id: businessId,
+        p_sale_id: saleId,
+        p_operation_id: operationId,
+        p_before: before.toISOString(),
       }));
     },
 

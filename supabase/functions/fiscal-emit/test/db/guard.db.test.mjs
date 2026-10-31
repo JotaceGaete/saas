@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import pg from 'pg';
 import { createPgStore, assertLocalTestConfig } from '../../lib/store-pg.mjs';
 import { createFiscalEmitter } from '../../lib/emit.mjs';
+import { createReconciler } from '../../lib/reconciler.mjs';
 import { createSimulatedProvider } from '../../lib/providers/simulated.mjs';
 import { open as openSecret } from '../../lib/secrets.mjs';
 import { CFG, TEST_MASTER_KEY, makeFixture, otherUser, setEmissionControl } from './fixtures.mjs';
@@ -30,6 +31,11 @@ after(async () => {
 
 function emitterFor(provider) {
   return createFiscalEmitter({ store, provider, masterKey: TEST_MASTER_KEY, timeoutMs: 300 });
+}
+
+// Reconciliador con autorización de prueba explícita (la política real aún no está definida).
+function reconcilerFor() {
+  return createReconciler({ store, authorize: async () => true });
 }
 
 async function issuanceRow(businessId, saleId) {
@@ -161,7 +167,7 @@ test('timeout -> unknown; reintento bloqueado; reconciliación manual -> issued'
   await assert.rejects(emitter.emitSale({ actorUserId: f.userId, saleId: f.saleId }), { code: 'UNKNOWN_REQUIRES_RECONCILIATION' });
   assert.equal(provider.calls, 1);
 
-  const rec = await emitter.reconcile({
+  const rec = await reconcilerFor().reconcile({
     actorUserId: f.userId,
     saleId: f.saleId,
     evidence: {
@@ -390,7 +396,7 @@ test('evidencia: guarda hashes SHA-256 del XML y PDF, no el contenido', async ()
   const f = await unknownSale();
   const { createHash } = await import('node:crypto');
   const emitter = emitterFor(createSimulatedProvider());
-  await emitter.reconcile({ actorUserId: f.userId, saleId: f.saleId, evidence: EV() });
+  await reconcilerFor().reconcile({ actorUserId: f.userId, saleId: f.saleId, evidence: EV() });
   const r = await c.query(`select xml_sha256, pdf_sha256, outcome, folio from fiscal.crm_fiscal_reconciliation_evidence where sale_id = $1`, [f.saleId]);
   assert.equal(r.rows.length, 1);
   const sha = (b64) => createHash('sha256').update(Buffer.from(b64, 'base64')).digest('hex');
@@ -402,14 +408,14 @@ test('evidencia: guarda hashes SHA-256 del XML y PDF, no el contenido', async ()
 
 test('evidencia: solo-anexar: UPDATE y DELETE fallan', async () => {
   const f = await unknownSale();
-  await emitterFor(createSimulatedProvider()).reconcile({ actorUserId: f.userId, saleId: f.saleId, evidence: EV() });
+  await reconcilerFor().reconcile({ actorUserId: f.userId, saleId: f.saleId, evidence: EV() });
   await assert.rejects(c.query(`update fiscal.crm_fiscal_reconciliation_evidence set reviewer = 'x' where sale_id = $1`, [f.saleId]), { message: /FISCAL_EVIDENCE_IMMUTABLE/ });
   await assert.rejects(c.query(`delete from fiscal.crm_fiscal_reconciliation_evidence where sale_id = $1`, [f.saleId]), { message: /FISCAL_EVIDENCE_IMMUTABLE/ });
 });
 
 test('evidencia: resultado failed (no encontrada) cambia a failed sin folio y deja evidencia', async () => {
   const f = await unknownSale();
-  const r = await emitterFor(createSimulatedProvider()).reconcile({ actorUserId: f.userId, saleId: f.saleId, evidence: EV({
+  const r = await reconcilerFor().reconcile({ actorUserId: f.userId, saleId: f.saleId, evidence: EV({
     outcome: 'failed', folio: undefined, xmlBase64: undefined, pdfBase64: undefined, providerStatus: 'not_found',
     evidenceReference: 'portal-busqueda-0', reason: 'Buscada por RUT y monto, sin resultados' }) });
   assert.equal(r.status, 'failed');
@@ -432,7 +438,7 @@ test('evidencia: la RPC rechaza issued sin PDF aunque se llame directo a SQL', a
 
 test('evidencia: operación distinta de la del ledger se rechaza (FISCAL_NOT_RECONCILABLE)', async () => {
   const f = await unknownSale();
-  await assert.rejects(emitterFor(createSimulatedProvider()).reconcile({ actorUserId: f.userId, saleId: f.saleId, evidence: EV() })
+  await assert.rejects(reconcilerFor().reconcile({ actorUserId: f.userId, saleId: f.saleId, evidence: EV() })
     .then(async () => store.reconcileWithEvidence(f.businessId, f.saleId, 'WLK-otra', { ...EV(), providerStatus: 'found', checkedAt: '2026-10-31T12:00:00Z' })),
   { code: 'FISCAL_NOT_RECONCILABLE' });
 });

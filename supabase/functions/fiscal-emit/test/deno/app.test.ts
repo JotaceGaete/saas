@@ -77,12 +77,12 @@ Deno.test('cabeceras de respuesta: no-store y JSON', async () => {
   assertEquals(r.headers.get('content-type'), 'application/json');
 });
 
-Deno.test('venta propia con proveedor bloqueado -> 503 PROVIDER_NOT_READY, sin reclamo ni llamada al proveedor', async () => {
-  const calls: Array<{ fn: string; args: any }> = [];
-  const db: FiscalDbClient = {
+function ownedDb(calls: Array<{ fn: string; args: any }>, role: string | null): FiscalDbClient {
+  return {
     auth: { getUser: async () => ({ data: { user: { id: USER } }, error: null }) },
     rpc: async (fn: string, args: any) => {
       calls.push({ fn, args });
+      if (fn === 'crm_fiscal_actor_role') return { data: role, error: null };
       return { data: null, error: null }; // sin fila de ledger
     },
     from: (table: string) => {
@@ -94,9 +94,31 @@ Deno.test('venta propia con proveedor bloqueado -> 503 PROVIDER_NOT_READY, sin r
       return q;
     },
   };
-  const h = buildFiscalHandler({ db, provider: createDtecoreBlockedProvider(), masterKey: TEST_KEY });
+}
+
+Deno.test('venta propia con proveedor bloqueado -> 503 PROVIDER_NOT_READY, sin reclamo ni llamada al proveedor', async () => {
+  const calls: Array<{ fn: string; args: any }> = [];
+  const h = buildFiscalHandler({ db: ownedDb(calls, 'fiscal_owner'), provider: createDtecoreBlockedProvider(), masterKey: TEST_KEY });
   const r = await h(req({ action: 'emit', saleId: SALE }));
   assertEquals(r.status, 503);
   assertEquals((await r.json()).error, 'PROVIDER_NOT_READY');
   assertEquals(calls.some((c) => c.fn === 'crm_claim_fiscal_issuance'), false);
+  assertEquals(calls.some((c) => c.fn === 'crm_fiscal_actor_role' && c.args.p_business_id === BIZ && c.args.p_user_id === USER), true);
+});
+
+Deno.test('rol fiscal_viewer no puede emitir -> 403 FISCAL_ROLE_REQUIRED, sin reclamo', async () => {
+  const calls: Array<{ fn: string; args: any }> = [];
+  const h = buildFiscalHandler({ db: ownedDb(calls, 'fiscal_viewer'), provider: createDtecoreBlockedProvider(), masterKey: TEST_KEY });
+  const r = await h(req({ action: 'emit', saleId: SALE }));
+  assertEquals(r.status, 403);
+  assertEquals((await r.json()).error, 'FISCAL_ROLE_REQUIRED');
+  assertEquals(calls.some((c) => c.fn === 'crm_claim_fiscal_issuance'), false);
+});
+
+Deno.test('sin rol fiscal en el negocio -> 404 SALE_NOT_FOUND (no es miembro)', async () => {
+  const calls: Array<{ fn: string; args: any }> = [];
+  const h = buildFiscalHandler({ db: ownedDb(calls, null), provider: createDtecoreBlockedProvider(), masterKey: TEST_KEY });
+  const r = await h(req({ action: 'emit', saleId: SALE }));
+  assertEquals(r.status, 404);
+  assertEquals((await r.json()).error, 'SALE_NOT_FOUND');
 });

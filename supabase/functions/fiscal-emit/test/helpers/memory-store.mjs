@@ -1,6 +1,11 @@
 // Almacén en memoria con la MISMA semántica que las RPC de Postgres (claim, finalize, failed,
-// reconcile). Sirve para probar el orquestador sin base de datos. Las pruebas contra la base
-// real están en test/db/ y deben dar los mismos resultados.
+// recibos, recuperación, roles). Sirve para probar el orquestador sin base de datos. Las pruebas
+// contra la base real están en test/db/ y deben dar los mismos resultados.
+//
+// Inyección de fallos por método (injectFault):
+//   mode 'before' -> error de transporte ANTES de escribir (la escritura no ocurre).
+//   mode 'after'  -> la escritura OCURRE y luego la llamada falla (respuesta perdida).
+//   mode 'hang'   -> la llamada nunca vuelve (simula caída del proceso en ese punto).
 
 import { FiscalError } from '../../lib/errors.mjs';
 import { seal } from '../../lib/secrets.mjs';
@@ -14,7 +19,9 @@ export const IDS = Object.freeze({
   saleB: 'sale-b',
 });
 
-export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = true } = {}) {
+const ROLE_RANK = { fiscal_owner: 1, fiscal_operator: 2, fiscal_viewer: 3 };
+
+export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = true, now = () => new Date() } = {}) {
   const sales = new Map();
   const businesses = new Map();
   const issuances = new Map();
@@ -23,12 +30,17 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
   const payments = new Map();
   const pointOps = new Map();
   const creds = new Map();
+  const roles = new Map(); // `${b}|${u}` -> Set(role)
+  const receipts = new Map(); // `${b}|${s}|${op}` -> receipt
   const evidenceLog = [];
   const control = { enabled: emissionEnabled };
+  const faults = new Map();
+  const calls = {};
   const key = (b, s) => `${b}|${s}`;
+  const rkey = (b, u) => `${b}|${u}`;
 
-  function seed({ businessId, userId, saleId, total = 2380, cash = true, withLines = true, point = null }) {
-    businesses.set(businessId, { id: businessId, userId, countryCode: 'CL' });
+  function seed({ businessId, userId, saleId, total = 2380, cash = true, withLines = true, point = null, active = true, owner = true }) {
+    businesses.set(businessId, { id: businessId, userId, countryCode: 'CL', isActive: active });
     sales.set(saleId, {
       id: saleId, businessId, status: 'pagada', paidAt: new Date(), total, discountAmount: 0,
     });
@@ -41,30 +53,81 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
       : point ? [{ method: 'mercado_pago', amount: total, status: 'received', voided: false }] : []);
     pointOps.set(saleId, point ? [point] : []);
     creds.set(businessId, seal({ apiKey: `TEST-KEY-${businessId}` }, { key: masterKey, businessId }));
+    // Espejo de la migración: el dueño recibe fiscal_owner al sembrarse el negocio.
+    if (owner) grantRole(businessId, userId, 'fiscal_owner');
   }
 
-  return {
+  function grantRole(b, u, role) {
+    const k = rkey(b, u);
+    if (!roles.has(k)) roles.set(k, new Set());
+    roles.get(k).add(role);
+  }
+
+  function revokeRole(b, u, role) {
+    roles.get(rkey(b, u))?.delete(role);
+  }
+
+  // Ejecuta un método del almacén con la inyección de fallos activa.
+  function guard(name, fn) {
+    return async (...args) => {
+      calls[name] = (calls[name] ?? 0) + 1;
+      const f = faults.get(name);
+      if (f && f.times > 0) {
+        f.times -= 1;
+        if (f.mode === 'hang') return new Promise(() => {});
+        if (f.mode === 'before') throw new Error(`injected transport failure before ${name}`);
+        await fn(...args);
+        throw new Error(`injected response lost after ${name}`);
+      }
+      return fn(...args);
+    };
+  }
+
+  const stamp = (row) => { row.updatedAt = now(); };
+
+  const store = {
     seed,
+    grantRole,
+    revokeRole,
     control,
     issuances,
     creds,
     evidenceLog,
+    receipts,
     sales,
+    calls,
+    injectFault(name, { mode = 'before', times = 1 } = {}) {
+      faults.set(name, { mode, times });
+    },
+    clearFaults() { faults.clear(); },
     get masterKey() { return masterKey; },
 
-    async loadSaleById(saleId) {
+    loadSaleById: guard('loadSaleById', async (saleId) => {
       const s = sales.get(saleId);
       return s ? { ...s } : null;
-    },
-    async loadBusiness(bid) {
+    }),
+
+    loadBusiness: guard('loadBusiness', async (bid) => {
       const b = businesses.get(bid);
-      return b ? { ...b } : null;
-    },
-    async getIssuance(b, s) {
+      return b ? { id: b.id, userId: b.userId, countryCode: b.countryCode } : null;
+    }),
+
+    // Espejo de fiscal.actor_role: fila de rol activa en negocio activo; el de mayor privilegio.
+    // No mira wa_businesses.user_id: el permiso sale de business_fiscal_roles.
+    loadActorRole: guard('loadActorRole', async (b, u) => {
+      const biz = businesses.get(b);
+      if (!biz || biz.isActive === false) return null;
+      const set = roles.get(rkey(b, u));
+      if (!set || set.size === 0) return null;
+      return [...set].sort((x, y) => ROLE_RANK[x] - ROLE_RANK[y])[0];
+    }),
+
+    getIssuance: guard('getIssuance', async (b, s) => {
       const r = issuances.get(key(b, s));
       return r ? { ...r } : null;
-    },
-    async loadEmissionContext(b, s) {
+    }),
+
+    loadEmissionContext: guard('loadEmissionContext', async (b, s) => {
       const sale = sales.get(s);
       const sameTenant = sale && sale.businessId === b;
       return {
@@ -75,27 +138,48 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
         payments: sameTenant ? (payments.get(s) ?? []).map((p) => ({ ...p })) : [],
         pointOps: sameTenant ? (pointOps.get(s) ?? []).map((p) => ({ ...p })) : [],
       };
-    },
-    async loadCredentialRecord(b) { return creds.get(b) ?? null; },
+    }),
 
-    async claim(b, s, op) {
+    loadCredentialRecord: guard('loadCredentialRecord', async (b) => creds.get(b) ?? null),
+
+    claim: guard('claim', async (b, s, op) => {
       if (!control.enabled) throw new FiscalError('FISCAL_EMISSION_DISABLED');
       const sale = sales.get(s);
       if (!sale || sale.businessId !== b) throw new FiscalError('Invalid fiscal issuance claim');
       const k = key(b, s);
       const cur = issuances.get(k);
       if (!cur) {
-        issuances.set(k, { id: `iss-${k}`, businessId: b, saleId: s, operationId: op, status: 'sending', folio: null, pdfBase64: null });
+        const row = { id: `iss-${k}`, businessId: b, saleId: s, operationId: op, status: 'sending', folio: null, pdfBase64: null };
+        stamp(row);
+        issuances.set(k, row);
         return true;
       }
       if (cur.status === 'pending' && cur.operationId === op) {
         cur.status = 'sending';
+        stamp(cur);
         return true;
       }
       return false;
-    },
+    }),
 
-    async finalize(b, s, op, out) {
+    // Espejo de public.crm_fiscal_store_receipt: exige 'sending'; mismo contenido = idempotente.
+    storeReceipt: guard('storeReceipt', async (b, s, op, doc) => {
+      if (!Number.isSafeInteger(doc?.folio) || doc.folio <= 0 || !op) throw new FiscalError('Invalid fiscal receipt');
+      const cur = issuances.get(key(b, s));
+      if (!cur || cur.status !== 'sending' || cur.operationId !== op) throw new FiscalError('FISCAL_NOT_SENDING');
+      const rk = `${b}|${s}|${op}`;
+      const prev = receipts.get(rk);
+      if (prev) {
+        if (prev.folio !== doc.folio || prev.xmlBase64 !== doc.xmlBase64 || prev.pdfBase64 !== doc.pdfBase64) {
+          throw new FiscalError('FISCAL_RECEIPT_CONFLICT');
+        }
+        return true;
+      }
+      receipts.set(rk, { businessId: b, saleId: s, operationId: op, folio: doc.folio, xmlBase64: doc.xmlBase64, pdfBase64: doc.pdfBase64 });
+      return true;
+    }),
+
+    finalize: guard('finalize', async (b, s, op, out) => {
       const cur = issuances.get(key(b, s));
       if (!cur || cur.status !== 'sending' || cur.operationId !== op) return false;
       if (out.status === 'issued') {
@@ -104,17 +188,53 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
       } else {
         Object.assign(cur, { status: 'unknown', folio: null, xmlBase64: null, pdfBase64: null });
       }
+      stamp(cur);
       return true;
-    },
+    }),
 
-    async markFailed(b, s, op, code) {
+    markFailed: guard('markFailed', async (b, s, op, code) => {
       const cur = issuances.get(key(b, s));
       if (!cur || cur.status !== 'sending' || cur.operationId !== op) return false;
       Object.assign(cur, { status: 'failed', errorCode: code });
+      stamp(cur);
       return true;
-    },
+    }),
 
-    async reconcileWithEvidence(b, s, op, ev) {
+    // Espejo de public.crm_fiscal_list_stale_sending.
+    listStaleSending: guard('listStaleSending', async (before) => {
+      return [...issuances.values()]
+        .filter((r) => r.status === 'sending' && r.updatedAt && r.updatedAt < before)
+        .map((r) => ({
+          businessId: r.businessId,
+          saleId: r.saleId,
+          operationId: r.operationId,
+          hasReceipt: receipts.has(`${r.businessId}|${r.saleId}|${r.operationId}`),
+        }));
+    }),
+
+    // Espejo de public.crm_fiscal_finalize_from_receipt: sin proveedor.
+    finalizeFromReceipt: guard('finalizeFromReceipt', async (b, s, op) => {
+      const rec = receipts.get(`${b}|${s}|${op}`);
+      if (!rec) return false;
+      const cur = issuances.get(key(b, s));
+      if (!cur || cur.status !== 'sending' || cur.operationId !== op) return false;
+      Object.assign(cur, { status: 'issued', folio: rec.folio, xmlBase64: rec.xmlBase64, pdfBase64: rec.pdfBase64, errorCode: null });
+      stamp(cur);
+      return true;
+    }),
+
+    // Espejo de public.crm_fiscal_mark_stale_unknown: nunca si hay recibo.
+    markStaleUnknown: guard('markStaleUnknown', async (b, s, op, before) => {
+      if (receipts.has(`${b}|${s}|${op}`)) return false;
+      const cur = issuances.get(key(b, s));
+      if (!cur || cur.status !== 'sending' || cur.operationId !== op) return false;
+      if (!cur.updatedAt || !(cur.updatedAt < before)) return false;
+      Object.assign(cur, { status: 'unknown', errorCode: 'STALE_SENDING', folio: null, xmlBase64: null, pdfBase64: null });
+      stamp(cur);
+      return true;
+    }),
+
+    reconcileWithEvidence: guard('reconcileWithEvidence', async (b, s, op, ev) => {
       const cur = issuances.get(key(b, s));
       if (!cur || cur.status !== 'unknown' || cur.operationId !== op) return false;
       evidenceLog.push({ businessId: b, saleId: s, operationId: op, ...ev });
@@ -123,7 +243,10 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
       } else {
         Object.assign(cur, { status: 'failed', folio: null, xmlBase64: null, pdfBase64: null, errorCode: 'RECONCILED_NOT_FOUND' });
       }
+      stamp(cur);
       return true;
-    },
+    }),
   };
+
+  return store;
 }

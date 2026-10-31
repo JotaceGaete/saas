@@ -55,11 +55,56 @@ export function mapIssuance(raw) {
   return { id: raw.id, status: raw.status, folio: raw.folio, pdfBase64: raw.pdf_base64 ?? null };
 }
 
+// Error de infraestructura del almacén (red, PostgREST, función inexistente, etc.). No es un
+// rechazo de dominio: el emisor lo trata como "no sé si se escribió" y reintenta solo si es seguro.
+export class StoreError extends Error {
+  constructor(code, message = 'store request failed') {
+    super(message);
+    this.name = 'StoreError';
+    this.code = code;
+  }
+}
+
 // Convierte los errores de los RPC (FISCAL_* o 'Invalid fiscal ...') en FiscalError.
+// Usado por el almacén Postgres (pg), donde el mensaje llega tal cual de la base.
 export function mapRpcError(err) {
   const msg = err?.message ?? '';
   const m = /FISCAL_[A-Z_]+/.exec(msg);
   if (m) return new FiscalError(m[0], msg);
   if (/^Invalid fiscal/.test(msg)) return new FiscalError('INVALID_FISCAL_ARGUMENT', msg);
   return err;
+}
+
+// Error devuelto por PostgREST / supabase-js: { message, code, details, hint }.
+// Solo los errores del ledger (mensaje FISCAL_* o 'Invalid fiscal') son de dominio. Todo lo demás
+// (PGRST202 función no encontrada, PGRST116 varias filas, red, permisos) es StoreError sin
+// detalles internos. Nunca se expone el mensaje crudo del proveedor de base de datos.
+export function mapPostgrestError(error) {
+  const msg = String(error?.message ?? '');
+  const m = /FISCAL_[A-Z_]+/.exec(msg);
+  if (m) return new FiscalError(m[0], msg);
+  if (/^Invalid fiscal/.test(msg)) return new FiscalError('INVALID_FISCAL_ARGUMENT', msg);
+  const code = String(error?.code ?? '');
+  if (code === 'PGRST116') return new StoreError('STORE_UNEXPECTED_ROWS');
+  if (code === 'PGRST202') return new StoreError('STORE_FUNCTION_MISSING');
+  if (code === '42501') return new StoreError('STORE_PERMISSION_DENIED');
+  return new StoreError('STORE_UNAVAILABLE');
+}
+
+// Respuesta de public.crm_fiscal_actor_role(business, user): 'fiscal_owner' | ... | null.
+export function mapActorRole(raw) {
+  if (raw == null) return null;
+  return ['fiscal_owner', 'fiscal_operator', 'fiscal_viewer'].includes(raw) ? raw : null;
+}
+
+// Respuesta de public.crm_fiscal_list_stale_sending(before): arreglo de filas vencidas.
+export function mapStaleList(raw) {
+  if (raw == null) return [];
+  if (!Array.isArray(raw)) throw new StoreError('STORE_UNEXPECTED_SHAPE');
+  return raw.map((r) => ({
+    businessId: r.business_id,
+    saleId: r.sale_id,
+    operationId: r.operation_id,
+    hasReceipt: r.has_receipt === true,
+  }));
 }
