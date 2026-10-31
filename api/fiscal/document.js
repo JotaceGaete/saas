@@ -55,7 +55,7 @@ export default async function handler(req, res) {
     try {
       const token = bearer.slice(7);
       const payload = JSON.parse(Buffer.from(token.split('.')[1] || '', 'base64url').toString('utf8'));
-      const issuer = typeof payload.iss === 'string' ? payload.iss.replace(/\\/$/, '') : '';
+      const issuer = typeof payload.iss === 'string' ? payload.iss.trim().replace(/\/+$/, '') : '';
       if (issuer && issuer !== new URL(url).origin + '/auth/v1') {
         res.setHeader('Cache-Control', 'no-store');
         return res.status(401).json({ error: 'AUTH_PROJECT_MISMATCH' });
