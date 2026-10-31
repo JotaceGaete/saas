@@ -33,13 +33,15 @@ async function requestCashBoletaAutomatically({ businessId, invoiceId }) {
   try {
     const { data } = await supabase.auth.getSession();
     const accessToken = data?.session?.access_token;
-    if (!accessToken) return;
+    if (!accessToken) return { state: 'blocked', reason: 'SESSION_REQUIRED' };
     const result = await requestCashBoletaForCompletedSale({ businessId, invoiceId, accessToken });
     if (result.state !== 'issued') {
       console.warn('[fiscal] cash boleta not issued', { invoiceId, state: result.state, reason: result.reason });
     }
+    return result;
   } catch {
     console.warn('[fiscal] cash boleta request failed', { invoiceId });
+    return { state: 'unknown', reason: 'NETWORK_ERROR_RECONCILIATION_REQUIRED' };
   }
 }
 
@@ -327,6 +329,7 @@ function CrmTerminalUI() {
 
   // Ticket modal state — set after successful (or locally-fallback) sale
   const [ticketData, setTicketData] = useState(null);
+  const [fiscalEmission, setFiscalEmission] = useState({ state: 'idle' });
 
   const searchRef = useRef(null);
   const printedTicketRef = useRef(null);
@@ -1116,6 +1119,7 @@ function CrmTerminalUI() {
     if (pointStorageKey) localStorage.removeItem(pointStorageKey);
     setPointOperation(null);
     setTicketData({ sale: data.sale || { id: data.invoice_id }, ...saleSnapshot });
+    setFiscalEmission({ state: 'not_connected', reason: 'POINT_FISCAL_PENDING' });
     refreshProducts();
   }, [cart, selectedCustomer, total, discountAmount, subtotal, notes, draftKey, pointStorageKey]);
 
@@ -1390,9 +1394,12 @@ function CrmTerminalUI() {
       draftDebouncerRef.current.cancel();
       if (draftKey) removePosTerminalDraft(draftKey);
       setTicketData({ sale: data, ...saleSnapshot });
+      setFiscalEmission({ state: 'not_applicable' });
       if (pendingBalance === 0 && appliedPayments.length === 1 &&
           appliedPayments[0].method === 'cash' && data?.id) {
-        void requestCashBoletaAutomatically({ businessId: business.id, invoiceId: data.id });
+        setFiscalEmission({ state: 'issuing' });
+        void requestCashBoletaAutomatically({ businessId: business.id, invoiceId: data.id })
+          .then(result => setFiscalEmission(result || { state: 'unknown', reason: 'EMPTY_RESPONSE' }));
       }
     } finally {
       submitLockRef.current = false;
@@ -1402,6 +1409,7 @@ function CrmTerminalUI() {
 
   const handleCloseTicket = () => {
     setTicketData(null);
+    setFiscalEmission({ state: 'idle' });
     setPrintStatus('idle');
     setPrintErrorMessage(null);
   };
@@ -2802,6 +2810,7 @@ function CrmTerminalUI() {
           onReprint={handleReprint}
           printStatus={printStatus}
           printErrorMessage={printErrorMessage}
+          fiscalEmission={fiscalEmission}
           onConfigurePrinter={handleGoToPrintSettings}
         />
       )}
