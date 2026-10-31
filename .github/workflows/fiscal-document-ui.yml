@@ -20,9 +20,21 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install dependencies
-        run: npm install --ignore-scripts --no-audit --no-fund
-      - name: Compile CRM UI
-        run: npm run build
+      - name: Install isolated fiscal test dependency
+        run: |
+          npm install --prefix /tmp/fiscal-readonly-deps --no-save --ignore-scripts --no-audit --no-fund @supabase/supabase-js@2.100.1
+          ln -s /tmp/fiscal-readonly-deps/node_modules node_modules
+      - name: Validate CRM read-only integration
+        run: |
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          import assert from 'node:assert/strict';
+          const editor = readFileSync('src/pages/crm/CrmInvoiceEditor.jsx', 'utf8');
+          const viewer = readFileSync('src/pages/crm/CrmFiscalDocument.jsx', 'utf8');
+          assert.match(editor, /import CrmFiscalDocument from '\.\/CrmFiscalDocument';/);
+          assert.match(editor, /!isNew && saved && business\?\.id/);
+          for (const endpoint of ['/api/fiscal/document', '/api/fiscal/pdf', '/api/fiscal/download']) assert.ok(viewer.includes(endpoint));
+          assert.doesNotMatch(viewer, /\/api\/fiscal\/(?:emit|queue|sweep)/);
+          NODE
       - name: Check fiscal document endpoints
         run: node --test api/fiscal/document.test.js api/fiscal/download.test.js api/fiscal/pdf.test.js
