@@ -1394,9 +1394,9 @@ function CrmTerminalUI() {
       draftDebouncerRef.current.cancel();
       if (draftKey) removePosTerminalDraft(draftKey);
       setTicketData({ sale: data, ...saleSnapshot });
-      setFiscalEmission({ state: 'not_applicable' });
+      setFiscalEmission({ state: pendingBalance > 0 ? 'awaiting_payment' : 'not_applicable' });
       if (pendingBalance === 0 && appliedPayments.length === 1 &&
-          appliedPayments[0].method === 'cash' && data?.id) {
+          ['cash', 'bank_transfer', 'debit_card', 'credit_card'].includes(appliedPayments[0].method) && data?.id) {
         setFiscalEmission({ state: 'issuing' });
         void requestCashBoletaAutomatically({ businessId: business.id, invoiceId: data.id })
           .then(result => setFiscalEmission(result || { state: 'unknown', reason: 'EMPTY_RESPONSE' }));
