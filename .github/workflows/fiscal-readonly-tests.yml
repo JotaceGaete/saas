@@ -1,0 +1,34 @@
+name: Fiscal read-only API tests
+
+on:
+  pull_request:
+    paths:
+      - 'api/fiscal/document.js'
+      - 'api/fiscal/document.test.js'
+      - 'api/fiscal/download.js'
+      - 'api/fiscal/download.test.js'
+      - 'api/fiscal/pdf.js'
+      - 'api/fiscal/pdf.test.js'
+      - 'api/_lib/siisolutions-owner-guard.js'
+      - 'api/_lib/siisolutions-pdf-preview.js'
+      - '.github/workflows/fiscal-readonly-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  read-only:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install isolated dependency for Node tests
+        run: |
+          npm install --prefix /tmp/fiscal-readonly-deps --no-save --ignore-scripts --no-audit --no-fund @supabase/supabase-js@2.100.1
+          ln -s /tmp/fiscal-readonly-deps/node_modules node_modules
+      - name: Run read-only fiscal endpoint tests
+        run: node --test api/fiscal/document.test.js api/fiscal/download.test.js api/fiscal/pdf.test.js
