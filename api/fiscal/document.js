@@ -63,7 +63,9 @@ export default async function handler(req, res) {
     } catch { /* Invalid tokens are rejected by the standard owner guard. */ }
   }
   const options = { auth: { persistSession: false, autoRefreshToken: false } };
-  const admin = createClient(url, secret, options);
+  let admin;
+  try { admin = createClient(url, secret, options); }
+  catch { return res.status(503).json({ error: 'SERVER_CONFIG_INVALID' }); }
   const authenticate = async token => {
     const { data, error } = await admin.auth.getUser(token);
     if (error || !data?.user?.id) throw new Error('Invalid session');
