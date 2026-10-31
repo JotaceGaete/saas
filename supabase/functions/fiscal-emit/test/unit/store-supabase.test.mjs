@@ -109,7 +109,7 @@ test('ninguna llamada del almacén usa un nombre de parámetro que no empiece po
     crm_fiscal_emission_context: () => ({ issuer: null, lines: [], payments: [], point_ops: [] }),
     crm_finalize_fiscal_issuance: () => true,
     crm_fiscal_mark_failed: () => true,
-    crm_reconcile_fiscal_issuance: () => true,
+    crm_fiscal_reconcile_with_evidence: () => true,
     crm_claim_fiscal_issuance: () => true,
     crm_fiscal_get_credentials: () => null,
   } });
@@ -118,7 +118,7 @@ test('ninguna llamada del almacén usa un nombre de parámetro que no empiece po
   await store.loadEmissionContext('B', 'S');
   await store.finalize('B', 'S', 'op', { status: 'unknown' });
   await store.markFailed('B', 'S', 'op', 'PROVIDER_REJECTED');
-  await store.reconcile('B', 'S', 'op', { folio: 1, xmlBase64: 'x', pdfBase64: 'y' });
+  await store.reconcileWithEvidence('B', 'S', 'op', { outcome: 'issued', folio: 1, xmlBase64: 'x', pdfBase64: 'y', reviewer: 'Juan', reason: 'motivo suficiente', evidenceReference: 'ref', providerStatus: 'found', checkedAt: '2026-10-31T12:00:00Z' });
   for (const call of c.calls.filter((x) => x.fn)) {
     for (const k of Object.keys(call.args)) assert.ok(k.startsWith('p_'), `${call.fn}.${k}`);
   }

@@ -230,18 +230,23 @@ as $$
 declare
   v_total numeric;
   v_cash_n integer; v_cash_sum numeric;
-  v_other_n integer; v_other_sum numeric;
+  v_other_n integer;
+  v_mp_n integer; v_mp_sum numeric;
   v_point_n integer; v_point_ok integer;
 begin
   select i.total into v_total from public.crm_invoices i
    where i.id = p_sale_id and i.business_id = p_business_id;
   if v_total is null then raise exception 'FISCAL_SALE_NOT_ELIGIBLE'; end if;
 
+  -- Pagos reales en producción (valores de crm_payments.payment_method):
+  -- cash, card, debit_card, credit_card, bank_transfer, mercado_pago, other.
+  -- Un cobro Point confirmado queda como payment_method = 'mercado_pago'.
   select count(*) filter (where p.payment_method = 'cash'),
          coalesce(sum(p.amount) filter (where p.payment_method = 'cash'), 0),
          count(*) filter (where p.payment_method is distinct from 'cash'),
-         coalesce(sum(p.amount) filter (where p.payment_method is distinct from 'cash'), 0)
-    into v_cash_n, v_cash_sum, v_other_n, v_other_sum
+         count(*) filter (where p.payment_method = 'mercado_pago'),
+         coalesce(sum(p.amount) filter (where p.payment_method = 'mercado_pago'), 0)
+    into v_cash_n, v_cash_sum, v_other_n, v_mp_n, v_mp_sum
     from public.crm_payments p
    where p.business_id = p_business_id and p.invoice_id = p_sale_id
      and p.payment_status = 'received' and p.voided_at is null;
@@ -263,7 +268,9 @@ begin
   end if;
   if v_point_n > 0 then
     if v_point_n <> 1 or v_point_ok <> 1 then raise exception 'FISCAL_POINT_NOT_CONFIRMED'; end if;
-    if v_other_n > 0 and v_other_sum <> v_total then raise exception 'FISCAL_PAYMENT_AMOUNT_MISMATCH'; end if;
+    -- Todo pago no-efectivo debe ser de Mercado Pago, y debe existir el pago Point con monto exacto.
+    if v_other_n <> v_mp_n then raise exception 'FISCAL_UNSUPPORTED_PAYMENT_METHOD'; end if;
+    if v_mp_n <> 1 or v_mp_sum <> v_total then raise exception 'FISCAL_PAYMENT_AMOUNT_MISMATCH'; end if;
     return 'PE';
   end if;
   raise exception 'FISCAL_NO_CONFIRMED_PAYMENT';
@@ -295,7 +302,8 @@ begin
   elsif tg_table_schema = 'fiscal' and tg_table_name = 'operations' then
     v_business := new.business_id; v_sale := new.sale_id; v_active := new.status <> 'cancelled';
   elsif tg_table_name = 'crm_point_fiscal_outbox' then
-    v_business := new.business_id; v_sale := new.sale_id; v_active := true;
+    v_business := new.business_id; v_sale := new.sale_id;
+    v_active := new.status in ('pending', 'processing', 'prepared');
   else
     raise exception 'unexpected guard table %.%', tg_table_schema, tg_table_name;
   end if;
@@ -406,5 +414,119 @@ $$;
 
 revoke all on function public.crm_fiscal_get_issuance(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.crm_fiscal_get_issuance(uuid, uuid) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 3e. Evidencia de reconciliación del ledger P2 (solo-anexar). Cada resolución manual de un
+--     'unknown' deja una fila con quién, cuándo, qué consultó y el resultado. Guarda hashes del
+--     XML y PDF, no el contenido. No hay UPDATE ni DELETE (trigger de solo-anexar ya existente).
+-- ---------------------------------------------------------------------------
+create table if not exists fiscal.crm_fiscal_reconciliation_evidence (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references public.wa_businesses(id) on delete restrict,
+  sale_id uuid not null,
+  operation_id text not null,
+  outcome text not null check (outcome in ('issued', 'failed')),
+  folio integer check (folio is null or folio > 0),
+  xml_sha256 text check (xml_sha256 is null or xml_sha256 ~ '^[0-9a-f]{64}$'),
+  pdf_sha256 text check (pdf_sha256 is null or pdf_sha256 ~ '^[0-9a-f]{64}$'),
+  reviewer text not null check (length(btrim(reviewer)) >= 3),
+  reason text not null check (length(btrim(reason)) >= 10),
+  evidence_reference text not null check (length(btrim(evidence_reference)) >= 3),
+  provider_status text not null check (provider_status in ('found', 'not_found')),
+  checked_at timestamptz not null,
+  created_at timestamptz not null default now(),
+  constraint recon_evidence_sale_fk foreign key (sale_id, business_id)
+    references public.crm_invoices(id, business_id),
+  constraint recon_evidence_consistent check (
+    (outcome = 'issued' and folio is not null and xml_sha256 is not null and pdf_sha256 is not null
+       and provider_status = 'found')
+    or (outcome = 'failed' and folio is null and xml_sha256 is null and pdf_sha256 is null
+       and provider_status = 'not_found')
+  )
+);
+
+create index if not exists recon_evidence_sale_idx on fiscal.crm_fiscal_reconciliation_evidence (business_id, sale_id);
+
+alter table fiscal.crm_fiscal_reconciliation_evidence enable row level security;
+revoke all on fiscal.crm_fiscal_reconciliation_evidence from public, anon, authenticated;
+grant select, insert on fiscal.crm_fiscal_reconciliation_evidence to service_role;
+
+drop trigger if exists crm_recon_evidence_append_only on fiscal.crm_fiscal_reconciliation_evidence;
+create trigger crm_recon_evidence_append_only
+  before update or delete on fiscal.crm_fiscal_reconciliation_evidence
+  for each row execute function fiscal.dte39_evidence_append_only();
+
+-- Resolución manual de un 'unknown' con evidencia. Atómica: evidencia + cambio de estado.
+-- outcome 'issued' exige folio, XML y PDF encontrados en el portal (provider_status = found).
+-- outcome 'failed' exige que el portal no lo encontró (provider_status = not_found).
+-- No llama al proveedor: es solo registro de una verificación hecha por una persona.
+create or replace function public.crm_fiscal_reconcile_with_evidence(
+  p_business_id uuid, p_sale_id uuid, p_operation_id text, p_outcome text,
+  p_folio integer, p_xml_base64 text, p_pdf_base64 text,
+  p_reviewer text, p_reason text, p_evidence_reference text,
+  p_provider_status text, p_checked_at timestamptz
+) returns boolean
+language plpgsql
+security invoker
+set search_path = public, fiscal
+as $$
+declare
+  v_row public.crm_fiscal_issuances%rowtype;
+  v_issued boolean := p_outcome = 'issued';
+begin
+  if p_outcome is null or p_outcome not in ('issued', 'failed') then
+    raise exception 'Invalid fiscal reconciliation outcome';
+  end if;
+  if v_issued then
+    if p_folio is null or p_folio <= 0
+       or nullif(btrim(coalesce(p_xml_base64, '')), '') is null
+       or nullif(btrim(coalesce(p_pdf_base64, '')), '') is null
+       or p_provider_status is distinct from 'found' then
+      raise exception 'Invalid fiscal reconciliation evidence';
+    end if;
+  else
+    if p_folio is not null or p_provider_status is distinct from 'not_found' then
+      raise exception 'Invalid fiscal reconciliation evidence';
+    end if;
+  end if;
+
+  perform pg_advisory_xact_lock(hashtextextended('fiscal_sale:' || p_sale_id::text, 0));
+  select * into v_row from public.crm_fiscal_issuances
+   where business_id = p_business_id and sale_id = p_sale_id and dte_type = 39
+   for update;
+  if not found or v_row.status <> 'unknown' or v_row.operation_id <> p_operation_id
+     or v_row.provider <> 'siisolutions' then
+    raise exception 'FISCAL_NOT_RECONCILABLE';
+  end if;
+
+  insert into fiscal.crm_fiscal_reconciliation_evidence (
+    business_id, sale_id, operation_id, outcome, folio, xml_sha256, pdf_sha256,
+    reviewer, reason, evidence_reference, provider_status, checked_at)
+  values (
+    p_business_id, p_sale_id, p_operation_id, p_outcome,
+    case when v_issued then p_folio end,
+    case when v_issued then encode(sha256(decode(p_xml_base64, 'base64')), 'hex') end,
+    case when v_issued then encode(sha256(decode(p_pdf_base64, 'base64')), 'hex') end,
+    p_reviewer, p_reason, p_evidence_reference, p_provider_status, p_checked_at);
+
+  if v_issued then
+    update public.crm_fiscal_issuances
+       set status = 'issued', folio = p_folio, xml_base64 = p_xml_base64, pdf_base64 = p_pdf_base64,
+           error_code = null, updated_at = now()
+     where id = v_row.id;
+  else
+    update public.crm_fiscal_issuances
+       set status = 'failed', folio = null, xml_base64 = null, pdf_base64 = null,
+           error_code = 'RECONCILED_NOT_FOUND', updated_at = now()
+     where id = v_row.id;
+  end if;
+  return true;
+end;
+$$;
+
+revoke all on function public.crm_fiscal_reconcile_with_evidence(uuid, uuid, text, text, integer, text, text, text, text, text, text, timestamptz)
+  from public, anon, authenticated;
+grant execute on function public.crm_fiscal_reconcile_with_evidence(uuid, uuid, text, text, integer, text, text, text, text, text, text, timestamptz)
+  to service_role;
 
 commit;

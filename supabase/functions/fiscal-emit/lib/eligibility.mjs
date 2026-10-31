@@ -5,6 +5,8 @@
 import { FiscalError } from './errors.mjs';
 import { MEDIO_PAGO, buildBoletaPayload } from './payload.mjs';
 
+const MP_METHOD = 'mercado_pago';
+
 export function evaluateEligibility({
   sale,
   business,
@@ -41,6 +43,7 @@ export function evaluateEligibility({
   const other = active.filter((p) => p.method !== 'cash');
   const point = pointOps ?? [];
 
+  // Misma lógica y mismos códigos que sale_payment_medio() en SQL (paridad probada en test/db).
   let medioPago;
   if (cash.length > 0 && (other.length > 0 || point.length > 0)) {
     throw new FiscalError('MIXED_PAYMENTS');
@@ -50,7 +53,6 @@ export function evaluateEligibility({
     if (cashSum !== total) throw new FiscalError('PAYMENT_AMOUNT_MISMATCH');
     medioPago = MEDIO_PAGO.CASH;
   } else if (point.length > 0) {
-    // Point: exactamente una operación confirmada, procesada, finalizada y con monto exacto.
     if (point.length !== 1) throw new FiscalError('POINT_NOT_CONFIRMED');
     const p = point[0];
     const confirmed =
@@ -61,10 +63,11 @@ export function evaluateEligibility({
       p.currency === 'CLP' &&
       Number(p.amount) === total;
     if (!confirmed) throw new FiscalError('POINT_NOT_CONFIRMED');
-    if (other.length > 0) {
-      const otherSum = other.reduce((a, q) => a + Number(q.amount), 0);
-      if (otherSum !== total) throw new FiscalError('PAYMENT_AMOUNT_MISMATCH');
-    }
+    // Forma real en producción: el cobro Point queda como crm_payments.payment_method = 'mercado_pago'.
+    const mp = other.filter((q) => q.method === MP_METHOD);
+    if (other.length !== mp.length) throw new FiscalError('UNSUPPORTED_PAYMENT_METHOD');
+    const mpSum = mp.reduce((a, q) => a + Number(q.amount), 0);
+    if (mp.length !== 1 || mpSum !== total) throw new FiscalError('PAYMENT_AMOUNT_MISMATCH');
     medioPago = MEDIO_PAGO.POINT;
   } else {
     throw new FiscalError('NO_CONFIRMED_PAYMENT');

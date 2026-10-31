@@ -100,6 +100,21 @@ export async function makeFixture(c, opts = {}) {
     );
   }
   if (o.point) {
+    // Cobro Point real: payment_method = 'mercado_pago' (verificado en producción, solo lectura).
+    await c.query(
+      `insert into public.crm_payments (business_id, invoice_id, amount, payment_method, payment_status, payment_number)
+       values ($1, $2, $3, 'mercado_pago', 'received', 2)`,
+      [businessId, saleId, o.total],
+    );
+  }
+  if (o.otherMethod) {
+    await c.query(
+      `insert into public.crm_payments (business_id, invoice_id, amount, payment_method, payment_status, payment_number)
+       values ($1, $2, $3, $4, 'received', 3)`,
+      [businessId, saleId, o.total, o.otherMethod],
+    );
+  }
+  if (o.point) {
     const session = await ensureCashSession(c, businessId, userId);
     await c.query(
       `insert into public.crm_pos_point_operations

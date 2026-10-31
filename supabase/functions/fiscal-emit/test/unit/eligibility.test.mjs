@@ -14,6 +14,7 @@ const base = () => ({
   pointOps: [],
   operationId: OP,
 });
+const MP = [{ method: 'mercado_pago', amount: 2380, status: 'received', voided: false }];
 const point = (over = {}) => ({
   mpStatus: 'processed', mpOrderId: 'o1', mpPaymentId: 'p1', finalizedAt: new Date(), currency: 'CLP', amount: 2380, ...over,
 });
@@ -27,8 +28,20 @@ test('venta en efectivo elegible -> EF con payload válido', () => {
 });
 
 test('venta Point confirmada con monto exacto -> PE', () => {
-  const r = run({ payments: [], pointOps: [point()] });
+  const r = run({ payments: MP, pointOps: [point()] });
   assert.equal(r.medioPago, 'PE');
+});
+
+test('Point confirmada pero pagada con tarjeta (no mercado_pago) -> UNSUPPORTED_PAYMENT_METHOD', () => {
+  assert.throws(() => run({ payments: [{ method: 'card', amount: 2380, status: 'received', voided: false }], pointOps: [point()] }), { code: 'UNSUPPORTED_PAYMENT_METHOD' });
+});
+
+test('Point confirmada sin pago mercado_pago registrado -> PAYMENT_AMOUNT_MISMATCH', () => {
+  assert.throws(() => run({ payments: [], pointOps: [point()] }), { code: 'PAYMENT_AMOUNT_MISMATCH' });
+});
+
+test('tarjeta sin operación Point confirmada no es elegible', () => {
+  assert.throws(() => run({ payments: [{ method: 'card', amount: 2380, status: 'received', voided: false }], pointOps: [] }), { code: 'NO_CONFIRMED_PAYMENT' });
 });
 
 test('venta no pagada o total cero no es elegible', () => {
@@ -73,14 +86,14 @@ test('pagos anulados no cuentan: si no queda ningún pago confirmado, no es eleg
 });
 
 test('Point no finalizada, sin procesar o con monto distinto no es elegible', () => {
-  assert.throws(() => run({ payments: [], pointOps: [point({ mpStatus: 'pending' })] }), { code: 'POINT_NOT_CONFIRMED' });
-  assert.throws(() => run({ payments: [], pointOps: [point({ finalizedAt: null })] }), { code: 'POINT_NOT_CONFIRMED' });
-  assert.throws(() => run({ payments: [], pointOps: [point({ amount: 2000 })] }), { code: 'POINT_NOT_CONFIRMED' });
-  assert.throws(() => run({ payments: [], pointOps: [point({ currency: 'USD' })] }), { code: 'POINT_NOT_CONFIRMED' });
+  assert.throws(() => run({ payments: MP, pointOps: [point({ mpStatus: 'pending' })] }), { code: 'POINT_NOT_CONFIRMED' });
+  assert.throws(() => run({ payments: MP, pointOps: [point({ finalizedAt: null })] }), { code: 'POINT_NOT_CONFIRMED' });
+  assert.throws(() => run({ payments: MP, pointOps: [point({ amount: 2000 })] }), { code: 'POINT_NOT_CONFIRMED' });
+  assert.throws(() => run({ payments: MP, pointOps: [point({ currency: 'USD' })] }), { code: 'POINT_NOT_CONFIRMED' });
 });
 
 test('dos operaciones Point para la misma venta no son elegibles', () => {
-  assert.throws(() => run({ payments: [], pointOps: [point(), point({ mpPaymentId: 'p2' })] }), { code: 'POINT_NOT_CONFIRMED' });
+  assert.throws(() => run({ payments: MP, pointOps: [point(), point({ mpPaymentId: 'p2' })] }), { code: 'POINT_NOT_CONFIRMED' });
 });
 
 test('sin ningún pago confirmado no es elegible', () => {

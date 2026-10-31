@@ -56,7 +56,7 @@ async function jsMedio(f) {
 // Mapeo de códigos JS -> SQL: las comprobaciones de elegibilidad de JS que no son de pago
 // (venta pagada, país, emisor, etc.) no se comparan aquí.
 const PAYMENT_CODES = new Set([
-  'MIXED_PAYMENTS', 'PAYMENT_AMOUNT_MISMATCH', 'POINT_NOT_CONFIRMED', 'NO_CONFIRMED_PAYMENT',
+  'MIXED_PAYMENTS', 'PAYMENT_AMOUNT_MISMATCH', 'POINT_NOT_CONFIRMED', 'NO_CONFIRMED_PAYMENT', 'UNSUPPORTED_PAYMENT_METHOD',
 ]);
 
 const CASES = [
@@ -68,6 +68,9 @@ const CASES = [
   { name: 'Point moneda USD', opts: { cash: false, point: true }, mutate: `update public.crm_pos_point_operations set currency = 'USD' where crm_invoice_id = $1` },
   { name: 'efectivo + Point', opts: { cash: true, point: true }, mutate: null },
   { name: 'sin pagos', opts: { cash: false }, mutate: null },
+  { name: 'tarjeta sin operación Point', opts: { cash: false, otherMethod: 'card' }, mutate: null },
+  { name: 'Point con tarjeta adicional', opts: { cash: false, point: true, otherMethod: 'card' }, mutate: null },
+  { name: 'transferencia bancaria sola', opts: { cash: false, otherMethod: 'bank_transfer' }, mutate: null },
   { name: 'efectivo que no suma', opts: { cash: true }, mutate: `update public.crm_payments set amount = 2000 where invoice_id = $1` },
   { name: 'efectivo anulado', opts: { cash: true }, mutate: `update public.crm_payments set voided_at = now() where invoice_id = $1` },
 ];

@@ -41,6 +41,38 @@ function validDocument(doc) {
   );
 }
 
+const B64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
+function isStrictBase64(v) {
+  return typeof v === 'string' && v.length > 0 && B64.test(v);
+}
+
+// Valida la evidencia de una reconciliación manual. Mismas reglas que crm_fiscal_reconcile_with_evidence.
+export function normalizeEvidence(evidence) {
+  if (!evidence || typeof evidence !== 'object') throw new FiscalError('EVIDENCE_REQUIRED');
+  const outcome = evidence.outcome;
+  if (outcome !== 'issued' && outcome !== 'failed') throw new FiscalError('EVIDENCE_INVALID', 'outcome');
+  const reviewer = String(evidence.reviewer ?? '').trim();
+  const reason = String(evidence.reason ?? '').trim();
+  const reference = String(evidence.evidenceReference ?? '').trim();
+  if (reviewer.length < 3 || reason.length < 10 || reference.length < 3) {
+    throw new FiscalError('EVIDENCE_REQUIRED', 'reviewer, reason and evidenceReference are required');
+  }
+  const checked = new Date(evidence.checkedAt);
+  if (Number.isNaN(checked.getTime())) throw new FiscalError('EVIDENCE_REQUIRED', 'checkedAt');
+  const base = { outcome, reviewer, reason, evidenceReference: reference, checkedAt: checked.toISOString() };
+  if (outcome === 'issued') {
+    if (evidence.providerStatus !== 'found') throw new FiscalError('EVIDENCE_INVALID', 'providerStatus must be found');
+    if (!validDocument(evidence) || !isStrictBase64(evidence.xmlBase64) || !isStrictBase64(evidence.pdfBase64)) {
+      throw new FiscalError('EVIDENCE_INCOMPLETE');
+    }
+    return { ...base, providerStatus: 'found', folio: evidence.folio, xmlBase64: evidence.xmlBase64, pdfBase64: evidence.pdfBase64 };
+  }
+  if (evidence.providerStatus !== 'not_found' || evidence.folio != null) {
+    throw new FiscalError('EVIDENCE_INVALID', 'failed requires not_found and no folio');
+  }
+  return { ...base, providerStatus: 'not_found', folio: null, xmlBase64: null, pdfBase64: null };
+}
+
 export function createFiscalEmitter({
   store,
   provider,
@@ -143,19 +175,16 @@ export function createFiscalEmitter({
     return { folio: row.folio, pdfBase64: row.pdfBase64, providerCalls: 0 };
   }
 
-  // Reconciliación manual de un unknown, con evidencia explícita. Nunca automática.
+  // Resolución manual de un unknown con evidencia registrada. No llama al proveedor.
   async function reconcile({ actorUserId, saleId, evidence }) {
     const { sale } = await loadOwnedSale(actorUserId, saleId);
     const operationId = operationIdFor(sale.businessId, sale.id);
     const row = await store.getIssuance(sale.businessId, sale.id);
     if (!row || row.status !== 'unknown') throw new FiscalError('NOT_UNKNOWN');
-    if (!evidence || typeof evidence.reason !== 'string' || evidence.reason.trim().length < 10) {
-      throw new FiscalError('EVIDENCE_REQUIRED');
-    }
-    if (!validDocument(evidence)) throw new FiscalError('EVIDENCE_INCOMPLETE');
-    const ok = await store.reconcile(sale.businessId, sale.id, operationId, evidence);
+    const ev = normalizeEvidence(evidence);
+    const ok = await store.reconcileWithEvidence(sale.businessId, sale.id, operationId, ev);
     if (!ok) throw new FiscalError('RECONCILE_REJECTED');
-    return { status: 'issued', folio: evidence.folio, providerCalls: 0 };
+    return { status: ev.outcome, folio: ev.folio ?? null, providerCalls: 0 };
   }
 
   return { emitSale, reprint, reconcile };

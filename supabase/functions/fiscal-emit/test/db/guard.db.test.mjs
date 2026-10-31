@@ -164,7 +164,11 @@ test('timeout -> unknown; reintento bloqueado; reconciliación manual -> issued'
   const rec = await emitter.reconcile({
     actorUserId: f.userId,
     saleId: f.saleId,
-    evidence: { folio: 4242, xmlBase64: 'PHhtbD4=', pdfBase64: 'JVBER', reason: 'Encontrada en portal por RUT y monto' },
+    evidence: {
+      outcome: 'issued', folio: 4242, xmlBase64: 'PHhtbD4=', pdfBase64: 'JVBERi0xLjQK', providerStatus: 'found',
+      reviewer: 'Juan', evidenceReference: 'portal-ref-4242', checkedAt: '2026-10-31T12:00:00Z',
+      reason: 'Encontrada en portal por RUT y monto',
+    },
   });
   assert.equal(rec.status, 'issued');
   const row = await issuanceRow(f.businessId, f.saleId);
@@ -360,4 +364,126 @@ test('la guarda de conexión rechaza hosts remotos y bases que no terminan en _t
   assert.throws(() => assertLocalTestConfig({ host: '/home/pgtest/pg/sock', database: 'postgres' }), /_test/);
   assert.throws(() => assertLocalTestConfig({ host: '127.0.0.1', database: 'production' }), /_test/);
   assert.doesNotThrow(() => assertLocalTestConfig({ host: '/home/pgtest/pg/sock', database: 'walinka_test' }));
+});
+
+// ---------------------------------------------------------------------------
+// Evidencia de reconciliación (P2): hashes, solo-anexar, reglas de la RPC y permisos
+// ---------------------------------------------------------------------------
+
+async function unknownSale() {
+  const f = await makeFixture(c);
+  await c.query(
+    `insert into public.crm_fiscal_issuances (business_id, sale_id, provider, dte_type, operation_id, status)
+     values ($1, $2, 'siisolutions', 39, $3, 'unknown')`,
+    [f.businessId, f.saleId, f.operationId],
+  );
+  return f;
+}
+
+const EV = (over = {}) => ({
+  outcome: 'issued', folio: 555, xmlBase64: 'PHhtbD4=', pdfBase64: 'JVBERi0xLjQK', providerStatus: 'found',
+  reviewer: 'Juan', evidenceReference: 'portal-ref-555', checkedAt: '2026-10-31T12:00:00Z',
+  reason: 'Encontrada en portal por RUT y monto', ...over,
+});
+
+test('evidencia: guarda hashes SHA-256 del XML y PDF, no el contenido', async () => {
+  const f = await unknownSale();
+  const { createHash } = await import('node:crypto');
+  const emitter = emitterFor(createSimulatedProvider());
+  await emitter.reconcile({ actorUserId: f.userId, saleId: f.saleId, evidence: EV() });
+  const r = await c.query(`select xml_sha256, pdf_sha256, outcome, folio from fiscal.crm_fiscal_reconciliation_evidence where sale_id = $1`, [f.saleId]);
+  assert.equal(r.rows.length, 1);
+  const sha = (b64) => createHash('sha256').update(Buffer.from(b64, 'base64')).digest('hex');
+  assert.equal(r.rows[0].xml_sha256, sha('PHhtbD4='));
+  assert.equal(r.rows[0].pdf_sha256, sha('JVBERi0xLjQK'));
+  assert.equal(r.rows[0].outcome, 'issued');
+  assert.equal(r.rows[0].folio, 555);
+});
+
+test('evidencia: solo-anexar: UPDATE y DELETE fallan', async () => {
+  const f = await unknownSale();
+  await emitterFor(createSimulatedProvider()).reconcile({ actorUserId: f.userId, saleId: f.saleId, evidence: EV() });
+  await assert.rejects(c.query(`update fiscal.crm_fiscal_reconciliation_evidence set reviewer = 'x' where sale_id = $1`, [f.saleId]), { message: /FISCAL_EVIDENCE_IMMUTABLE/ });
+  await assert.rejects(c.query(`delete from fiscal.crm_fiscal_reconciliation_evidence where sale_id = $1`, [f.saleId]), { message: /FISCAL_EVIDENCE_IMMUTABLE/ });
+});
+
+test('evidencia: resultado failed (no encontrada) cambia a failed sin folio y deja evidencia', async () => {
+  const f = await unknownSale();
+  const r = await emitterFor(createSimulatedProvider()).reconcile({ actorUserId: f.userId, saleId: f.saleId, evidence: EV({
+    outcome: 'failed', folio: undefined, xmlBase64: undefined, pdfBase64: undefined, providerStatus: 'not_found',
+    evidenceReference: 'portal-busqueda-0', reason: 'Buscada por RUT y monto, sin resultados' }) });
+  assert.equal(r.status, 'failed');
+  const row = await issuanceRow(f.businessId, f.saleId);
+  assert.equal(row.status, 'failed');
+  assert.equal(row.error_code, 'RECONCILED_NOT_FOUND');
+  const ev = await c.query(`select outcome, xml_sha256 from fiscal.crm_fiscal_reconciliation_evidence where sale_id = $1`, [f.saleId]);
+  assert.equal(ev.rows[0].outcome, 'failed');
+  assert.equal(ev.rows[0].xml_sha256, null);
+});
+
+test('evidencia: la RPC rechaza issued sin PDF aunque se llame directo a SQL', async () => {
+  const f = await unknownSale();
+  await assert.rejects(c.query(
+    `select public.crm_fiscal_reconcile_with_evidence($1,$2,$3,'issued',555,'PHhtbD4=',null,'Juan','motivo suficiente','ref-1','found','2026-10-31T12:00:00Z')`,
+    [f.businessId, f.saleId, f.operationId],
+  ), { message: /Invalid fiscal reconciliation evidence/ });
+  assert.equal((await issuanceRow(f.businessId, f.saleId)).status, 'unknown');
+});
+
+test('evidencia: operación distinta de la del ledger se rechaza (FISCAL_NOT_RECONCILABLE)', async () => {
+  const f = await unknownSale();
+  await assert.rejects(emitterFor(createSimulatedProvider()).reconcile({ actorUserId: f.userId, saleId: f.saleId, evidence: EV() })
+    .then(async () => store.reconcileWithEvidence(f.businessId, f.saleId, 'WLK-otra', { ...EV(), providerStatus: 'found', checkedAt: '2026-10-31T12:00:00Z' })),
+  { code: 'FISCAL_NOT_RECONCILABLE' });
+});
+
+test('evidencia: anon y authenticated no pueden leer la tabla', async () => {
+  for (const role of ['anon', 'authenticated']) {
+    await c.query('begin');
+    try {
+      await c.query(`set local role ${role}`);
+      await assert.rejects(c.query(`select count(*) from fiscal.crm_fiscal_reconciliation_evidence`), { code: '42501' }, role);
+    } finally {
+      await c.query('rollback');
+    }
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Mantenimiento histórico: las guardas no deben bloquear actualizaciones de filas antiguas
+// ---------------------------------------------------------------------------
+
+test('mantenimiento: P1 cancelada, P3 skipped y sus ediciones no se bloquean aunque exista P2', async () => {
+  const f = await makeFixture(c);
+  await c.query(`insert into public.crm_fiscal_issuances (business_id, sale_id, provider, dte_type, operation_id, status, folio)
+                 values ($1, $2, 'siisolutions', 39, $3, 'issued', 9)`, [f.businessId, f.saleId, f.operationId]);
+  // Filas históricas no activas: se crean como cancelada / skipped (inactivas) y luego se editan.
+  await c.query(`insert into fiscal.operations (business_id, sale_id, issuer_rut, document_type, operation_key, status, snapshot)
+                 values ($1, $2, '76123456-7', 39, $3, 'cancelled', '{}'::jsonb)`, [f.businessId, f.saleId, `${f.businessId}:${f.saleId}:39`]);
+  await c.query(`insert into fiscal.pos_dte39_outbox (business_id, invoice_id, operation_id, state)
+                 values ($1, $2, $3, 'skipped')`, [f.businessId, f.saleId, `WALINKA-DTE39-${f.saleId}`]);
+  await c.query(`update fiscal.pos_dte39_outbox set last_error = 'mantenimiento' where invoice_id = $1`, [f.saleId]);
+  await c.query(`update fiscal.operations set snapshot = '{"k":1}'::jsonb where sale_id = $1`, [f.saleId]);
+  // Y la transición a cancelled de una fila P1 que se creó sin P2 también debe seguir permitida.
+});
+
+test('mantenimiento: una fila P4 histórica en estado no activo se puede actualizar aunque exista P2', async () => {
+  const f = await makeFixture(c, { cash: false, point: true });
+  await c.query(`insert into public.crm_fiscal_issuances (business_id, sale_id, provider, dte_type, operation_id, status, folio)
+                 values ($1, $2, 'siisolutions', 39, $3, 'issued', 10)`, [f.businessId, f.saleId, f.operationId]);
+  const po = await c.query(`select id from public.crm_pos_point_operations where crm_invoice_id = $1`, [f.saleId]);
+  await c.query(`insert into public.crm_point_fiscal_outbox (point_operation_id, business_id, sale_id, status)
+                 values ($1, $2, $3, 'blocked')`, [po.rows[0].id, f.businessId, f.saleId]);
+  await c.query(`update public.crm_point_fiscal_outbox set attempts = attempts + 1 where sale_id = $1`, [f.saleId]);
+});
+
+test('mantenimiento: P4 activo con P2 existente sigue bloqueado al actualizar estado', async () => {
+  const f = await makeFixture(c, { cash: false, point: true });
+  const po = await c.query(`select id from public.crm_pos_point_operations where crm_invoice_id = $1`, [f.saleId]);
+  await c.query(`insert into public.crm_point_fiscal_outbox (point_operation_id, business_id, sale_id, status)
+                 values ($1, $2, $3, 'blocked')`, [po.rows[0].id, f.businessId, f.saleId]);
+  await c.query(`insert into public.crm_fiscal_issuances (business_id, sale_id, provider, dte_type, operation_id, status, folio)
+                 values ($1, $2, 'siisolutions', 39, $3, 'issued', 11)`, [f.businessId, f.saleId, f.operationId]);
+  await assert.rejects(c.query(`update public.crm_point_fiscal_outbox set status = 'pending' where sale_id = $1`, [f.saleId]),
+    { message: /FISCAL_CROSS_PIPELINE_CONFLICT/ });
 });

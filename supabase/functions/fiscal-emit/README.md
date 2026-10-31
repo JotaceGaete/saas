@@ -26,8 +26,9 @@ Migración asociada (no aplicada en producción): `supabase/fiscal-recovery/prop
 ```bash
 cd supabase/functions/fiscal-emit
 npm install
-npm test                                  # 80 pruebas unitarias
-FISCAL_TEST_PG_DB=walinka_test npm run test:db   # 48 pruebas contra Postgres local (incluye concurrencia entre pipelines)
+npm test                                  # 86 pruebas unitarias
+npm run test:deno                         # 6 pruebas del cableado en Deno (requiere deno)
+FISCAL_TEST_PG_DB=walinka_test npm run test:db   # 65 pruebas contra Postgres local (concurrencia entre pipelines, triggers, evidencia, paridad SQL/JS)
 ```
 
 Las pruebas de base necesitan una base local `*_test` con la migración propuesta aplicada y con
@@ -35,17 +36,24 @@ privilegios de `service_role` (en Supabase vienen por defecto; en la base de pru
 
 ## Verificado y no verificado
 
-- Verificado con node y Postgres 16 real: toda la lógica, las RPC, las guardas SQL, la concurrencia
-  entre P1/P2/P3/P4 (transacciones intercaladas con bloqueo comprobado) y la paridad SQL/JS del pago.
-- **No verificado en runtime**: `index.ts` (Deno no está instalado; solo pasó chequeo de sintaxis) y
-  `lib/store-supabase.mjs` (probado con cliente falso; no contra PostgREST, porque no hay daemon Docker).
-- Antes de desplegar: `supabase functions serve fiscal-emit` contra una base local, y prueba de
-  `store-supabase` contra PostgREST real.
+Verificado (ejecutado en este entorno):
+- Lógica del emisor, reglas de pago, máquina de estados, cifrado y HTTP: `npm test` (86).
+- Migración propuesta en Postgres 16 real (`walinka_test`): RPC, guardas SQL, triggers, evidencia de
+  reconciliación y permisos: `npm run test:db` (65). Incluye transacciones intercaladas entre
+  P1/P2/P3/P4 con bloqueo comprobado en `pg_stat_activity`.
+- Cableado de Edge Function en Deno 2.9.6 (`app.ts`, `index.ts`): tipos correctos y `npm run test:deno` (6).
+  Cliente de base falso con la forma de supabase-js.
+
+NO verificado:
+- `lib/store-supabase.mjs` contra PostgREST real: el binario de PostgREST solo está en GitHub, y GitHub
+  no está habilitado en esta sesión. Los paquetes de npm/PyPI llamados postgrest son clientes, no el servidor.
+- `index.ts` desplegado en Supabase (`supabase functions serve`): no hay CLI ni Docker en el entorno.
+- Datos de producción: solo lectura. No se aplicó nada.
 
 ## Qué no hace todavía
 
 - Proveedor real DTECore: bloqueado hasta verificar el contrato por escrito.
 - Impresión: `lib/print-plan.mjs` prepara el plan desde el PDF guardado; no envía nada. Rasterizar el
   PDF a GS v 0 y la prueba de PDF417 en XP-80C están pendientes. Print Connector no se modificó.
-- Registro de evidencia de reconciliación (`fiscal.dte39_reconciliation_evidence`) no se escribe aún.
 - Migración endurecida solo aplicada en `walinka_test`; no aplicada en producción.
+- Reconciliación con evidencia implementada (`crm_fiscal_reconcile_with_evidence`). No consulta a DTECore: la verificación la hace una persona en el portal.

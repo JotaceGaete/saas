@@ -97,19 +97,44 @@ test('respuesta sin folio -> unknown, nunca issued', async () => {
   assert.equal(store.issuances.get(`${IDS.bizA}|${IDS.saleA}`).status, 'unknown');
 });
 
-test('reconciliación manual: unknown -> issued con evidencia; sin evidencia suficiente se rechaza', async () => {
-  const { store, emitter } = setup({ scenario: 'timeout' });
+test('reconciliación manual: unknown -> issued con evidencia; evidencia incompleta se rechaza', async () => {
+  const { store, provider, emitter } = setup({ scenario: 'timeout' });
   await emitter.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA });
-  await assert.rejects(
-    emitter.reconcile({ actorUserId: IDS.userA, saleId: IDS.saleA, evidence: { folio: 77, xmlBase64: 'x', pdfBase64: 'y', reason: 'corto' } }),
-    { code: 'EVIDENCE_REQUIRED' },
-  );
-  const r = await emitter.reconcile({
-    actorUserId: IDS.userA, saleId: IDS.saleA,
-    evidence: { folio: 77, xmlBase64: 'PHhtbA==', pdfBase64: 'JVBER', reason: 'Encontrada en portal SII por RUT y monto' },
-  });
+  const base = { outcome: 'issued', folio: 77, xmlBase64: 'PHhtbA==', pdfBase64: 'JVBERi0xLjQK', providerStatus: 'found', reviewer: 'Juan', evidenceReference: 'portal-sii-ref-1', checkedAt: '2026-10-31T12:00:00Z' };
+  await assert.rejects(emitter.reconcile({ actorUserId: IDS.userA, saleId: IDS.saleA, evidence: { ...base, reason: 'corto' } }), { code: 'EVIDENCE_REQUIRED' });
+  await assert.rejects(emitter.reconcile({ actorUserId: IDS.userA, saleId: IDS.saleA, evidence: { ...base, reason: 'Encontrada en portal por RUT y monto', pdfBase64: '' } }), { code: 'EVIDENCE_INCOMPLETE' });
+  await assert.rejects(emitter.reconcile({ actorUserId: IDS.userA, saleId: IDS.saleA, evidence: { ...base, reason: 'Encontrada en portal por RUT y monto', providerStatus: 'not_found' } }), { code: 'EVIDENCE_INVALID' });
+  const r = await emitter.reconcile({ actorUserId: IDS.userA, saleId: IDS.saleA, evidence: { ...base, reason: 'Encontrada en portal por RUT y monto' } });
   assert.equal(r.status, 'issued');
+  assert.equal(r.providerCalls, 0);
+  assert.equal(provider.calls, 1, 'reconciliar no llama al proveedor');
   assert.equal(store.issuances.get(`${IDS.bizA}|${IDS.saleA}`).folio, 77);
+  assert.equal(store.evidenceLog.length, 1);
+  assert.equal(store.evidenceLog[0].reviewer, 'Juan');
+});
+
+test('reconciliación manual: no encontrada en el portal -> failed, sin folio', async () => {
+  const { store, emitter } = setup({ scenario: 'network' });
+  await emitter.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA });
+  const r = await emitter.reconcile({ actorUserId: IDS.userA, saleId: IDS.saleA, evidence: {
+    outcome: 'failed', providerStatus: 'not_found', reviewer: 'Juan', evidenceReference: 'portal-sii-ref-2',
+    checkedAt: '2026-10-31T12:05:00Z', reason: 'Buscada por RUT y monto, sin resultados' } });
+  assert.equal(r.status, 'failed');
+  assert.equal(store.issuances.get(`${IDS.bizA}|${IDS.saleA}`).status, 'failed');
+});
+
+test('reconciliación solo desde unknown; una venta issued no se reconcilia', async () => {
+  const { emitter } = setup();
+  await emitter.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA });
+  await assert.rejects(emitter.reconcile({ actorUserId: IDS.userA, saleId: IDS.saleA, evidence: {
+    outcome: 'failed', providerStatus: 'not_found', reviewer: 'Juan', evidenceReference: 'x-1', checkedAt: '2026-10-31T12:00:00Z', reason: 'no debería pasar nunca' } }), { code: 'NOT_UNKNOWN' });
+});
+
+test('reconciliación de otro comercio -> SALE_NOT_FOUND', async () => {
+  const { emitter } = setup({ scenario: 'timeout' });
+  await emitter.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA });
+  await assert.rejects(emitter.reconcile({ actorUserId: IDS.userB, saleId: IDS.saleA, evidence: {
+    outcome: 'failed', providerStatus: 'not_found', reviewer: 'Eve', evidenceReference: 'x-1', checkedAt: '2026-10-31T12:00:00Z', reason: 'intento ajeno de reconciliar' } }), { code: 'SALE_NOT_FOUND' });
 });
 
 test('tenant: usuario de otro comercio recibe SALE_NOT_FOUND y no cambia nada', async () => {

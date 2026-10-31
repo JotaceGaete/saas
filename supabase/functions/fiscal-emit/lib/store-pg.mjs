@@ -109,10 +109,12 @@ export function createPgStore(cfg) {
       ));
     },
 
-    async reconcile(businessId, saleId, operationId, ev) {
+    async reconcileWithEvidence(businessId, saleId, operationId, ev) {
       return Boolean(await scalar(
-        `select public.crm_reconcile_fiscal_issuance($1, $2, $3, $4, $5, $6) as ok`,
-        [businessId, saleId, operationId, ev.folio, ev.xmlBase64, ev.pdfBase64], 'ok',
+        `select public.crm_fiscal_reconcile_with_evidence($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) as ok`,
+        [businessId, saleId, operationId, ev.outcome, ev.folio ?? null, ev.xmlBase64 ?? null, ev.pdfBase64 ?? null,
+         ev.reviewer, ev.reason, ev.evidenceReference, ev.providerStatus, ev.checkedAt],
+        'ok',
       ));
     },
   };

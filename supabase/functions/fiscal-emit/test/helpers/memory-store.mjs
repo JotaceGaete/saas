@@ -23,6 +23,7 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
   const payments = new Map();
   const pointOps = new Map();
   const creds = new Map();
+  const evidenceLog = [];
   const control = { enabled: emissionEnabled };
   const key = (b, s) => `${b}|${s}`;
 
@@ -35,7 +36,9 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
     lines.set(saleId, withLines
       ? [{ id: `${saleId}-l1`, name: 'Café', unitPrice: 1190, quantity: total / 1190, discountPct: 0, category: 'IVA_AFECTO_19' }]
       : []);
-    payments.set(saleId, cash ? [{ method: 'cash', amount: total, status: 'received', voided: false }] : []);
+    payments.set(saleId, cash
+      ? [{ method: 'cash', amount: total, status: 'received', voided: false }]
+      : point ? [{ method: 'mercado_pago', amount: total, status: 'received', voided: false }] : []);
     pointOps.set(saleId, point ? [point] : []);
     creds.set(businessId, seal({ apiKey: `TEST-KEY-${businessId}` }, { key: masterKey, businessId }));
   }
@@ -45,6 +48,7 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
     control,
     issuances,
     creds,
+    evidenceLog,
     sales,
     get masterKey() { return masterKey; },
 
@@ -110,10 +114,15 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
       return true;
     },
 
-    async reconcile(b, s, op, ev) {
+    async reconcileWithEvidence(b, s, op, ev) {
       const cur = issuances.get(key(b, s));
       if (!cur || cur.status !== 'unknown' || cur.operationId !== op) return false;
-      Object.assign(cur, { status: 'issued', folio: ev.folio, xmlBase64: ev.xmlBase64, pdfBase64: ev.pdfBase64 });
+      evidenceLog.push({ businessId: b, saleId: s, operationId: op, ...ev });
+      if (ev.outcome === 'issued') {
+        Object.assign(cur, { status: 'issued', folio: ev.folio, xmlBase64: ev.xmlBase64, pdfBase64: ev.pdfBase64 });
+      } else {
+        Object.assign(cur, { status: 'failed', folio: null, xmlBase64: null, pdfBase64: null, errorCode: 'RECONCILED_NOT_FOUND' });
+      }
       return true;
     },
   };
