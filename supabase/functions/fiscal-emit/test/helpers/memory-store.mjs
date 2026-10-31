@@ -19,7 +19,7 @@ export const IDS = Object.freeze({
   saleB: 'sale-b',
 });
 
-const ROLE_RANK = { fiscal_owner: 1, fiscal_operator: 2, fiscal_viewer: 3 };
+const ROLE_RANK = { fiscal_owner: 1, fiscal_operator: 2, fiscal_viewer: 3, fiscal_reconciler: 4 };
 
 export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = true, now = () => new Date() } = {}) {
   const sales = new Map();
@@ -33,8 +33,12 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
   const roles = new Map(); // `${b}|${u}` -> Set(role)
   const receipts = new Map(); // `${b}|${s}|${op}` -> receipt
   const evidenceLog = [];
+  const auditLog = [];
+  const retroBlocks = new Set(); // sale ids bloqueadas para emisión retroactiva automática
   const control = { enabled: emissionEnabled };
   const faults = new Map();
+  const hooks = new Map(); // method -> fn, se ejecuta una vez antes de la llamada
+  const state = { auditFails: false };
   const calls = {};
   const key = (b, s) => `${b}|${s}`;
   const rkey = (b, u) => `${b}|${u}`;
@@ -71,6 +75,11 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
   function guard(name, fn) {
     return async (...args) => {
       calls[name] = (calls[name] ?? 0) + 1;
+      const hook = hooks.get(name);
+      if (hook) {
+        hooks.delete(name);
+        await hook(...args);
+      }
       const f = faults.get(name);
       if (f && f.times > 0) {
         f.times -= 1;
@@ -89,6 +98,25 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
     seed,
     grantRole,
     revokeRole,
+    auditLog,
+    blockSale(saleId) { retroBlocks.add(saleId); },
+    // Espejo del trigger wa_businesses_owner_change: revoca todo rol del dueño anterior, audita y siembra el nuevo.
+    changeOwner(b, newUserId) {
+      const biz = businesses.get(b);
+      const previous = biz.userId;
+      let revoked = 0;
+      if (previous != null) {
+        const set = roles.get(rkey(b, previous));
+        if (set) { revoked = set.size; set.clear(); }
+      }
+      biz.userId = newUserId;
+      auditLog.push({ businessId: b, action: 'owner_changed', outcome: 'previous_owner_revoked', previous, next: newUserId, revoked });
+      if (newUserId != null) grantRole(b, newUserId, 'fiscal_owner');
+    },
+    // Hace fallar la auditoría (transporte) para probar que el reconciliador falla cerrado.
+    setAuditFailure(on) { state.auditFails = on; },
+    // Ejecuta fn una sola vez justo antes de la próxima llamada a `name` (simula una carrera).
+    onNextCall(name, fn) { hooks.set(name, fn); },
     control,
     issuances,
     creds,
@@ -101,6 +129,21 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
     },
     clearFaults() { faults.clear(); },
     get masterKey() { return masterKey; },
+
+    // Espejo de public.crm_fiscal_has_role: rol activo exacto en negocio activo.
+    hasRole: guard('hasRole', async (b, u, role) => {
+      const biz = businesses.get(b);
+      if (!biz || biz.isActive === false) return false;
+      return roles.get(rkey(b, u))?.has(role) === true;
+    }),
+
+    // Espejo de public.crm_fiscal_audit_append (solo-anexar).
+    appendAudit: guard('appendAudit', async (entry) => {
+      if (state.auditFails) throw new Error('audit store unavailable');
+      if (!entry?.businessId || !entry.action || !entry.outcome) throw new FiscalError('Invalid fiscal audit entry');
+      auditLog.push({ ...entry });
+      return true;
+    }),
 
     loadSaleById: guard('loadSaleById', async (saleId) => {
       const s = sales.get(saleId);
@@ -144,6 +187,7 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
 
     claim: guard('claim', async (b, s, op) => {
       if (!control.enabled) throw new FiscalError('FISCAL_EMISSION_DISABLED');
+      if (retroBlocks.has(s)) throw new FiscalError('FISCAL_RETROACTIVE_BLOCKED');
       const sale = sales.get(s);
       if (!sale || sale.businessId !== b) throw new FiscalError('Invalid fiscal issuance claim');
       const k = key(b, s);

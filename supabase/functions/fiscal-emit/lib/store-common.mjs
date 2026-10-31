@@ -94,7 +94,7 @@ export function mapPostgrestError(error) {
 // Respuesta de public.crm_fiscal_actor_role(business, user): 'fiscal_owner' | ... | null.
 export function mapActorRole(raw) {
   if (raw == null) return null;
-  return ['fiscal_owner', 'fiscal_operator', 'fiscal_viewer'].includes(raw) ? raw : null;
+  return ['fiscal_owner', 'fiscal_operator', 'fiscal_viewer', 'fiscal_reconciler'].includes(raw) ? raw : null;
 }
 
 // Respuesta de public.crm_fiscal_list_stale_sending(before): arreglo de filas vencidas.

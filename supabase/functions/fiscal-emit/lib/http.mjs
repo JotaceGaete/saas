@@ -23,6 +23,8 @@ const STATUS_BY_CODE = {
   // La operación está en 'sending' y la recuperación debe decidir. El cliente NO debe reintentar
   // la emisión: un reintento daría 409 NOT_EMITTABLE_IN_STATE, que es lo correcto.
   PERSIST_PENDING_RECOVERY: 409,
+  // Venta Point antigua: emisión retroactiva automática bloqueada. No es reintentable.
+  FISCAL_RETROACTIVE_BLOCKED: 409,
   PROVIDER_NOT_READY: 503,
   CREDENTIALS_MISSING: 503,
 };

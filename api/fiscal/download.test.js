@@ -23,7 +23,7 @@ function db(document) {
 const req = { method:'GET', headers:{ authorization:'Bearer example' }, query:{ businessId:B, invoiceId:S, format:'pdf' } };
 
 test('owner downloads stored PDF without contacting provider', async () => {
-  const handler = createFiscalDownloadHandler({ admin:db({status:'issued',folio:51106,pdf_base64:pdf}), assertOwner:async()=>({ok:true}) });
+  const handler = createFiscalDownloadHandler({ admin:db({status:'issued',folio:51106,pdf_base64:pdf}), assertAccess:async()=>({ok:true}) });
   const res=response();
   await handler(req,res);
   assert.equal(res.code,200);
@@ -31,17 +31,17 @@ test('owner downloads stored PDF without contacting provider', async () => {
   assert.equal(res.body.toString('utf8'),'%PDF-1.4\nmock document');
 });
 test('non-owner is denied before database access', async () => {
-  const handler = createFiscalDownloadHandler({ admin:{from(){throw new Error('must not query')}}, assertOwner:async()=>({ok:false,status:403,error:'BUSINESS_NOT_AUTHORIZED'}) });
+  const handler = createFiscalDownloadHandler({ admin:{from(){throw new Error('must not query')}}, assertAccess:async()=>({ok:false,status:403,error:'BUSINESS_NOT_AUTHORIZED'}) });
   const res=response(); await handler(req,res);
   assert.equal(res.code,403);
 });
 test('unissued documents cannot be downloaded', async () => {
-  const handler = createFiscalDownloadHandler({ admin:db({status:'unknown',folio:51106,pdf_base64:pdf}), assertOwner:async()=>({ok:true}) });
+  const handler = createFiscalDownloadHandler({ admin:db({status:'unknown',folio:51106,pdf_base64:pdf}), assertAccess:async()=>({ok:true}) });
   const res=response(); await handler(req,res);
   assert.equal(res.code,404);
 });
 test('invalid document content is not served', async () => {
-  const handler = createFiscalDownloadHandler({ admin:db({status:'issued',folio:51106,pdf_base64:Buffer.from('not a pdf').toString('base64')}), assertOwner:async()=>({ok:true}) });
+  const handler = createFiscalDownloadHandler({ admin:db({status:'issued',folio:51106,pdf_base64:Buffer.from('not a pdf').toString('base64')}), assertAccess:async()=>({ok:true}) });
   const res=response(); await handler(req,res);
   assert.equal(res.code,503);
 });
@@ -50,7 +50,7 @@ test('owner downloads stored XML', async () => {
   const xml = Buffer.from('<?xml version="1.0"?><DTE/>').toString('base64');
   const handler = createFiscalDownloadHandler({
     admin: db({ status: 'issued', folio: 51106, xml_base64: xml }),
-    assertOwner: async () => ({ ok: true }),
+    assertAccess: async () => ({ ok: true }),
   });
   const res = response();
   await handler({ ...req, query: { ...req.query, format: 'xml' } }, res);
@@ -63,7 +63,7 @@ test('owner downloads stored XML', async () => {
 test('download rejects unknown format before authorization', async () => {
   const handler = createFiscalDownloadHandler({
     admin: { from() { throw new Error('must not query'); } },
-    assertOwner: async () => { throw new Error('must not authenticate'); },
+    assertAccess: async () => { throw new Error('must not authenticate'); },
   });
   const res = response();
   await handler({ ...req, query: { ...req.query, format: 'exe' } }, res);
@@ -73,7 +73,7 @@ test('download rejects unknown format before authorization', async () => {
 test('download rejects non-GET requests', async () => {
   const handler = createFiscalDownloadHandler({
     admin: { from() { throw new Error('must not query'); } },
-    assertOwner: async () => { throw new Error('must not authenticate'); },
+    assertAccess: async () => { throw new Error('must not authenticate'); },
   });
   const res = response();
   await handler({ ...req, method: 'POST' }, res);

@@ -8,7 +8,8 @@
     "test": "node --test test/unit/*.test.mjs",
     "test:unit": "node --test test/unit/*.test.mjs",
     "test:db": "node --test test/db/*.test.mjs",
-    "test:deno": "deno test --node-modules-dir=none -A test/deno/app.test.ts"
+    "test:contract": "bash scripts/postgrest-contract/run.sh",
+    "test:deno": "deno test --node-modules-dir=none -A test/deno/"
   },
   "devDependencies": {
     "pg": "8.23.1"

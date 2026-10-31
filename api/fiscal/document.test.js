@@ -24,8 +24,8 @@ function setup({ authorized=true, invoice=true, document=true, errorTable=null }
     };
     return builder;
   }};
-  const assertOwner=async ()=>authorized ? {ok:true,actorId:'actor'} : {ok:false,status:403,error:'BUSINESS_NOT_AUTHORIZED'};
-  const handle=createFiscalDocumentHandler({admin,assertOwner});
+  const assertAccess=async ()=>authorized ? {ok:true,actorId:'actor'} : {ok:false,status:403,error:'BUSINESS_NOT_AUTHORIZED'};
+  const handle=createFiscalDocumentHandler({admin,assertAccess});
   const request={method:'GET',headers:{authorization:'Bearer token'},query:{businessId,invoiceId}};
   return {handle,request,calls};
 }

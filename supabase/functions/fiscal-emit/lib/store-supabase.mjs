@@ -103,6 +103,21 @@ export function createSupabaseStore(client) {
       }));
     },
 
+    async hasRole(businessId, userId, role) {
+      return Boolean(await rpc('crm_fiscal_has_role', { p_business_id: businessId, p_user_id: userId, p_role: role }));
+    },
+
+    async appendAudit(entry) {
+      return Boolean(await rpc('crm_fiscal_audit_append', {
+        p_business_id: entry.businessId,
+        p_sale_id: entry.saleId ?? null,
+        p_actor_user_id: entry.actorUserId ?? null,
+        p_action: entry.action,
+        p_outcome: entry.outcome,
+        p_detail: entry.detail ?? {},
+      }));
+    },
+
     async listStaleSending(before) {
       return mapStaleList(await rpc('crm_fiscal_list_stale_sending', { p_before: before.toISOString() }));
     },

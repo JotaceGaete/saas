@@ -93,3 +93,31 @@ NO verificado:
 - Migración endurecida solo aplicada en `walinka_test`; no aplicada en producción.
 - Endpoints de PDF y descarga en `main` (`api/fiscal/document.js`, `download.js`, `pdf.js`): siguen
   usando el guard solo de dueño (`api/_lib/siisolutions-owner-guard.js`). No se cambiaron en esta rama.
+
+## Revisión de seguridad (PR #108, ronda 3)
+
+Cambios y estado. Ninguna migración aplicada en producción; no hay despliegue, no hay llamadas a DTECore, no se consumen folios.
+
+- **Cambio de dueño**: trigger `wa_businesses_owner_change` revoca todos los roles activos del dueño anterior en ese negocio, audita en `fiscal.admin_audit` (`owner_changed`) y siembra `fiscal_owner` al nuevo. Sin herencia de acceso. Probado en DB (`test/db/security.db.test.mjs`) y en memoria.
+- **Endpoints de lectura** (`api/fiscal/document`, `download`, `pdf`): autorización por rol activo con la RPC `crm_fiscal_actor_role` (`api/_lib/siisolutions-fiscal-role-guard.js`). Roles de lectura: owner, operator, viewer. El historial no cambia: la guarda decide quién entra, no qué documento se devuelve. Pruebas en `api/fiscal/*.test.js` y `api/_lib/siisolutions-fiscal-role-guard.test.js`.
+- **Reconciliación administrativa** (`createAdminReconciler`): exige rol `fiscal_reconciler`, que un cajero (`fiscal_operator`) no tiene; el dueño tampoco lo tiene por ser dueño. La evidencia debe venir firmada por el propio reconciliador (`EVIDENCE_REVIEWER_MISMATCH` si no). Audita `started` antes de actuar (si la auditoría falla, no se reconcilia) y `applied` o `rejected` después.
+- **Bloqueo retroactivo**: `fiscal.retroactive_emission_blocks` con las cuatro ventas Point antiguas; `crm_claim_fiscal_issuance` rechaza con `FISCAL_RETROACTIVE_BLOCKED` antes de crear fila.
+- **Recibos**: solo se guardan con fila en `sending` y para la misma venta, negocio y operación; contenido distinto -> `FISCAL_RECEIPT_CONFLICT`; clave compuesta impide asociarlos a otro negocio.
+- **Recuperación**: `staleAfterMs` por defecto 15 minutos, configurable con `FISCAL_STALE_AFTER_MS` (límites 5 min - 24 h). Si el valor es inválido, el arranque falla (`lib/config.mjs`, `app.ts: buildRecoveryRunner`).
+- **Contrato PostgREST**: `test/helpers/postgrest-client.mjs` replica las reglas de supabase-js; sus reglas están probadas con `fetch` falso (`test/unit/postgrest-client.test.mjs`). La prueba contra PostgREST real está en `test/contract/` y se ejecuta con `npm run test:contract` (ver abajo). **No se ha ejecutado aquí**: no hay binario de PostgREST disponible.
+
+### Ejecutar
+
+- `npm test`: unidad en memoria (159).
+- `FISCAL_TEST_PG_DB=walinka_test npm run test:db`: Postgres real local (87).
+- `npm run test:deno`: Deno (11).
+- `node --test api/fiscal/*.test.js api/_lib/*.test.js` (desde la raíz del repo; requiere `@supabase/supabase-js` instalado): 35.
+- `npm run test:contract`: requiere `POSTGREST_BIN` y `PGRST_DB_URI` apuntando a una base local de prueba. Se niega si la URL es de producción o no es local. Sin esas variables la prueba se salta.
+
+### Pendientes antes de aprobar
+
+1. Política tributaria de la reconciliación sin definir: qué evidencia basta para resolver un `unknown`.
+2. Revisar el trigger de cambio de dueño antes de aplicar la migración en producción.
+3. Ejecutar `test:contract` contra un PostgREST real (no verificado).
+4. Ningún planificador ejecuta la recuperación todavía.
+5. Las ventas Point bloqueadas son las cuatro identificadas en la lectura de solo lectura; confirmar la lista.

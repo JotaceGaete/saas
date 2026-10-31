@@ -122,6 +122,21 @@ export function createPgStore(cfg) {
       ));
     },
 
+    async hasRole(businessId, userId, role) {
+      return Boolean(await scalar(
+        `select public.crm_fiscal_has_role($1, $2, $3) as ok`, [businessId, userId, role], 'ok',
+      ));
+    },
+
+    async appendAudit(entry) {
+      return Boolean(await scalar(
+        `select public.crm_fiscal_audit_append($1, $2, $3, $4, $5, $6::jsonb) as ok`,
+        [entry.businessId, entry.saleId ?? null, entry.actorUserId ?? null, entry.action, entry.outcome,
+         JSON.stringify(entry.detail ?? {})],
+        'ok',
+      ));
+    },
+
     async listStaleSending(before) {
       return mapStaleList(await scalar(
         `select public.crm_fiscal_list_stale_sending($1) as j`, [before.toISOString()], 'j',

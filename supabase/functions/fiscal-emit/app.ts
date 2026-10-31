@@ -7,6 +7,8 @@
 import { createFiscalEmitter } from './lib/emit.mjs';
 import { createSupabaseStore } from './lib/store-supabase.mjs';
 import { createHttpHandler } from './lib/http.mjs';
+import { createRecovery } from './lib/recovery.mjs';
+import { readRecoveryConfig } from './lib/config.mjs';
 
 // Interfaz mínima de supabase-js que usa la aplicación (compatible con el cliente real).
 export interface FiscalDbClient {
@@ -45,6 +47,16 @@ export function buildFiscalHandler(deps: FiscalAppDeps) {
     const out = await handle({ method: req.method, authHeader: req.headers.get('authorization'), body });
     return json(out.status, out.body);
   };
+}
+
+// Recuperación de filas 'sending' vencidas. Lee FISCAL_STALE_AFTER_MS (por defecto 15 minutos,
+// límites 5 min - 24 h). Si el valor es inválido, la función NO arranca: es preferible un fallo
+// explícito a una ventana de recuperación silenciosamente equivocada.
+// ESTADO: no hay planificador que la ejecute todavía; ver README, "Pendientes".
+export function buildRecoveryRunner(deps: { db: FiscalDbClient; env: Record<string, string | undefined> }) {
+  const { staleAfterMs, source } = readRecoveryConfig(deps.env);
+  const store = createSupabaseStore(deps.db);
+  return Object.freeze({ recovery: createRecovery({ store, staleAfterMs }), staleAfterMs, source });
 }
 
 function json(status: number, body: unknown): Response {

@@ -12,7 +12,10 @@ export const ROLE_ACTIONS = Object.freeze({
   reprint: Object.freeze(['fiscal_owner', 'fiscal_operator', 'fiscal_viewer']),
 });
 
-export const ROLES = Object.freeze(['fiscal_owner', 'fiscal_operator', 'fiscal_viewer']);
+// fiscal_reconciler es administrativo: NO emite ni reimprime. Solo lo usa lib/reconciler.mjs
+// (createAdminReconciler), y se comprueba con hasRole, no con el rol de mayor privilegio.
+export const RECONCILER_ROLE = 'fiscal_reconciler';
+export const ROLES = Object.freeze(['fiscal_owner', 'fiscal_operator', 'fiscal_viewer', RECONCILER_ROLE]);
 
 export function authorizeAction(role, action) {
   if (!role || !ROLES.includes(role)) return false;

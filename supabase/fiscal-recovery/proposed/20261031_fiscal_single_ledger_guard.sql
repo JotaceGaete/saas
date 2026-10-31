@@ -116,6 +116,11 @@ begin
     raise exception 'FISCAL_SALE_NOT_ELIGIBLE';
   end if;
 
+  -- Ventas bloqueadas para emisión retroactiva automática (sección 3j).
+  if exists (select 1 from fiscal.retroactive_emission_blocks b where b.sale_id = p_sale_id) then
+    raise exception 'FISCAL_RETROACTIVE_BLOCKED';
+  end if;
+
   if not exists (select 1 from fiscal.issuers s
                   where s.business_id = p_business_id and s.enabled and s.verified) then
     raise exception 'FISCAL_ISSUER_NOT_ENABLED';
@@ -570,7 +575,7 @@ as $$
     join public.wa_businesses b on b.id = r.business_id
    where r.business_id = p_business_id and r.user_id = p_user_id and r.revoked_at is null
      and b.is_active is not false
-   order by case r.role when 'fiscal_owner' then 1 when 'fiscal_operator' then 2 else 3 end
+   order by case r.role when 'fiscal_owner' then 1 when 'fiscal_operator' then 2 when 'fiscal_viewer' then 3 else 4 end
    limit 1;
 $$;
 
@@ -772,5 +777,143 @@ $$;
 
 revoke all on function public.crm_fiscal_actor_role(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.crm_fiscal_actor_role(uuid, uuid) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 3j. Revisión de seguridad (PR #108):
+--     - Rol administrativo fiscal_reconciler, separado de cajero (fiscal_operator).
+--     - Cambio de dueño: revoca TODOS los roles del dueño anterior en ese negocio y lo audita.
+--     - Auditoría administrativa solo-anexar.
+--     - Bloqueo de emisión retroactiva automática para cuatro ventas Point antiguas.
+-- ---------------------------------------------------------------------------
+alter table fiscal.business_fiscal_roles drop constraint if exists business_fiscal_roles_role_check;
+alter table fiscal.business_fiscal_roles add constraint business_fiscal_roles_role_check
+  check (role in ('fiscal_owner', 'fiscal_operator', 'fiscal_viewer', 'fiscal_reconciler'));
+
+create or replace function fiscal.has_role(p_business_id uuid, p_user_id uuid, p_role text)
+returns boolean
+language sql
+stable
+security definer
+set search_path = pg_catalog, public, fiscal
+as $$
+  select exists (
+    select 1 from fiscal.business_fiscal_roles r
+      join public.wa_businesses b on b.id = r.business_id
+     where r.business_id = p_business_id and r.user_id = p_user_id and r.role = p_role
+       and r.revoked_at is null and b.is_active is not false
+  );
+$$;
+
+revoke all on function fiscal.has_role(uuid, uuid, text) from public, anon, authenticated;
+grant execute on function fiscal.has_role(uuid, uuid, text) to service_role;
+
+create or replace function public.crm_fiscal_has_role(p_business_id uuid, p_user_id uuid, p_role text)
+returns boolean
+language sql
+stable
+security invoker
+set search_path = public, fiscal
+as $$
+  select fiscal.has_role(p_business_id, p_user_id, p_role);
+$$;
+
+revoke all on function public.crm_fiscal_has_role(uuid, uuid, text) from public, anon, authenticated;
+grant execute on function public.crm_fiscal_has_role(uuid, uuid, text) to service_role;
+
+create table if not exists fiscal.admin_audit (
+  id bigserial primary key,
+  business_id uuid not null,
+  sale_id uuid,
+  actor_user_id uuid,
+  action text not null check (action in ('reconcile_attempt', 'reconcile_result', 'owner_changed')),
+  outcome text not null check (length(outcome) between 1 and 80),
+  detail jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+alter table fiscal.admin_audit enable row level security;
+revoke all on fiscal.admin_audit from public, anon, authenticated;
+grant select, insert on fiscal.admin_audit to service_role;
+grant usage, select on sequence fiscal.admin_audit_id_seq to service_role;
+
+drop trigger if exists admin_audit_append_only on fiscal.admin_audit;
+create trigger admin_audit_append_only
+  before update or delete on fiscal.admin_audit
+  for each row execute function fiscal.dte39_evidence_append_only();
+
+create or replace function public.crm_fiscal_audit_append(
+  p_business_id uuid, p_sale_id uuid, p_actor_user_id uuid,
+  p_action text, p_outcome text, p_detail jsonb
+) returns boolean
+language plpgsql
+security invoker
+set search_path = public, fiscal
+as $$
+begin
+  if p_business_id is null or p_action is null or p_outcome is null then
+    raise exception 'Invalid fiscal audit entry';
+  end if;
+  insert into fiscal.admin_audit (business_id, sale_id, actor_user_id, action, outcome, detail)
+  values (p_business_id, p_sale_id, p_actor_user_id, p_action, p_outcome, coalesce(p_detail, '{}'::jsonb));
+  return true;
+end;
+$$;
+
+revoke all on function public.crm_fiscal_audit_append(uuid, uuid, uuid, text, text, jsonb) from public, anon, authenticated;
+grant execute on function public.crm_fiscal_audit_append(uuid, uuid, uuid, text, text, jsonb) to service_role;
+
+-- Cambio de dueño: el dueño anterior pierde TODOS sus roles fiscales en ese negocio (sin herencia).
+-- Queda registrado en fiscal.admin_audit. El nuevo dueño recibe fiscal_owner.
+create or replace function fiscal.handle_owner_change()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public, fiscal
+as $$
+declare
+  v_revoked integer;
+begin
+  update fiscal.business_fiscal_roles
+     set revoked_at = now()
+   where business_id = new.id and user_id = old.user_id and revoked_at is null;
+  get diagnostics v_revoked = row_count;
+
+  insert into fiscal.admin_audit (business_id, sale_id, actor_user_id, action, outcome, detail)
+  values (new.id, null, null, 'owner_changed', 'previous_owner_revoked',
+          jsonb_build_object('previous_user_id', old.user_id, 'new_user_id', new.user_id, 'revoked_rows', v_revoked));
+
+  if new.user_id is not null then
+    insert into fiscal.business_fiscal_roles (business_id, user_id, role)
+    values (new.id, new.user_id, 'fiscal_owner')
+    on conflict do nothing;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists wa_businesses_owner_change on public.wa_businesses;
+create trigger wa_businesses_owner_change
+  after update of user_id on public.wa_businesses
+  for each row
+  when (old.user_id is distinct from new.user_id)
+  execute function fiscal.handle_owner_change();
+
+-- Ventas Point antiguas: emisión retroactiva automática bloqueada (ver crm_claim_fiscal_issuance).
+create table if not exists fiscal.retroactive_emission_blocks (
+  sale_id uuid primary key,
+  reason text not null check (length(btrim(reason)) >= 10),
+  created_at timestamptz not null default now()
+);
+
+alter table fiscal.retroactive_emission_blocks enable row level security;
+revoke all on fiscal.retroactive_emission_blocks from public, anon, authenticated;
+grant select, insert, delete on fiscal.retroactive_emission_blocks to service_role;
+
+insert into fiscal.retroactive_emission_blocks (sale_id, reason) values
+  ('8d40285b-4d52-41fa-ab7a-90870ca150dd', 'Point antigua (2026-10-07): emisión retroactiva automática bloqueada'),
+  ('df077a1b-7cdc-4825-8750-6a5a991a3095', 'Point antigua (2026-10-07): emisión retroactiva automática bloqueada'),
+  ('ef2746fd-ca30-4ebc-86c6-4b8442e5fb84', 'Point antigua (2026-10-24): emisión retroactiva automática bloqueada'),
+  ('661c88a9-9731-46f8-a685-4e112290a98e', 'Point antigua (2026-10-24): emisión retroactiva automática bloqueada')
+on conflict do nothing;
 
 commit;
