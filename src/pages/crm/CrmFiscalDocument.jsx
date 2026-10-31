@@ -7,6 +7,7 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
   const [error, setError] = useState('');
   const [pdfError, setPdfError] = useState('');
   const [openingPdf, setOpeningPdf] = useState(false);
+  const [downloading, setDownloading] = useState('');
 
   useEffect(() => {
     if (!businessId || !invoiceId) return;
@@ -94,6 +95,39 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
     }
   }
 
+  async function downloadFiscalFile(format) {
+    if (downloading || document?.status !== 'issued' || !document?.folio) return;
+    setDownloading(format);
+    setPdfError('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Debes iniciar sesión.');
+      const params = new URLSearchParams({ businessId, invoiceId, format });
+      const response = await fetch(`/api/fiscal/download?${params}`, {
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error('No se pudo descargar el documento tributario.');
+      const blob = await response.blob();
+      const expected = format === 'pdf' ? 'application/pdf' : 'application/xml';
+      if (blob.size === 0 || blob.type.split(';')[0] !== expected) {
+        throw new Error('El archivo recibido no tiene el formato esperado.');
+      }
+      const url = URL.createObjectURL(blob);
+      const anchor = window.document.createElement('a');
+      anchor.href = url;
+      anchor.download = `boleta-${document.folio}.${format}`;
+      window.document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (err) {
+      setPdfError(err.message || 'No se pudo descargar el documento.');
+    } finally {
+      setDownloading('');
+    }
+  }
+
   if (loading) {
     return <p className="text-sm text-gray-500">Consultando documento tributario...</p>;
   }
@@ -142,12 +176,20 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
         </div>
       </div>
       {document.status === 'issued' && document.folio && (
-        <div className="mt-5">
+        <div className="mt-5 flex flex-wrap gap-2">
           <button type="button" onClick={openFiscalPdf} disabled={openingPdf}
             className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
             {openingPdf ? 'Abriendo PDF...' : `Ver PDF oficial — Boleta ${document.folio}`}
           </button>
-          {pdfError && <p role="alert" className="mt-2 text-sm text-red-600">{pdfError}</p>}
+          <button type="button" onClick={() => downloadFiscalFile('pdf')} disabled={!!downloading}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50">
+            {downloading === 'pdf' ? 'Descargando...' : 'Descargar PDF'}
+          </button>
+          <button type="button" onClick={() => downloadFiscalFile('xml')} disabled={!!downloading}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-semibold hover:bg-gray-50 disabled:opacity-50">
+            {downloading === 'xml' ? 'Descargando...' : 'Descargar XML'}
+          </button>
+          {pdfError && <p role="alert" className="w-full mt-2 text-sm text-red-600">{pdfError}</p>}
         </div>
       )}
     </section>
