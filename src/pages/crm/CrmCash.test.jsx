@@ -834,7 +834,7 @@ describe('CASH-DETAIL-HISTORICAL-ACTIONS-REGRESSION — pestaña Movimientos sin
     });
   });
 
-  it('un cobro de la caja abierta sigue mostrando "Editar" y "Anular" activo (no "Ver venta"/"Reimprimir")', async () => {
+  it('un cobro de caja abierta sin venta TPV (sin invoice.source "pos") mantiene "Editar" y "Anular" y NO muestra "Reimprimir"', async () => {
     render(<CrmCash />);
     const detailCell = await screen.findByText('Venta mostrador');
     // Se acota a la fila del movimiento: la tarjeta hero de la caja activa
@@ -845,6 +845,111 @@ describe('CASH-DETAIL-HISTORICAL-ACTIONS-REGRESSION — pestaña Movimientos sin
     expect(within(row).getByRole('button', { name: 'Anular' })).toBeInTheDocument();
     expect(within(row).queryByRole('button', { name: 'Ver venta' })).not.toBeInTheDocument();
     expect(within(row).queryByRole('button', { name: 'Reimprimir' })).not.toBeInTheDocument();
+  });
+});
+
+/**
+ * REPRINT-OPEN-SESSION-FLOW — "Reimprimir" en la pestaña Movimientos de la caja
+ * ABIERTA (vista principal, fuera del modal de detalle). Prueba el flujo real del
+ * botón: clic -> handleReprintReceipt -> printService, y que el usuario vea el
+ * estado (en curso / enviado / error). Antes de esta corrección la tabla
+ * principal no recibía onReprintReceipt y el clic no hacía nada.
+ */
+describe('REPRINT-OPEN-SESSION-FLOW — "Reimprimir" en caja abierta', () => {
+  const OPEN_POS_PAYMENT = {
+    id: 'pay-open-pos', amount: 12000, payment_method: 'card', reference: 'TPV NV-0956',
+    notes: null, created_at: '2026-09-13T10:00:00Z', currency: 'CLP',
+    voided_at: null, invoice_id: 'inv-956', invoice: { source: 'pos' },
+  };
+  const INVOICE_956 = {
+    id: 'inv-956', invoice_number: 956, subtotal: 12000, discount_amount: 0, total: 12000,
+    notes: null, issue_date: '2026-09-13', source: 'pos',
+    wa_customers: { id: 'cust956', name: 'Cliente TPV' },
+    crm_invoice_items: [
+      { id: 'item956', name: 'Producto B', description: null, unit_price: 12000, quantity: 1, sort_order: 1 },
+    ],
+  };
+
+  beforeEach(() => {
+    getCashSessionPaymentsMock.mockImplementation((_bizId, session) => {
+      if (session.id === 'sess1') return Promise.resolve({ data: [OPEN_POS_PAYMENT], error: null });
+      return Promise.resolve({ data: [], error: null });
+    });
+    getCrmInvoiceMock.mockResolvedValue({ data: INVOICE_956, error: null });
+    getInvoicePaymentSummaryMock.mockResolvedValue({
+      data: { invoice: { id: 'inv-956', total: 12000 }, total: 12000, paid: 12000, pending: 0,
+        status: 'pagada', payments: [{ amount: 12000, payment_method: 'card' }] },
+      error: null,
+    });
+    printReceiptMock.mockResolvedValue({ status: 'sent_to_spooler', duplicate: false });
+  });
+
+  async function openRow() {
+    render(<CrmCash />);
+    return (await screen.findByText('TPV NV-0956')).closest('tr');
+  }
+
+  it('el botón aparece en la fila de una venta TPV de caja abierta, junto a "Editar" y "Anular"', async () => {
+    const row = await openRow();
+    expect(within(row).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Reimprimir' })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Anular' })).toBeInTheDocument();
+  });
+
+  it('pulsar "Reimprimir" llega a printService con la venta guardada, sin crear pagos ni movimientos', async () => {
+    const row = await openRow();
+    fireEvent.click(within(row).getByRole('button', { name: 'Reimprimir' }));
+
+    await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
+    expect(getCrmInvoiceMock).toHaveBeenCalledWith('inv-956');
+    expect(buildSaleReceiptMock.mock.calls[0][0].sale).toBe(INVOICE_956);
+    expect(createCashMovementMock).not.toHaveBeenCalled();
+  });
+
+  it('muestra "Reimprimiendo…" y deshabilita el botón mientras el conector responde', async () => {
+    let resolvePrint;
+    printReceiptMock.mockImplementation(() => new Promise((resolve) => { resolvePrint = resolve; }));
+    const row = await openRow();
+    fireEvent.click(within(row).getByRole('button', { name: 'Reimprimir' }));
+
+    const busy = await within(row).findByRole('button', { name: /Reimprimiendo/ });
+    expect(busy).toBeDisabled();
+
+    resolvePrint({ status: 'sent_to_spooler', duplicate: false });
+    await waitFor(() => expect(within(row).getByRole('button', { name: 'Reimprimir' })).toBeEnabled());
+  });
+
+  it('tras aceptar el trabajo, muestra confirmación visible sin afirmar que el papel salió', async () => {
+    const row = await openRow();
+    fireEvent.click(within(row).getByRole('button', { name: 'Reimprimir' }));
+
+    const status = await screen.findByRole('status');
+    expect(status).toHaveTextContent(/Reimpresión enviada a «EPSON-TM-T20»/);
+    expect(status).toHaveTextContent(/Si no sale papel, revisa la impresora/);
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+  });
+
+  it('si el conector/impresora falla, muestra el motivo real en pantalla (no en silencio)', async () => {
+    printReceiptMock.mockRejectedValueOnce(new Error('La impresora configurada no existe en este equipo.'));
+    const row = await openRow();
+    fireEvent.click(within(row).getByRole('button', { name: 'Reimprimir' }));
+
+    const alert = await screen.findByRole('alert');
+    expect(alert).toHaveTextContent('No se pudo reimprimir el comprobante');
+    expect(alert).toHaveTextContent('La impresora configurada no existe en este equipo.');
+    expect(screen.queryByRole('status')).not.toBeInTheDocument();
+  });
+
+  it('sin impresora elegida en la ruta activa, avisa en pantalla y no llama a printService', async () => {
+    readPrinterConfigMock.mockReturnValue({
+      printerName: null, paperWidthMm: 80, autoCut: true, printLogo: true,
+      imageMode: 'bitImageEscStar', cutStrategyId: 'gs-v-modern', effectivePrintableWidthDots: null,
+    });
+    const row = await openRow();
+    fireEvent.click(within(row).getByRole('button', { name: 'Reimprimir' }));
+
+    expect(await screen.findByRole('alert')).toHaveTextContent(/No hay una impresora configurada/);
+    expect(printReceiptMock).not.toHaveBeenCalled();
   });
 });
 
