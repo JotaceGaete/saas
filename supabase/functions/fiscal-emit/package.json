@@ -1,0 +1,18 @@
+{
+  "name": "walinka-fiscal-emit",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Emisor fiscal server-side (DTE 39). Núcleo JS probado con node --test; index.ts es el envoltorio Deno.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test test/unit/*.test.mjs",
+    "test:unit": "node --test test/unit/*.test.mjs",
+    "test:db": "node --test test/db/*.test.mjs"
+  },
+  "devDependencies": {
+    "pg": "8.23.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
