@@ -36,8 +36,8 @@ export function inspectDteCoreReadiness(env = process.env) {
     configIssue,
     simulationEnabled: env.SIISOLUTIONS_EMISSION_ENABLED === 'simulation',
     reconciliationEnabled: env.SIISOLUTIONS_RECONCILIATION_ENABLED === 'verified-readonly',
-    liveEmissionEnabled: false,
-    readyForLiveEmission: false,
+    liveEmissionEnabled: env.SIISOLUTIONS_EMISSION_ENABLED === 'live',
+    readyForLiveEmission: configIssue === null && env.SIISOLUTIONS_EMISSION_ENABLED === 'live',
     nextStep: configIssue === null
       ? 'Verify business authorization and provider response schema in a controlled environment'
       : 'Fix server-only SIISOLUTIONS_PILOT_ISSUERS_JSON; never use VITE_ variables',
