@@ -6,6 +6,7 @@ import {
   MP_ORDERS_URL, MP_ALLOWED_STATUSES, pointCorsHeaders, pointJson,
   resolvePointContext, sanitizePointOrder,
 } from '../_shared/mpPoint.ts';
+import { requestPointBoletaEmission } from '../_shared/fiscalEmission.ts';
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -179,6 +180,14 @@ Deno.serve(async (req) => {
         operation_id: operation.id, order_id: order.id, status: order.status,
       }, 500);
     }
+  }
+
+  // Point fiscal emission is requested only after Mercado Pago reports a
+  // processed order and the idempotent local finalizer has an invoice.
+  // Both webhook and polling may reach this point: the fiscal repository
+  // must atomically claim one DTE per sale; never retry unknown outcomes.
+  if (order.status === 'processed' && invoiceId) {
+    await requestPointBoletaEmission(ctx.businessId, invoiceId);
   }
 
   return pointJson({
