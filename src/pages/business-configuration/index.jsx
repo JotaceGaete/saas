@@ -17,7 +17,7 @@ import DynamicWhatsAppField from 'components/DynamicWhatsAppField';
 import { getCountryLabels, getCountryCode } from '../../config/country';
 import InstallAppBlock from './components/InstallAppBlock';
 import SettingsSwitch from './components/SettingsSwitch';
-import { Building2, CalendarDays, CreditCard, Palette, Sparkles, Wallet } from 'lucide-react';
+import { Building2, CalendarDays, CreditCard, FileText, Palette, Sparkles, Wallet } from 'lucide-react';
 import { truncateAtWordBoundary } from '../../utils/textTruncate';
 import CountryIsoSelect from '../../components/country/CountryIsoSelect';
 import {
@@ -35,6 +35,10 @@ import LocationPicker from './components/LocationPicker';
 import BusinessCategoriesManager from './components/BusinessCategoriesManager';
 import CustomDomainSettings from './components/CustomDomainSettings';
 import MercadoPagoConnect from './components/MercadoPagoConnect';
+import FiscalConnectionSettings from './components/FiscalConnectionSettings';
+
+// Facturación electrónica por comercio: apagada por defecto hasta verificar DTECore en producción.
+const FISCAL_CONNECTION_ENABLED = import.meta.env.VITE_FISCAL_CONNECTION_ENABLED === 'true';
 import OperatingDaysSettings from './components/OperatingDaysSettings';
 import { BUSINESS_MODES, getRecommendedBusinessModeFromRubro } from '../../lib/business-mode';
 
@@ -1034,6 +1038,12 @@ export default function BusinessConfiguration() {
       description: 'Conecta tu cuenta de Mercado Pago',
       Icon: Wallet,
     },
+    ...(FISCAL_CONNECTION_ENABLED ? [{
+      id: 'fiscal',
+      label: 'Facturación',
+      description: 'Boletas electrónicas con tu cuenta DTECore',
+      Icon: FileText,
+    }] : []),
     {
       id: 'operations',
       label: 'Operación',
@@ -1911,6 +1921,21 @@ export default function BusinessConfiguration() {
                   </div>
                 </div>
                 <MercadoPagoConnect />
+              </div>
+            )}
+
+            {settingsTab === 'fiscal' && FISCAL_CONNECTION_ENABLED && business?.id && (
+              <div className={`${cardClass} mb-8`}>
+                <div className="flex items-center gap-3 mb-5">
+                  <div className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: 'rgba(2,132,199,0.1)' }}>
+                    <Icon name="FileText" size={18} color="#0284c7" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-text-primary)' }}>Facturación electrónica</h2>
+                    <p className="text-xs" style={{ color: 'var(--color-text-tertiary)', fontFamily: 'var(--font-caption)' }}>Conecta la cuenta DTECore de tu negocio</p>
+                  </div>
+                </div>
+                <FiscalConnectionSettings businessId={business.id} />
               </div>
             )}
 

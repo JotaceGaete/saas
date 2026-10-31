@@ -20,6 +20,7 @@ import { getProducts } from '../../services/waBusinessService';
 import { listPaymentsByInvoice, createPayment } from '../../services/crmPaymentsService';
 import CrmDocumentPdf from './CrmDocumentPdf';
 import CrmFiscalDocument from './CrmFiscalDocument';
+import CrmFiscalEmitAction from './CrmFiscalEmitAction';
 import {
   CrmLineItemCard,
   CrmLineItemTableRow,
@@ -681,6 +682,7 @@ export default function CrmInvoiceEditor() {
           {!isNew && saved && business?.id && (
             <CrmFiscalDocument businessId={business.id} invoiceId={saved.id} />
           )}
+          {!isNew && saved && business?.id && <CrmFiscalEmitAction />}
 
           {/* ── PAGOS RECIBIDOS (solo facturas guardadas) ── */}
           {!isNew && saved && (() => {
