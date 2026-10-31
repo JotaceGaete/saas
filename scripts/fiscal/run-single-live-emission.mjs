@@ -45,9 +45,19 @@ if (markErr) {
 const result = await createLiveSingleEmission({ admin })({
   businessId, saleId, authorizationId, amount,
 });
-// Print only non-sensitive outcome fields. No keys, no document bytes.
+// Read back the ledger row and report the monetary fields the XML states.
+// Prints no keys and no document bytes.
+let xmlTotals = null;
+const { data: row } = await admin.from('crm_fiscal_issuances')
+  .select('status,folio,xml_base64,operation_id').eq('business_id', businessId).eq('sale_id', saleId).maybeSingle();
+if (row?.xml_base64) {
+  const xml = Buffer.from(row.xml_base64, 'base64').toString('latin1');
+  const tag = n => (xml.match(new RegExp(`<${n}>([^<]*)</${n}>`)) || [])[1] ?? null;
+  xmlTotals = { TipoDTE: tag('TipoDTE'), Folio: tag('Folio'), MntNeto: tag('MntNeto'), IVA: tag('IVA'), MntTotal: tag('MntTotal') };
+}
 console.log(JSON.stringify({
   state: result.state, folio: result.folio ?? null,
   operationId: result.operationId ?? null, reason: result.reason ?? null,
+  ledgerStatus: row?.status ?? null, xmlTotals,
 }, null, 2));
 process.exit(result.state === 'issued' ? 0 : 1);

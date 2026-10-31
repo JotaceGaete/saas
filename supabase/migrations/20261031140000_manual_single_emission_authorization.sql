@@ -11,8 +11,10 @@
 --     reclamo. Ambos ocurren en la misma transacción de la función.
 --   - No toca fiscal.pos_dte39_outbox, fiscal.operations ni
 --     crm_point_fiscal_outbox.
---   - Corrige crm_finalize_fiscal_issuance: un estado 'unknown' conserva el folio
---     asignado por el proveedor (antes se descartaba y se perdía el dato).
+--   - Serialización por negocio con pg_advisory_xact_lock dentro de la misma
+--     transacción, más rechazo de cualquier operación 'sending' o 'unknown'.
+--   - crm_finalize_fiscal_issuance: cuerpo alineado con producción (provider y
+--     dte_type). Producción ya conserva el folio en 'unknown'; el repo viejo no.
 -- ============================================================================
 
 create table if not exists public.manual_fiscal_authorizations (
@@ -51,6 +53,15 @@ declare
 begin
   if nullif(trim(coalesce(p_operation_id, '')), '') is null or p_amount is null or p_amount <= 0 then
     raise exception 'Invalid manual emission request';
+  end if;
+
+  -- Serialize all manual emissions for this business inside the transaction.
+  -- Concurrent begins for the same business queue on this lock.
+  perform pg_advisory_xact_lock(hashtextextended('manual_fiscal_emission:' || p_business_id::text, 0));
+  -- Sequential rule enforced atomically: nothing may be in flight or unresolved.
+  if exists (select 1 from public.crm_fiscal_issuances f
+              where f.business_id = p_business_id and f.status in ('sending', 'unknown')) then
+    raise exception 'Unresolved fiscal operation exists for this business';
   end if;
 
   select * into v_auth from public.manual_fiscal_authorizations
@@ -111,7 +122,8 @@ begin
       pdf_base64 = case when p_status = 'issued' then p_pdf_base64 else null end,
       updated_at = now()
   where business_id = p_business_id and sale_id = p_sale_id
-    and operation_id = p_operation_id and status = 'sending';
+    and operation_id = p_operation_id and status = 'sending'
+    and provider = 'siisolutions' and dte_type = 39;
   get diagnostics v_count = row_count;
   return v_count = 1;
 end;

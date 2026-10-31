@@ -15,7 +15,7 @@ q()  { psql -X -A -t -v ON_ERROR_STOP=1 -c "$1"; }
 fail() { echo "FAIL: $*" >&2; exit 1; }
 expect_error() { # expect_error <label> <sql> <pattern>
   local out; out=$(psql -X -A -t -c "$2" 2>&1 || true)
-  grep -q "$3" <<<"$out" || fail "$1 (got: $out)"; echo "ok - $1"
+  grep -qE "$3" <<<"$out" || fail "$1 (got: $out)"; echo "ok - $1"
 }
 
 # Minimal fixture: only the objects these migrations depend on.
@@ -62,7 +62,7 @@ expect_error "authorization for another business is not found" "select public.cr
 
 # Pre-existing ledger row for the sale: claim fails, authorization must NOT be consumed.
 q "insert into public.crm_fiscal_issuances (business_id, sale_id, operation_id, dte_type, status) values ('$B','$S','WLK-prior',39,'unknown');" >/dev/null
-expect_error "existing fiscal operation blocks the claim" "select public.crm_begin_manual_single_emission('$A'::uuid,'$B'::uuid,'$S'::uuid,100,'$OP');" "already exists"
+expect_error "existing fiscal operation blocks the claim" "select public.crm_begin_manual_single_emission('$A'::uuid,'$B'::uuid,'$S'::uuid,100,'$OP');" "Unresolved fiscal operation|already exists"
 [[ "$(q "select consumed_at is null from public.manual_fiscal_authorizations where id='$A';" | tr -d ' ')" == t ]] || fail "failed claim consumed the authorization"
 echo "ok - failed claim rolls back authorization consumption"
 q "delete from public.crm_fiscal_issuances where sale_id='$S';" >/dev/null
@@ -70,33 +70,38 @@ q "delete from public.crm_fiscal_issuances where sale_id='$S';" >/dev/null
 # Happy path, exactly once.
 [[ "$(begin_call "$A" 100 "$OP" | tr -d ' ')" == t ]] || fail "valid begin did not return true"
 [[ "$(q "select status from public.crm_fiscal_issuances where sale_id='$S';" | tr -d ' ')" == sending ]] || fail "claim not in sending"
-expect_error "second begin on the same authorization is refused" "select public.crm_begin_manual_single_emission('$A'::uuid,'$B'::uuid,'$S'::uuid,100,'$OP-2');" "already consumed"
+expect_error "second begin on the same authorization is refused" "select public.crm_begin_manual_single_emission('$A'::uuid,'$B'::uuid,'$S'::uuid,100,'$OP-2');" "already consumed|Unresolved fiscal operation"
 echo "ok - single use enforced"
 
-# Concurrency: two racing begins with different operation ids; exactly one wins.
+# Resolve the first emission (a test fixture step, not a production action) so the
+# business is clear, then race two begins on the SAME business with different sales.
+q "update public.crm_fiscal_issuances set status='failed', error_code='FIXTURE' where sale_id='$S';" >/dev/null
 S2='dddddddd-dddd-4ddd-8ddd-dddddddddddd'; A2='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee'
+S4='dddddddd-dddd-4ddd-8ddd-ddddddddddd4'; A4='eeeeeeee-eeee-4eee-8eee-eeeeeeeeeee4'
 q "insert into public.crm_invoices values ('$S2','$B','pagada', now(), 100);" >/dev/null
+q "insert into public.crm_invoices values ('$S4','$B','pagada', now(), 100);" >/dev/null
 q "insert into public.manual_fiscal_authorizations (id,business_id,sale_id,amount,expires_at,created_by) values ('$A2','$B','$S2',100, now()+interval '1 hour','test');" >/dev/null
+q "insert into public.manual_fiscal_authorizations (id,business_id,sale_id,amount,expires_at,created_by) values ('$A4','$B','$S4',100, now()+interval '1 hour','test');" >/dev/null
 tmp="$(mktemp -d)"; trap 'rm -rf "$tmp"' EXIT
-for n in 1 2; do
-  ( psql -X -A -t -c "select public.crm_begin_manual_single_emission('$A2'::uuid,'$B'::uuid,'$S2'::uuid,100,'WLK-race-$n');" > "$tmp/out.$n" 2>&1 || true ) &
-done
+( psql -X -A -t -c "select public.crm_begin_manual_single_emission('$A2'::uuid,'$B'::uuid,'$S2'::uuid,100,'WLK-race-1');" > "$tmp/out.1" 2>&1 || true ) &
+( psql -X -A -t -c "select public.crm_begin_manual_single_emission('$A4'::uuid,'$B'::uuid,'$S4'::uuid,100,'WLK-race-2');" > "$tmp/out.2" 2>&1 || true ) &
 wait
 wins=$(cat "$tmp"/out.* | grep -cx 't' || true)
-[[ "$wins" == 1 ]] || fail "race produced $wins winners (expected exactly 1)"
-[[ "$(q "select count(*) from public.crm_fiscal_issuances where sale_id='$S2';" | tr -d ' ')" == 1 ]] || fail "race left more than one ledger row"
-echo "ok - racing begins: exactly one winner and one ledger row"
+[[ "$wins" == 1 ]] || fail "same-business race produced $wins winners (expected exactly 1)"
+winner_sale=$(q "select sale_id from public.crm_fiscal_issuances where business_id='$B' and sale_id in ('$S2','$S4') and status='sending';" | tr -d ' ')
+[[ -n "$winner_sale" ]] || fail "race left no sending row"
+[[ "$(q "select count(*) from public.crm_fiscal_issuances where business_id='$B' and sale_id in ('$S2','$S4');" | tr -d ' ')" == 1 ]] || fail "race left more than one ledger row"
+W=$(q "select operation_id from public.crm_fiscal_issuances where sale_id='$winner_sale';" | tr -d ' ')
+echo "ok - same-business racing begins: exactly one winner and one ledger row"
 
-# Unknown keeps the folio; issued requires XML and PDF.
-OPW="WLK-$B-$S"
-q "select public.crm_finalize_fiscal_issuance('$B'::uuid,'$S'::uuid,'$OP','unknown',51105,null,null);" >/dev/null
-[[ "$(q "select folio from public.crm_fiscal_issuances where sale_id='$S';" | tr -d ' ')" == 51105 ]] || fail "unknown dropped the folio"
-[[ "$(q "select status from public.crm_fiscal_issuances where sale_id='$S';" | tr -d ' ')" == unknown ]] || fail "status not unknown"
+# Unknown keeps the folio (on the winning operation); issued requires XML and PDF.
+q "select public.crm_finalize_fiscal_issuance('$B'::uuid,'$winner_sale'::uuid,'$W','unknown',51105,null,null);" >/dev/null
+[[ "$(q "select folio from public.crm_fiscal_issuances where sale_id='$winner_sale';" | tr -d ' ')" == 51105 ]] || fail "unknown dropped the folio"
+[[ "$(q "select status from public.crm_fiscal_issuances where sale_id='$winner_sale';" | tr -d ' ')" == unknown ]] || fail "status not unknown"
 echo "ok - unknown keeps the folio"
-expect_error "issued without XML/PDF is rejected" "select public.crm_finalize_fiscal_issuance('$B'::uuid,'$S2'::uuid,'WLK-race-1','issued',51106,null,null);" "requires folio, XML and PDF"
-q "select public.crm_finalize_fiscal_issuance('$B'::uuid,'$S2'::uuid,'WLK-race-1','unknown',null,null,null);" >/dev/null 2>&1 || true
-expect_error "non-positive folio is rejected" "select public.crm_finalize_fiscal_issuance('$B'::uuid,'$S2'::uuid,'WLK-race-1','unknown',0,null,null);" "Invalid fiscal folio"
-[[ "$(q "select public.crm_finalize_fiscal_issuance('$B'::uuid,'$S'::uuid,'$OP','issued',51105,'PHhtbA==','JVBERg==');" | tr -d ' ')" == f ]] || fail "finalize repeated on a non-sending row must return false"
+expect_error "issued without XML/PDF is rejected" "select public.crm_finalize_fiscal_issuance('$B'::uuid,'$winner_sale'::uuid,'$W','issued',51106,null,null);" "requires folio, XML and PDF"
+expect_error "non-positive folio is rejected" "select public.crm_finalize_fiscal_issuance('$B'::uuid,'$winner_sale'::uuid,'$W','unknown',0,null,null);" "Invalid fiscal folio"
+[[ "$(q "select public.crm_finalize_fiscal_issuance('$B'::uuid,'$winner_sale'::uuid,'$W','issued',51105,'PHhtbA==','JVBERg==');" | tr -d ' ')" == f ]] || fail "finalize repeated on a non-sending row must return false"
 echo "ok - finalize is one-shot"
 
 # Privileges: no public or authenticated access to the authorization table or RPC.
@@ -105,6 +110,18 @@ grep -q "permission denied" <<<"$out" || fail "authenticated can read authorizat
 out=$(psql -X -A -t -c "set role anon; select public.crm_begin_manual_single_emission('$A'::uuid,'$B'::uuid,'$S'::uuid,100,'x');" 2>&1 || true)
 grep -q "permission denied" <<<"$out" || fail "anon can execute begin ($out)"
 echo "ok - anon and authenticated are denied"
+
+# DB-level sequencing: a different sale of the same business is refused while
+# another fiscal operation is still in flight (not only the runner pre-check).
+S3='99999999-9999-4999-8999-999999999999'; A3='88888888-8888-4888-8888-888888888888'
+q "insert into public.crm_invoices values ('$S3','$B','pagada', now(), 100);" >/dev/null
+q "insert into public.manual_fiscal_authorizations (id,business_id,sale_id,amount,expires_at,created_by) values ('$A3','$B','$S3',100, now()+interval '1 hour','test');" >/dev/null
+q "update public.crm_fiscal_issuances set status='unknown' where sale_id='$winner_sale';" >/dev/null
+expect_error "unresolved operation of the business blocks a new emission at DB level" "select public.crm_begin_manual_single_emission('$A3'::uuid,'$B'::uuid,'$S3'::uuid,100,'WLK-seq');" "Unresolved fiscal operation"
+[[ "$(q "select consumed_at is null from public.manual_fiscal_authorizations where id='$A3';" | tr -d ' ')" == t ]] || fail "blocked emission consumed authorization"
+q "update public.crm_fiscal_issuances set status='issued', folio=51200, xml_base64='x', pdf_base64='y' where sale_id='$winner_sale';" >/dev/null
+[[ "$(q "select public.crm_begin_manual_single_emission('$A3'::uuid,'$B'::uuid,'$S3'::uuid,100,'WLK-seq-2');" | tr -d ' ')" == t ]] || fail "sequencing blocked a resolved business"
+echo "ok - sequencing resolves: next emission allowed once the prior operation is resolved"
 
 # Test-sale marker: additive, idempotent, no update/delete, sale record untouched.
 psql -X -q -v ON_ERROR_STOP=1 -d "$db" -f "$root/supabase/migrations/20261031150000_fiscal_test_sale_marks.sql"
