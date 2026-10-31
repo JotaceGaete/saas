@@ -26,6 +26,6 @@ test('fiscal finalize requires a sending operation and complete issuance', () =>
 
 test('browser roles cannot access fiscal ledger or RPC', () => {
   assert.ok(migration.includes('enable row level security'));
-  assert.ok(migration.includes('revoke all on public.crm_fiscal_issuances from anon, authenticated'));
-  assert.ok(migration.includes('to service_role'));
+  assert.ok(migration.includes('revoke all on public.crm_fiscal_issuances from public, anon, authenticated'));
+  assert.ok(migration.includes('grant select, insert, update on public.crm_fiscal_issuances to service_role'));
 });
