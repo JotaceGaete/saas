@@ -67,8 +67,19 @@ export default function CrmThermalTicket({
   // los pase: sin esto, el modal se comporta exactamente igual que antes.
   printStatus = 'idle',
   printErrorMessage = null,
+  fiscalEmission = { state: 'idle' },
   onConfigurePrinter,
 }) {
+  const fiscalState = fiscalEmission?.state;
+  const fiscalStatusText = fiscalState === 'issuing'
+    ? 'Emitiendo boleta tributaria…'
+    : fiscalState === 'issued'
+      ? `Boleta tributaria emitida · Folio ${fiscalEmission.folio ?? 'por consultar'}`
+      : fiscalState === 'not_connected'
+        ? 'Pago Point confirmado; emisión tributaria aún no conectada'
+        : ['blocked', 'unknown', 'already_claimed'].includes(fiscalState)
+          ? `Boleta tributaria no confirmada (${fiscalEmission.reason || fiscalState}). Revisar antes de reemitir.`
+          : null;
   // Pilot-only fiscal status. This never issues a DTE or allocates a folio.
   const fiscalPilotBusinessId = 'cda904a1-e331-4bd4-9f33-a6715687d3dd';
   const showFiscalPilot = business?.id === fiscalPilotBusinessId;
@@ -467,6 +478,11 @@ export default function CrmThermalTicket({
           </div>
 
           {/* PRINT-2 — estado de la impresión real (QZ Tray), no del navegador */}
+          {fiscalStatusText && (
+            <div role="status" style={{ padding: '10px 16px', fontSize: 12, fontWeight: 600, background: fiscalState === 'issued' ? '#ecfdf5' : '#fffbeb', color: fiscalState === 'issued' ? '#065f46' : '#92400e' }}>
+              {fiscalStatusText}
+            </div>
+          )}
           {printStatus === 'printing' && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 16px', backgroundColor: '#eff6ff', color: '#1d4ed8', fontSize: 12 }}>
               <Icon name="Loader2" size={14} color="currentColor" className="animate-spin" />

@@ -35,6 +35,7 @@ import CrmCustomers from './pages/crm/CrmCustomers';
 import CrmQuotes from './pages/crm/CrmQuotes';
 import CrmQuoteEditor from './pages/crm/CrmQuoteEditor';
 import CrmInvoices from './pages/crm/CrmInvoices';
+import CrmFiscalQueue from './pages/crm/CrmFiscalQueue';
 import CrmInvoiceEditor from './pages/crm/CrmInvoiceEditor';
 import CrmStock from './pages/crm/CrmStock';
 import CrmTerminal from './pages/crm/CrmTerminal';
@@ -149,6 +150,7 @@ const Routes = () => {
             <Route path="/crm/informes"           element={<RequireCrm><CrmInformesPeriodo /></RequireCrm>} />
             <Route path="/crm/cost-center"        element={<RequireCrm><CrmCostCenter /></RequireCrm>} />
             <Route path="/crm/facturas"           element={<RequireCrm><FeatureGate feature="invoices"><CrmInvoices /></FeatureGate></RequireCrm>} />
+            <Route path="/crm/fiscal"             element={<RequireCrm><CrmFiscalQueue /></RequireCrm>} />
             <Route path="/crm/facturas/nueva"     element={<RequireCrm><FeatureGate feature="invoices"><CrmInvoiceEditor /></FeatureGate></RequireCrm>} />
             <Route path="/crm/facturas/:id"       element={<RequireCrm><FeatureGate feature="invoices"><CrmInvoiceEditor /></FeatureGate></RequireCrm>} />
             {/* PROVEEDORES-CORE-4B: /crm/compras deja de ser un módulo independiente --

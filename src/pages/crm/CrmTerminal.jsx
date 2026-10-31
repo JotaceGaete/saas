@@ -24,6 +24,26 @@ import {
 import { printService } from 'lib/printing/printService';
 import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
+import { supabase } from '../../lib/supabase';
+import { requestCashBoletaForCompletedSale } from '../../services/siisolutionsFiscalBridge';
+
+// Emisión automática de boleta para una venta 100% en efectivo. Nunca bloquea
+// el ticket ni reintenta: un resultado no confirmado queda para conciliación.
+async function requestCashBoletaAutomatically({ businessId, invoiceId }) {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const accessToken = data?.session?.access_token;
+    if (!accessToken) return { state: 'blocked', reason: 'SESSION_REQUIRED' };
+    const result = await requestCashBoletaForCompletedSale({ businessId, invoiceId, accessToken });
+    if (result.state !== 'issued') {
+      console.warn('[fiscal] cash boleta not issued', { invoiceId, state: result.state, reason: result.reason });
+    }
+    return result;
+  } catch {
+    console.warn('[fiscal] cash boleta request failed', { invoiceId });
+    return { state: 'unknown', reason: 'NETWORK_ERROR_RECONCILIATION_REQUIRED' };
+  }
+}
 
 // CAJA-CIERRE-CONCILIACION-1 -- 'card' genérico se reemplaza por
 // debit_card/credit_card para ventas NUEVAS (permite conciliar cada
@@ -309,6 +329,7 @@ function CrmTerminalUI() {
 
   // Ticket modal state — set after successful (or locally-fallback) sale
   const [ticketData, setTicketData] = useState(null);
+  const [fiscalEmission, setFiscalEmission] = useState({ state: 'idle' });
 
   const searchRef = useRef(null);
   const printedTicketRef = useRef(null);
@@ -1098,6 +1119,7 @@ function CrmTerminalUI() {
     if (pointStorageKey) localStorage.removeItem(pointStorageKey);
     setPointOperation(null);
     setTicketData({ sale: data.sale || { id: data.invoice_id }, ...saleSnapshot });
+    setFiscalEmission({ state: 'not_connected', reason: 'POINT_FISCAL_PENDING' });
     refreshProducts();
   }, [cart, selectedCustomer, total, discountAmount, subtotal, notes, draftKey, pointStorageKey]);
 
@@ -1372,6 +1394,13 @@ function CrmTerminalUI() {
       draftDebouncerRef.current.cancel();
       if (draftKey) removePosTerminalDraft(draftKey);
       setTicketData({ sale: data, ...saleSnapshot });
+      setFiscalEmission({ state: pendingBalance > 0 ? 'awaiting_payment' : 'not_applicable' });
+      if (pendingBalance === 0 && appliedPayments.length === 1 &&
+          ['cash', 'bank_transfer', 'debit_card', 'credit_card'].includes(appliedPayments[0].method) && data?.id) {
+        setFiscalEmission({ state: 'issuing' });
+        void requestCashBoletaAutomatically({ businessId: business.id, invoiceId: data.id })
+          .then(result => setFiscalEmission(result || { state: 'unknown', reason: 'EMPTY_RESPONSE' }));
+      }
     } finally {
       submitLockRef.current = false;
       setBusy(false);
@@ -1380,6 +1409,7 @@ function CrmTerminalUI() {
 
   const handleCloseTicket = () => {
     setTicketData(null);
+    setFiscalEmission({ state: 'idle' });
     setPrintStatus('idle');
     setPrintErrorMessage(null);
   };
@@ -2780,6 +2810,7 @@ function CrmTerminalUI() {
           onReprint={handleReprint}
           printStatus={printStatus}
           printErrorMessage={printErrorMessage}
+          fiscalEmission={fiscalEmission}
           onConfigurePrinter={handleGoToPrintSettings}
         />
       )}

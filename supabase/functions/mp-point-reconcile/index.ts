@@ -6,6 +6,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
 import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
 import { MP_ALLOWED_STATUSES, MP_ORDERS_URL, sanitizePointOrder } from '../_shared/mpPoint.ts';
+import { requestPointBoletaEmission } from '../_shared/fiscalEmission.ts';
 
 const BATCH_SIZE = 10;
 const STALE_MINUTES = 5;
@@ -231,6 +232,8 @@ Deno.serve(async (req) => {
         }
         result.finalized++;
         console.log('[mp-point-reconcile] finalized', { operationId: op.id, invoice: finalized ?? null });
+        const finalizedInvoiceId = (finalized as Array<{ id?: string }> | null)?.[0]?.id;
+        if (finalizedInvoiceId) await requestPointBoletaEmission(op.business_id, finalizedInvoiceId);
       } else if (TERMINAL_RELEASE_STATUSES.has(order.status)) {
         const { error: releaseError } = await admin.rpc('crm_point_release_stock', { p_operation_id: op.id });
         if (releaseError) {

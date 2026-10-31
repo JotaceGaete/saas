@@ -6,6 +6,7 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
 import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
 import { MP_ORDERS_URL, MP_ALLOWED_STATUSES, sanitizePointOrder } from '../_shared/mpPoint.ts';
+import { requestPointBoletaEmission } from '../_shared/fiscalEmission.ts';
 
 const MAX_BODY_BYTES=16*1024;
 const corsHeaders={'Access-Control-Allow-Origin':'*','Access-Control-Allow-Headers':'content-type,x-signature,x-request-id'};
@@ -75,13 +76,15 @@ Deno.serve(async(req)=>{
   if(syncError) return json({ok:false,error:'local_sync_failed'},500);
 
   if(order.status==='processed'&&!op.crm_invoice_id){
-    const {error:finalizeError}=await admin.rpc('crm_finalize_point_sale',{p_operation_id:op.id});
+    const {data:finalizedRows,error:finalizeError}=await admin.rpc('crm_finalize_point_sale',{p_operation_id:op.id});
     if(finalizeError){
       // Pago ya acreditado: queremos retry de MP ante una falla transitoria de
       // finalización. Nunca se revierte ni se vuelve a cobrar.
       console.error('[mp-point-webhook] processed finalization failed:',finalizeError.message,{operationId:op.id,businessId:op.business_id});
       return json({ok:false,error:'finalization_failed'},500);
     }
+    const finalizedInvoiceId=(finalizedRows as Array<{id?:string}>|null)?.[0]?.id;
+    if(finalizedInvoiceId) await requestPointBoletaEmission(op.business_id,finalizedInvoiceId);
   }else if(['failed','expired','canceled','refunded'].includes(order.status)){
     const {error:releaseError}=await admin.rpc('crm_point_release_stock',{p_operation_id:op.id});
     if(releaseError){
