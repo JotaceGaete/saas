@@ -17,10 +17,10 @@ export function createPointFiscalSweeper({ listCandidates, verifySale, registerP
       typeof registerPending !== 'function') {
     throw new Error('Sweep dependencies required');
   }
-  return async function sweep({ limit = 50 } = {}) {
+  return async function sweep({ limit = 50, dryRun = false } = {}) {
     const max = Math.min(Math.max(1, Number(limit) || 50), 50);
     const report = {
-      examined: 0, registered: 0, alreadyRegistered: 0,
+      examined: 0, registered: 0, alreadyRegistered: 0, eligibleDryRun: 0,
       notEligible: 0, verificationUnavailable: 0, failed: 0,
     };
     const candidates = await listCandidates({ limit: max });
@@ -36,6 +36,10 @@ export function createPointFiscalSweeper({ listCandidates, verifySale, registerP
       }
       if (!verdict?.ready) {
         report.notEligible++;
+        continue;
+      }
+      if (dryRun) {
+        report.eligibleDryRun++;
         continue;
       }
       try {
