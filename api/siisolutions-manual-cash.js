@@ -5,8 +5,8 @@ import { createConfiguredManualCashFiscalPilot } from './_lib/siisolutions-manua
 // Server-only endpoint. Never expose service credentials in VITE_ variables.
 export default async function handler(req, res) {
   res.setHeader('Cache-Control', 'no-store');
-  if (process.env.SIISOLUTIONS_EMISSION_ENABLED !== 'simulation') {
-    return res.status(503).json({ error: 'SIMULATION_NOT_ENABLED' });
+  if (!['simulation', 'live'].includes(process.env.SIISOLUTIONS_EMISSION_ENABLED)) {
+    return res.status(503).json({ error: 'FISCAL_EMISSION_NOT_ENABLED' });
   }
   const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -21,7 +21,7 @@ export default async function handler(req, res) {
   };
   const issueManualCash = createConfiguredManualCashFiscalPilot({
     admin,
-    sandboxBaseUrl: process.env.SIISOLUTIONS_SANDBOX_BASE_URL,
+    sandboxBaseUrl: process.env.SIISOLUTIONS_EMISSION_ENABLED === 'live' ? 'https://api.siisolutions.cl' : process.env.SIISOLUTIONS_SANDBOX_BASE_URL,
   });
   return createManualCashFiscalHttpHandler({ authenticate, issueManualCash })(req, res);
 }
