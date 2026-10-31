@@ -19,6 +19,7 @@ import {
 import { getProducts } from '../../services/waBusinessService';
 import { listPaymentsByInvoice, createPayment } from '../../services/crmPaymentsService';
 import CrmDocumentPdf from './CrmDocumentPdf';
+import CrmFiscalDocument from './CrmFiscalDocument';
 import {
   CrmLineItemCard,
   CrmLineItemTableRow,
@@ -677,6 +678,12 @@ export default function CrmInvoiceEditor() {
             </div>
           </div>
 
+          {!isNew && saved && (
+  <CrmFiscalDocument
+    businessId={business?.id}
+    invoiceId={saved.id}
+  />
+)}
           {/* ── PAGOS RECIBIDOS (solo facturas guardadas) ── */}
           {!isNew && saved && (() => {
             const totalPagado = payments.reduce((s, p) => s + (p.amount || 0), 0);
