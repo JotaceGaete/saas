@@ -165,6 +165,17 @@ export function createPgStore(cfg) {
         'ok',
       ));
     },
+
+    // Reconciliación administrativa atómica: rol, revisor, evidencia y auditoría en una transacción.
+    async reconcileAdmin(businessId, saleId, operationId, actorUserId, ev) {
+      return Boolean(await scalar(
+        `select public.crm_fiscal_reconcile_admin($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) as ok`,
+        [businessId, saleId, operationId, actorUserId, ev.reviewerUserId, ev.outcome, ev.folio ?? null,
+         ev.xmlBase64 ?? null, ev.pdfBase64 ?? null, ev.reviewer, ev.reason, ev.evidenceReference,
+         ev.providerStatus, ev.checkedAt],
+        'ok',
+      ));
+    },
   };
 }
 

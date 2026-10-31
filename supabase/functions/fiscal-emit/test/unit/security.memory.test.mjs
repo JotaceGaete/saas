@@ -116,7 +116,7 @@ test('reconciliador con identidad distinta del revisor declarado -> EVIDENCE_REV
   assert.equal(w.store.issuances.get(ROW).status, 'unknown');
 });
 
-test('reconciliador autorizado: aplica con evidencia y deja auditoría de inicio y de resultado', async () => {
+test('reconciliador autorizado: aplica con evidencia y auditoría en la misma transacción', async () => {
   const w = await unknownSale();
   w.store.grantRole(IDS.bizA, IDS.userA, 'fiscal_reconciler');
   const rec = createAdminReconciler({ store: w.store });
@@ -125,35 +125,32 @@ test('reconciliador autorizado: aplica con evidencia y deja auditoría de inicio
   assert.equal(w.store.issuances.get(ROW).folio, 77);
   assert.equal(w.store.evidenceLog.length, 1);
   const actions = w.store.auditLog.map((a) => `${a.action}:${a.outcome}`);
-  assert.deepEqual(actions.slice(-2), ['reconcile_attempt:started', 'reconcile_result:applied']);
+  assert.deepEqual(actions.slice(-1), ['reconcile_result:applied']);
   assert.equal(w.provider.calls, 1, 'reconciliar no llama al proveedor');
 });
 
-test('auditoría previa no disponible: no se reconcilia (falla cerrado)', async () => {
+test('auditoría no disponible: la transacción no se confirma; nada cambia y el resultado es desconocido', async () => {
   const w = await unknownSale();
   w.store.grantRole(IDS.bizA, IDS.userA, 'fiscal_reconciler');
   w.store.setAuditFailure(true);
   const rec = createAdminReconciler({ store: w.store });
-  await assert.rejects(rec.reconcile({ actorUserId: IDS.userA, saleId: IDS.saleA, evidence: EVIDENCE() }), /audit store unavailable/);
+  await assert.rejects(rec.reconcile({ actorUserId: IDS.userA, saleId: IDS.saleA, evidence: EVIDENCE() }), { code: 'RECONCILE_OUTCOME_UNKNOWN' });
   assert.equal(w.store.issuances.get(ROW).status, 'unknown');
   assert.equal(w.store.evidenceLog.length, 0);
 });
 
-test('auditoría del resultado fallida tras aplicar: error interno visible, no un éxito silencioso', async () => {
+test('respuesta perdida tras aplicar: resultado desconocido, sin registrar rechazo sobre una operación aplicada', async () => {
   const w = await unknownSale();
   w.store.grantRole(IDS.bizA, IDS.userA, 'fiscal_reconciler');
+  w.store.injectFault('reconcileAdmin', { mode: 'after', times: 1 });
   const rec = createAdminReconciler({ store: w.store });
-  // Falla solo en el resultado: la auditoría de inicio sí se escribe.
-  const original = w.store.appendAudit;
-  let calls = 0;
-  w.store.appendAudit = async (entry) => {
-    calls += 1;
-    if (entry.outcome === 'applied') throw new Error('audit down');
-    return original(entry);
-  };
-  await assert.rejects(rec.reconcile({ actorUserId: IDS.userA, saleId: IDS.saleA, evidence: EVIDENCE() }), /reconciled but audit result/);
-  assert.equal(w.store.issuances.get(ROW).status, 'issued', 'la evidencia quedó registrada y el estado aplicado');
+  await assert.rejects(rec.reconcile({ actorUserId: IDS.userA, saleId: IDS.saleA, evidence: EVIDENCE() }), { code: 'RECONCILE_OUTCOME_UNKNOWN' });
+  assert.equal(w.store.issuances.get(ROW).status, 'issued', 'la base sí aplicó la operación');
   assert.equal(w.store.evidenceLog.length, 1);
+  const outcomes = w.store.auditLog.map((a) => a.outcome);
+  assert.ok(outcomes.includes('applied'), 'la auditoría de la transacción quedó escrita');
+  assert.ok(outcomes.includes('response_lost'), 'el cliente deja constancia de que no conoce el resultado');
+  assert.equal(outcomes.some((o) => o === 'rejected' || o.startsWith('denied')), false, 'no hay rechazo sobre una operación aplicada');
 });
 
 test('reconciliar una venta que no está en unknown (sending) se rechaza y queda auditado', async () => {

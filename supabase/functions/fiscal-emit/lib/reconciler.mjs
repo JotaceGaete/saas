@@ -8,11 +8,13 @@
 // authorize({ actorUserId, role, businessId, saleId, evidence }) -> boolean (true = autorizado).
 // 'role' es el rol fiscal activo del usuario en el negocio (ya verificado como no nulo).
 // Cualquier excepción o valor distinto de true se trata como denegado.
+//
+// Este camino genérico queda para pruebas y para integraciones que decidan su propia autorización.
+// El flujo administrativo de producción es createAdminReconciler (abajo).
 
 import { FiscalError } from './errors.mjs';
 import { normalizeEvidence } from './evidence.mjs';
 import { operationIdFor } from './emit.mjs';
-import { RECONCILER_ROLE } from './authz.mjs';
 
 export function createReconciler({ store, authorize }) {
   if (!store) throw new Error('store is required');
@@ -50,17 +52,40 @@ export function createReconciler({ store, authorize }) {
   return Object.freeze({ reconcile });
 }
 
-// Flujo administrativo de reconciliación (diseño de PR #108, sección 3):
-//  1) Tenant: sin rol activo en el negocio -> SALE_NOT_FOUND.
-//  2) Rol: solo fiscal_reconciler (hasRole). Un cajero (fiscal_operator) o un dueño sin ese rol
-//     recibe RECONCILIATION_NOT_AUTHORIZED. El dueño NO reconcilia por ser dueño.
-//  3) Identidad: evidence.reviewerUserId debe ser el usuario autenticado. Nadie firma por otro.
-//  4) Auditoría obligatoria ANTES de actuar: si no se puede escribir, no hay reconciliación (falla cerrado).
-//  5) Auditoría del resultado (applied / rejected). Si falla tras aplicar, se devuelve error interno
-//     para que la incidencia sea visible; la evidencia ya quedó en el registro solo-anexar.
+// Flujo administrativo de reconciliación (PR #108, sección 3).
+//
+// Una sola transacción en la base (public.crm_fiscal_reconcile_admin): rol fiscal_reconciler,
+// revisor = actor, evidencia y auditoría 'applied' se confirman juntos o no se confirma nada.
+//
+// Resultados, sin ambigüedad:
+//  - Éxito: la RPC devolvió true; evidencia y auditoría existen.
+//  - Error de dominio (FISCAL_*): la RPC lanzó excepción y la transacción se revirtió. Nada cambió.
+//    Se audita el rechazo en una escritura aparte (mejor esfuerzo; no altera estado).
+//  - Cualquier otro error (red, respuesta perdida, timeout): el resultado es DESCONOCIDO. La RPC
+//    puede haberse confirmado. No se registra como rechazo ni como aplicado; se devuelve
+//    RECONCILE_OUTCOME_UNKNOWN y hay que leer el estado de la venta antes de decidir nada.
 export function createAdminReconciler({ store }) {
   if (!store) throw new Error('store is required');
-  const core = createReconciler({ store, authorize: async () => true }); // la autorización ya se hizo arriba
+
+  // Códigos de dominio de la base -> código público estable.
+  const PUBLIC_CODE = {
+    FISCAL_RECONCILIATION_NOT_AUTHORIZED: 'RECONCILIATION_NOT_AUTHORIZED',
+    FISCAL_REVIEWER_MISMATCH: 'EVIDENCE_REVIEWER_MISMATCH',
+    FISCAL_NOT_RECONCILABLE: 'NOT_UNKNOWN',
+  };
+  const OUTCOME_FOR = {
+    FISCAL_RECONCILIATION_NOT_AUTHORIZED: 'denied_no_reconciler_role',
+    FISCAL_REVIEWER_MISMATCH: 'denied_reviewer_mismatch',
+  };
+
+  // Auditoría de rechazos: no cambia estado, así que su fallo no debe cambiar la respuesta.
+  async function auditBestEffort(entry) {
+    try {
+      await store.appendAudit(entry);
+    } catch {
+      /* el rechazo ya está decidido; la falta de esta fila no altera la venta */
+    }
+  }
 
   async function reconcile({ actorUserId, saleId, evidence }) {
     if (!saleId || !actorUserId) throw new FiscalError('SALE_NOT_FOUND');
@@ -69,43 +94,37 @@ export function createAdminReconciler({ store }) {
     const member = await store.loadActorRole(sale.businessId, actorUserId);
     if (!member) throw new FiscalError('SALE_NOT_FOUND');
 
-    const base = { businessId: sale.businessId, saleId: sale.id, actorUserId, action: 'reconcile_attempt' };
+    const base = { businessId: sale.businessId, saleId: sale.id, actorUserId };
     const summary = { outcome: evidence?.outcome ?? null, evidenceReference: evidence?.evidenceReference ?? null };
 
-    const isReconciler = await store.hasRole(sale.businessId, actorUserId, RECONCILER_ROLE);
-    if (!isReconciler) {
-      await store.appendAudit({ ...base, outcome: 'denied_no_reconciler_role', detail: { ...summary, memberRole: member } });
-      throw new FiscalError('RECONCILIATION_NOT_AUTHORIZED');
-    }
-
+    // Identidad: nadie firma por otro. La RPC vuelve a comprobarla dentro de la transacción.
     if (typeof evidence?.reviewerUserId !== 'string' || evidence.reviewerUserId !== actorUserId) {
-      await store.appendAudit({ ...base, outcome: 'denied_reviewer_mismatch', detail: summary });
+      await auditBestEffort({ ...base, action: 'reconcile_result', outcome: 'denied_reviewer_mismatch', detail: summary });
       throw new FiscalError('EVIDENCE_REVIEWER_MISMATCH');
     }
 
-    // Auditar antes de actuar. Si esto falla, la excepción sale y no se reconcilia.
-    await store.appendAudit({ ...base, outcome: 'started', detail: summary });
+    // Evidencia inválida: se rechaza antes de tocar la base; no hay nada que revertir.
+    const ev = normalizeEvidence(evidence);
+    const operationId = operationIdFor(sale.businessId, sale.id);
 
-    let result;
     try {
-      result = await core.reconcile({ actorUserId, saleId, evidence });
+      await store.reconcileAdmin(sale.businessId, sale.id, operationId, actorUserId, ev);
     } catch (err) {
-      await store.appendAudit({
-        businessId: sale.businessId, saleId: sale.id, actorUserId,
-        action: 'reconcile_result', outcome: 'rejected', detail: { ...summary, code: err?.code ?? 'ERROR' },
-      }).catch(() => {});
-      throw err;
+      if (err instanceof FiscalError) {
+        // Dominio: la transacción se revirtió por completo. Nada se aplicó.
+        await auditBestEffort({
+          ...base,
+          action: 'reconcile_result',
+          outcome: OUTCOME_FOR[err.code] ?? 'rejected',
+          detail: { ...summary, code: err.code },
+        });
+        throw new FiscalError(PUBLIC_CODE[err.code] ?? err.code);
+      }
+      // Resultado desconocido: se registra solo que hubo un intento sin resultado confirmado.
+      await auditBestEffort({ ...base, action: 'reconcile_attempt', outcome: 'response_lost', detail: summary });
+      throw new FiscalError('RECONCILE_OUTCOME_UNKNOWN', 'reconciliation outcome unknown; read the sale state before retrying');
     }
-
-    try {
-      await store.appendAudit({
-        businessId: sale.businessId, saleId: sale.id, actorUserId,
-        action: 'reconcile_result', outcome: 'applied', detail: { ...summary, status: result.status, folio: result.folio },
-      });
-    } catch {
-      throw new Error('reconciled but audit result could not be stored'); // error interno visible (500)
-    }
-    return result;
+    return { status: ev.outcome, folio: ev.folio ?? null, providerCalls: 0 };
   }
 
   return Object.freeze({ reconcile });

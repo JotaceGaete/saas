@@ -19,7 +19,10 @@ export function normalizeEvidence(evidence) {
   const checked = new Date(evidence.checkedAt);
   if (Number.isNaN(checked.getTime())) throw new FiscalError('EVIDENCE_REQUIRED', 'checkedAt');
 
-  const base = { outcome, reviewer, reason, evidenceReference: reference, checkedAt: checked.toISOString() };
+  // reviewerUserId: quien firma la evidencia. Solo la reconciliación administrativa lo exige y lo
+  // compara con el actor; aquí se conserva tal cual (string o null).
+  const reviewerUserId = typeof evidence.reviewerUserId === 'string' ? evidence.reviewerUserId : null;
+  const base = { outcome, reviewer, reviewerUserId, reason, evidenceReference: reference, checkedAt: checked.toISOString() };
   if (outcome === 'issued') {
     if (evidence.providerStatus !== 'found') throw new FiscalError('EVIDENCE_INVALID', 'providerStatus must be found');
     if (!validDocument(evidence) || !isStrictBase64(evidence.xmlBase64) || !isStrictBase64(evidence.pdfBase64)) {

@@ -290,6 +290,28 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
       stamp(cur);
       return true;
     }),
+    // Espejo de public.crm_fiscal_reconcile_admin: todo o nada. Las comprobaciones van primero; el
+    // cambio de estado y la auditoría 'applied' se escriben juntos, al final. Un fallo de auditoría
+    // se lanza antes de tocar nada (como revertir la transacción en la base).
+    reconcileAdmin: guard('reconcileAdmin', async (b, s, op, actor, ev) => {
+      if (state.auditFails) throw new Error('audit store unavailable');
+      if (ev.reviewerUserId !== actor) throw new FiscalError('FISCAL_REVIEWER_MISMATCH');
+      const biz = businesses.get(b);
+      if (!biz || biz.isActive === false || roles.get(rkey(b, actor))?.has('fiscal_reconciler') !== true) {
+        throw new FiscalError('FISCAL_RECONCILIATION_NOT_AUTHORIZED');
+      }
+      const cur = issuances.get(key(b, s));
+      if (!cur || cur.status !== 'unknown' || cur.operationId !== op) throw new FiscalError('FISCAL_NOT_RECONCILABLE');
+      evidenceLog.push({ businessId: b, saleId: s, operationId: op, ...ev });
+      if (ev.outcome === 'issued') {
+        Object.assign(cur, { status: 'issued', folio: ev.folio, xmlBase64: ev.xmlBase64, pdfBase64: ev.pdfBase64 });
+      } else {
+        Object.assign(cur, { status: 'failed', folio: null, xmlBase64: null, pdfBase64: null, errorCode: 'RECONCILED_NOT_FOUND' });
+      }
+      stamp(cur);
+      auditLog.push({ businessId: b, saleId: s, actorUserId: actor, action: 'reconcile_result', outcome: 'applied', detail: { outcome: ev.outcome, folio: ev.folio ?? null } });
+      return true;
+    }),
   };
 
   return store;

@@ -916,4 +916,66 @@ insert into fiscal.retroactive_emission_blocks (sale_id, reason) values
   ('661c88a9-9731-46f8-a685-4e112290a98e', 'Point antigua (2026-10-24): emisión retroactiva automática bloqueada')
 on conflict do nothing;
 
+-- ---------------------------------------------------------------------------
+-- 3k. Reconciliación administrativa ATÓMICA. Una sola transacción: verifica el rol y que el revisor
+--     sea el propio actor, aplica la evidencia (reutiliza crm_fiscal_reconcile_with_evidence) y escribe
+--     la auditoría 'applied'. Si cualquier paso falla, la transacción entera se revierte: no puede
+--     quedar un estado aplicado sin auditoría ni una auditoría de algo no aplicado. Los rechazos no
+--     cambian estado; la aplicación los audita aparte.
+-- ---------------------------------------------------------------------------
+create or replace function public.crm_fiscal_reconcile_admin(
+  p_business_id uuid, p_sale_id uuid, p_operation_id text,
+  p_actor_user_id uuid, p_reviewer_user_id uuid,
+  p_outcome text, p_folio integer, p_xml_base64 text, p_pdf_base64 text,
+  p_reviewer text, p_reason text, p_evidence_reference text,
+  p_provider_status text, p_checked_at timestamptz
+) returns boolean
+language plpgsql
+security invoker
+set search_path = public, fiscal
+as $$
+begin
+  if p_actor_user_id is null or p_reviewer_user_id is distinct from p_actor_user_id then
+    raise exception 'FISCAL_REVIEWER_MISMATCH';
+  end if;
+  if not fiscal.has_role(p_business_id, p_actor_user_id, 'fiscal_reconciler') then
+    raise exception 'FISCAL_RECONCILIATION_NOT_AUTHORIZED';
+  end if;
+  perform public.crm_fiscal_reconcile_with_evidence(
+    p_business_id, p_sale_id, p_operation_id, p_outcome, p_folio, p_xml_base64, p_pdf_base64,
+    p_reviewer, p_reason, p_evidence_reference, p_provider_status, p_checked_at);
+  insert into fiscal.admin_audit (business_id, sale_id, actor_user_id, action, outcome, detail)
+  values (p_business_id, p_sale_id, p_actor_user_id, 'reconcile_result', 'applied',
+          jsonb_build_object('outcome', p_outcome, 'folio', p_folio,
+                             'evidence_reference', p_evidence_reference, 'provider_status', p_provider_status));
+  return true;
+end;
+$$;
+
+revoke all on function public.crm_fiscal_reconcile_admin(uuid, uuid, text, uuid, uuid, text, integer, text, text, text, text, text, text, timestamptz)
+  from public, anon, authenticated;
+grant execute on function public.crm_fiscal_reconcile_admin(uuid, uuid, text, uuid, uuid, text, integer, text, text, text, text, text, text, timestamptz)
+  to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 3l. Ningún cliente cambia wa_businesses.user_id. Un REVOKE de columna no quita un UPDATE de tabla
+--     ya concedido, así que se revoca la tabla y se vuelve a conceder UPDATE columna por columna,
+--     excepto user_id. El trigger del dueño es SECURITY DEFINER: cualquier UPDATE permitido sobre
+--     user_id le daría fiscal_owner a quien lo ejecute. La transferencia queda solo para service_role.
+--     La app no envía user_id en sus updates (src/services/waBusinessService.js).
+-- ---------------------------------------------------------------------------
+do $$
+declare
+  c record;
+begin
+  revoke update on public.wa_businesses from anon, authenticated;
+  revoke update (user_id) on public.wa_businesses from anon, authenticated;
+  for c in
+    select column_name from information_schema.columns
+     where table_schema = 'public' and table_name = 'wa_businesses' and column_name <> 'user_id'
+  loop
+    execute format('grant update (%I) on public.wa_businesses to anon, authenticated', c.column_name);
+  end loop;
+end $$;
+
 commit;

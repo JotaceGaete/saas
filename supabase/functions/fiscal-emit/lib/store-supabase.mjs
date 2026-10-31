@@ -153,5 +153,25 @@ export function createSupabaseStore(client) {
         p_checked_at: ev.checkedAt,
       }));
     },
+
+    // Reconciliación administrativa atómica (ver crm_fiscal_reconcile_admin en la migración).
+    async reconcileAdmin(businessId, saleId, operationId, actorUserId, ev) {
+      return Boolean(await rpc('crm_fiscal_reconcile_admin', {
+        p_business_id: businessId,
+        p_sale_id: saleId,
+        p_operation_id: operationId,
+        p_actor_user_id: actorUserId,
+        p_reviewer_user_id: ev.reviewerUserId,
+        p_outcome: ev.outcome,
+        p_folio: ev.folio ?? null,
+        p_xml_base64: ev.xmlBase64 ?? null,
+        p_pdf_base64: ev.pdfBase64 ?? null,
+        p_reviewer: ev.reviewer,
+        p_reason: ev.reason,
+        p_evidence_reference: ev.evidenceReference,
+        p_provider_status: ev.providerStatus,
+        p_checked_at: ev.checkedAt,
+      }));
+    },
   };
 }
