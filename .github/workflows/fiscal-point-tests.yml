@@ -31,7 +31,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Install locked dependencies
-        run: npm ci --ignore-scripts
+      - name: Install isolated fiscal test dependency (repository has no lockfile)
+        run: |
+          npm install --prefix /tmp/fiscal-test-deps --no-save --ignore-scripts --no-audit --no-fund @supabase/supabase-js@2.100.1
+          ln -s /tmp/fiscal-test-deps/node_modules node_modules
       - name: Run fiscal safety tests (no secrets or database)
         run: node --test api/_lib/siisolutions-sweep.test.js api/fiscal/download.test.js
