@@ -57,7 +57,7 @@ export default async function handler(req, res) {
   };
   const assertOwner = createBusinessOwnerGuard({ authenticate, admin });
   return createFiscalPdfHandler({ admin, assertOwner })(
-    { ...req, query: req.query || Object.fromEntries(new URL(req.url, 'http://x').searchParams) },
+    Object.assign(req, { query: req.query || Object.fromEntries(new URL(req.url, 'http://x').searchParams) }),
     res,
   );
 }
