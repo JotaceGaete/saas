@@ -6,6 +6,8 @@ import { CONNECTOR_TONE_CLASSES } from 'lib/printing/printRouting';
 // usePrintConnector (ver CrmPrintSettings). La ruta de impresión la decide
 // printRouting.js, nunca esta tarjeta.
 
+const CONNECTOR_DOWNLOAD_URL = 'https://github.com/JotaceGaete/saas/releases/download/print-connector-v0.3.0/WalinkaPrintConnector-Setup-0.3.0.exe';
+
 export default function PrintConnectorSection({ connector }) {
   const [code, setCode] = useState('');
   const { status, health, healthError, paired, active, config, busy, result } = connector;
@@ -31,6 +33,26 @@ export default function PrintConnectorSection({ connector }) {
           : 'Imprime directo en Windows, sin licencias. Mientras esté pausado o sin emparejar, las ventas usan QZ Tray.'}
       </p>
 
+      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-slate-800">Conector para Windows</p>
+            <p className="mt-1 text-xs text-slate-600">Versión 0.3.0 (preliminar). Instálalo una vez para imprimir directamente desde Walinka.</p>
+          </div>
+          <a
+            href={CONNECTOR_DOWNLOAD_URL}
+            className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
+            download
+          >
+            <Icon name="Download" size={16} />
+            Descargar para Windows
+          </a>
+        </div>
+        <p className="mt-2 text-xs text-slate-500">
+          El instalador todavía no está firmado digitalmente y Windows puede mostrar una advertencia. Descárgalo únicamente desde este enlace oficial.
+        </p>
+      </div>
+
       {health === 'unreachable' && healthError && (
         <p className="mt-2 text-xs text-amber-700">{healthError}</p>
       )}
@@ -41,7 +63,7 @@ export default function PrintConnectorSection({ connector }) {
             Código de emparejamiento
           </label>
           <p className="mt-1 text-xs text-slate-500">
-            En este equipo ejecuta WalinkaPrintConnector.exe pair y escribe aquí el código de 6 dígitos (vale 5 minutos).
+            Abre «Emparejar con Walinka» desde el menú Inicio de Windows y escribe aquí el código de 6 dígitos (válido durante 5 minutos).
           </p>
           <div className="mt-2 flex gap-2">
             <input
