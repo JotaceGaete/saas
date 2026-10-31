@@ -43,6 +43,9 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
           if (detail?.error === 'AUTH_TOKEN_REJECTED') {
             throw new Error('AUTH_TOKEN_REJECTED: Supabase rechazó el token de esta sesión en el servidor fiscal. Revisaremos la configuración de las credenciales del Preview.');
           }
+          if (detail?.error === 'AUTH_USER_MISSING') {
+            throw new Error('AUTH_USER_MISSING: Supabase no devolvió un usuario válido para la sesión enviada.');
+          }
           if (detail?.error === 'AUTH_PROVIDER_UNAVAILABLE') {
             throw new Error('AUTH_PROVIDER_UNAVAILABLE: El servidor fiscal no pudo validar la sesión con Supabase. Revisaremos la conexión y configuración del Preview.');
           }
