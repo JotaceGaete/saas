@@ -24,6 +24,24 @@ import {
 import { printService } from 'lib/printing/printService';
 import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
+import { supabase } from '../../lib/supabase';
+import { requestCashBoletaForCompletedSale } from '../../services/siisolutionsFiscalBridge';
+
+// Emisión automática de boleta para una venta 100% en efectivo. Nunca bloquea
+// el ticket ni reintenta: un resultado no confirmado queda para conciliación.
+async function requestCashBoletaAutomatically({ businessId, invoiceId }) {
+  try {
+    const { data } = await supabase.auth.getSession();
+    const accessToken = data?.session?.access_token;
+    if (!accessToken) return;
+    const result = await requestCashBoletaForCompletedSale({ businessId, invoiceId, accessToken });
+    if (result.state !== 'issued') {
+      console.warn('[fiscal] cash boleta not issued', { invoiceId, state: result.state, reason: result.reason });
+    }
+  } catch {
+    console.warn('[fiscal] cash boleta request failed', { invoiceId });
+  }
+}
 
 // CAJA-CIERRE-CONCILIACION-1 -- 'card' genérico se reemplaza por
 // debit_card/credit_card para ventas NUEVAS (permite conciliar cada
@@ -1372,6 +1390,10 @@ function CrmTerminalUI() {
       draftDebouncerRef.current.cancel();
       if (draftKey) removePosTerminalDraft(draftKey);
       setTicketData({ sale: data, ...saleSnapshot });
+      if (pendingBalance === 0 && appliedPayments.length === 1 &&
+          appliedPayments[0].method === 'cash' && data?.id) {
+        void requestCashBoletaAutomatically({ businessId: business.id, invoiceId: data.id });
+      }
     } finally {
       submitLockRef.current = false;
       setBusy(false);
