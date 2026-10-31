@@ -56,7 +56,7 @@ test('owner downloads stored XML', async () => {
   await handler({ ...req, query: { ...req.query, format: 'xml' } }, res);
   assert.equal(res.code, 200);
   assert.equal(res.headers['Content-Type'], 'application/xml');
-  assert.match(res.headers['Content-Disposition'], /boleta-51106\\.xml/);
+  assert.equal(res.headers['Content-Disposition'], 'attachment; filename="boleta-51106.xml"');
   assert.equal(res.body.toString('utf8'), '<?xml version="1.0"?><DTE/>');
 });
 
