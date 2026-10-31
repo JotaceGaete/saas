@@ -39,7 +39,11 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
         if (response.status === 401) {
           // Avoid mutating a working panel session when Preview server auth is misconfigured.
           // Refreshing can fail or invalidate the browser session without fixing the server.
-          throw new Error('El servidor tributario rechazó la sesión (HTTP 401). La sesión del panel puede seguir activa; revisaremos la configuración de autenticación del Preview.');
+          const detail = await response.json().catch(() => null);
+          if (detail?.error === 'AUTH_PROJECT_MISMATCH') {
+            throw new Error('AUTH_PROJECT_MISMATCH: El navegador y la función fiscal usan proyectos de Supabase diferentes. Debemos corregir la configuración del Preview.');
+          }
+          throw new Error('El servidor tributario rechazó la sesión (HTTP 401 · UNAUTHORIZED). La sesión del panel puede seguir activa; revisaremos la configuración de autenticación del Preview.');
         }
 
         if (!response.ok) {
@@ -47,7 +51,8 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
           const code = typeof body?.error === 'string' ? body.error : '';
           const explanations = {
             SERVER_NOT_CONFIGURED: 'Falta configurar el servidor fiscal de esta versión de prueba.',
-            UNAUTHORIZED: 'El servidor fiscal rechazó la sesión incluso después de renovarla. Puede haber una configuración de Supabase diferente entre el navegador y la función Preview; no vuelvas a emitir la boleta.',
+            UNAUTHORIZED: 'El servidor fiscal no pudo validar el token. Revisa la configuración de autenticación del Preview.',
+            AUTH_PROJECT_MISMATCH: 'El navegador y la función fiscal usan proyectos de Supabase diferentes. Hay que corregir las variables de entorno del Preview.',
             BUSINESS_NOT_AUTHORIZED: 'Tu cuenta no tiene autorización para consultar el documento de este comercio.',
             INVALID_REQUEST: 'Los identificadores enviados para consultar la boleta no son válidos.',
             INVOICE_NOT_FOUND: 'No se encontró la nota de venta para este comercio.',
