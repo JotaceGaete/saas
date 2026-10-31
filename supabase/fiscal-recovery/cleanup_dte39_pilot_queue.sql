@@ -1,16 +1,31 @@
 -- LIMPIEZA DE COLA DTE39: 17 operaciones de prueba (pending -> skipped)
--- NO EJECUTAR sin autorización explícita. No borra filas. No toca ventas, pagos,
--- crm_invoices, crm_fiscal_issuances (incluida la boleta 51106), fiscal.operations
--- (2 pending, intactas), evidencias ni configuración de emisión.
+-- ESTADO: REVISADO, NO EJECUTADO. Requiere autorización explícita.
+-- No borra filas. No toca ventas, pagos, crm_invoices, la boleta 51106,
+-- las 2 operaciones pendientes de fiscal.operations, evidencias ni configuración.
 --
 -- Baseline verificado en solo lectura el 2026-10-31:
---   outbox: 17 pending (todas attempts=0, sin claimed_at, last_error, provider_response, folio)
---   crm_fiscal_issuances: 1 (51106, issued, folio 51106, XML 8108, PDF 8740)
+--   outbox: 17 pending (attempts=0, sin claimed_at, last_error, provider_response, folio)
+--   crm_fiscal_issuances: 1 (51106, issued, XML 8108, PDF 8740)
 --   fiscal.operations: 2 pending | crm_point_fiscal_outbox: 0
 --   dte39_reconciliation_evidence: 0 | manual_fiscal_authorizations: 1
 --   dte39_emission_control.enabled = false
+--
+-- CONCURRENCIA:
+--   * SELECT ... FOR UPDATE bloquea las 17 filas durante la transacción. Un worker que
+--     intente reclamarlas usa SKIP LOCKED o espera; no puede cambiarlas a mitad de la limpieza.
+--   * lock_timeout corta si no obtiene un lock en 5 s: aborta en vez de esperar.
+--   * El UPDATE repite las condiciones de estado: si algo cambió, afecta 0 o <17 filas y aborta.
+--   * Los triggers de encolado automático están deshabilitados (migración disable_fiscal_enqueue_triggers),
+--     así que ninguna venta nueva entra a la cola durante la limpieza.
+--   * Los controles fiscales se acotan a las ventas auditadas y a la 51106, para no abortar
+--     por operaciones ajenas a esta limpieza.
+--
+-- EJECUCIÓN: una sola sentencia transaccional. Si cualquier comprobación falla, el error
+-- revierte todo. Verificar que la respuesta NO contenga "ABORT" ni "GUARD" antes de dar por hecho.
 
 begin;
+set local lock_timeout = '5s';
+set local statement_timeout = '30s';
 
 do $$
 declare
@@ -25,54 +40,62 @@ declare
     '5029d9e4-79af-4733-840c-a9bc754d1c2c','e6d56561-448f-4507-b43a-8b964fd3c7d2',
     'a97cd9d3-500d-4443-af9f-5b2a0ac5741f'];
   v_inv_ids uuid[];
+  v_locked integer;
   v_n integer;
-  v_issuances integer; v_ops integer; v_point integer; v_evidence integer; v_manual integer;
-  v_51106 integer; v_enabled boolean;
+  v_ops_pending integer;
+  v_51106 integer;
+  v_enabled boolean;
 begin
-  -- 0. Recuento exacto de IDs auditados.
+  -- 0. Lista exacta de 17 IDs únicos.
   if cardinality(v_ids) <> 17 or (select count(distinct x) from unnest(v_ids) x) <> 17 then
     raise exception 'ABORT: la lista de IDs no tiene 17 elementos únicos';
   end if;
 
-  -- 1. Las 17 filas siguen exactamente en el estado auditado.
-  select count(*) into v_n
+  -- 1. Bloquear las 17 filas y comprobar que siguen en el estado auditado.
+  perform 1 from fiscal.pos_dte39_outbox o
+  where o.id = any(v_ids)
+    and o.state = 'pending' and o.attempts = 0 and o.claimed_at is null
+    and o.last_error is null and o.provider_response is null
+    and o.folio is null and o.document_type = 39
+  for update;
+
+  select count(*), array_agg(o.invoice_id) into v_locked, v_inv_ids
   from fiscal.pos_dte39_outbox o
-  where o.id = any(v_ids) and o.state = 'pending' and o.attempts = 0
-    and o.claimed_at is null and o.last_error is null and o.provider_response is null
+  where o.id = any(v_ids)
+    and o.state = 'pending' and o.attempts = 0 and o.claimed_at is null
+    and o.last_error is null and o.provider_response is null
     and o.folio is null and o.document_type = 39;
-  if v_n <> 17 then
-    raise exception 'ABORT: condición cambiada; % de 17 filas siguen en estado auditado', v_n;
+  if v_locked <> 17 then
+    raise exception 'ABORT: condición cambiada; % de 17 filas siguen en estado auditado', v_locked;
   end if;
 
-  select array_agg(invoice_id) into v_inv_ids
-  from fiscal.pos_dte39_outbox where id = any(v_ids);
-
-  -- 2. Sin emisión ni evidencia fiscal para esas ventas.
+  -- 2. Sin emisión ni evidencia fiscal para esas ventas (acotado a la lista).
   select count(*) into v_n from public.crm_fiscal_issuances where sale_id = any(v_inv_ids);
   if v_n <> 0 then raise exception 'ABORT: existe crm_fiscal_issuances para una venta de la lista'; end if;
   select count(*) into v_n from fiscal.operations where sale_id = any(v_inv_ids);
   if v_n <> 0 then raise exception 'ABORT: existe fiscal.operations para una venta de la lista'; end if;
+  select count(*) into v_n from public.crm_point_fiscal_outbox
+    where to_jsonb(crm_point_fiscal_outbox) ? 'invoice_id'
+      and (to_jsonb(crm_point_fiscal_outbox)->>'invoice_id')::uuid = any(v_inv_ids);
+  if v_n <> 0 then raise exception 'ABORT: existe crm_point_fiscal_outbox para una venta de la lista'; end if;
 
-  -- 3. Conteos globales sin cambios respecto al baseline.
-  select count(*) into v_issuances from public.crm_fiscal_issuances;
-  select count(*) into v_ops from fiscal.operations;
-  select count(*) into v_point from public.crm_point_fiscal_outbox;
-  select count(*) into v_evidence from fiscal.dte39_reconciliation_evidence;
-  select count(*) into v_manual from public.manual_fiscal_authorizations;
-  if v_issuances <> 1 or v_ops <> 2 or v_point <> 0 or v_evidence <> 0 or v_manual <> 1 then
-    raise exception 'ABORT: conteos fiscales cambiaron (iss=%, ops=%, point=%, evid=%, manual=%)',
-      v_issuances, v_ops, v_point, v_evidence, v_manual;
+  -- 3. Las 2 operaciones pendientes del piloto siguen intactas (no se tocan).
+  select count(*) into v_ops_pending from fiscal.operations where status = 'pending';
+  if v_ops_pending <> 2 then
+    raise exception 'ABORT: fiscal.operations pendientes cambiaron (ahora %)', v_ops_pending;
   end if;
 
-  -- 4. 51106 intacta y emisión deshabilitada.
+  -- 4. La boleta 51106 sigue íntegra.
   select count(*) into v_51106 from public.crm_fiscal_issuances
   where folio = 51106 and status = 'issued' and dte_type = 39
     and xml_base64 is not null and pdf_base64 is not null;
   if v_51106 <> 1 then raise exception 'ABORT: la boleta 51106 no está en el estado esperado'; end if;
+
+  -- 5. Emisión deshabilitada.
   select enabled into v_enabled from fiscal.dte39_emission_control limit 1;
   if v_enabled is distinct from false then raise exception 'ABORT: emisión DTE39 habilitada'; end if;
 
-  -- 5. Exclusión trazable (pending -> skipped). Sin DELETE.
+  -- 6. Exclusión trazable pending -> skipped. Sin DELETE.
   update fiscal.pos_dte39_outbox
   set state = 'skipped',
       last_error = 'EXCLUIDA_COLA_PRUEBA_2026-10-31: operación de prueba previa al piloto; sin emisión ni evidencia fiscal. Exclusión autorizada por el titular.',
@@ -88,12 +111,12 @@ end $$;
 commit;
 
 -- VERIFICACIONES POSTERIORES (solo lectura)
--- a) select state, count(*) from fiscal.pos_dte39_outbox group by state;   -- pending 0 (si no hay nuevas), skipped 17
+-- a) select state, count(*) from fiscal.pos_dte39_outbox group by state;   -- skipped 17; pending = pendientes nuevos (esperado 0)
 -- b) select count(*) from fiscal.pos_dte39_outbox where last_error like 'EXCLUIDA_COLA_PRUEBA_2026-10-31%';  -- 17
 -- c) select folio, status, length(xml_base64), length(pdf_base64) from public.crm_fiscal_issuances;  -- 51106 | issued | 8108 | 8740
 -- d) select count(*) from fiscal.operations where status='pending';  -- 2
 -- e) select enabled from fiscal.dte39_emission_control;  -- false
 
--- REVERSIÓN (solo si se pide; ejecutar antes de que ningún worker reclame filas):
+-- REVERSIÓN (solo si se pide; antes de que ningún worker reclame filas):
 -- update fiscal.pos_dte39_outbox set state='pending', last_error=null, updated_at=now()
 --  where last_error like 'EXCLUIDA_COLA_PRUEBA_2026-10-31%';
