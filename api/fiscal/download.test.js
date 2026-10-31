@@ -45,3 +45,37 @@ test('invalid document content is not served', async () => {
   const res=response(); await handler(req,res);
   assert.equal(res.code,503);
 });
+
+test('owner downloads stored XML', async () => {
+  const xml = Buffer.from('<?xml version="1.0"?><DTE/>').toString('base64');
+  const handler = createFiscalDownloadHandler({
+    admin: db({ status: 'issued', folio: 51106, xml_base64: xml }),
+    assertOwner: async () => ({ ok: true }),
+  });
+  const res = response();
+  await handler({ ...req, query: { ...req.query, format: 'xml' } }, res);
+  assert.equal(res.code, 200);
+  assert.equal(res.headers['Content-Type'], 'application/xml');
+  assert.match(res.headers['Content-Disposition'], /boleta-51106\\.xml/);
+  assert.equal(res.body.toString('utf8'), '<?xml version="1.0"?><DTE/>');
+});
+
+test('download rejects unknown format before authorization', async () => {
+  const handler = createFiscalDownloadHandler({
+    admin: { from() { throw new Error('must not query'); } },
+    assertOwner: async () => { throw new Error('must not authenticate'); },
+  });
+  const res = response();
+  await handler({ ...req, query: { ...req.query, format: 'exe' } }, res);
+  assert.equal(res.code, 400);
+});
+
+test('download rejects non-GET requests', async () => {
+  const handler = createFiscalDownloadHandler({
+    admin: { from() { throw new Error('must not query'); } },
+    assertOwner: async () => { throw new Error('must not authenticate'); },
+  });
+  const res = response();
+  await handler({ ...req, method: 'POST' }, res);
+  assert.equal(res.code, 405);
+});
