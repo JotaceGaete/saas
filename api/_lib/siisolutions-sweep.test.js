@@ -87,7 +87,7 @@ test('concurrent sweep, webhook and reconciler produce exactly one row', async (
     listCandidates: async () => [{ businessId: B, invoiceId: S1 }],
     verifySale: verify, registerPending: ledger.registerPending,
   });
-  const reports = await Promise.all([sweeperA(), sweeperB(), sweeperA(), sweeperB()]);
+  const reports = await Promise.all([sweeperA({ dryRun: false }), sweeperB({ dryRun: false }), sweeperA({ dryRun: false }), sweeperB({ dryRun: false })]);
   const registered = reports.reduce((n, r) => n + r.registered, 0);
   const already = reports.reduce((n, r) => n + r.alreadyRegistered, 0);
   assert.equal(registered, 1);
