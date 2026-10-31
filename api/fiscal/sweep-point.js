@@ -21,8 +21,14 @@ export function createSweepHandler({ internalSecret, runSweep }) {
       return res.status(401).json({ error: 'UNAUTHORIZED' });
     }
     const limit = Number(req.body?.limit ?? 50);
+    // Read-only by default. Registration needs a separate server-side gate.
+    const requestedRegistration = req.body?.mode === 'register';
+    if (requestedRegistration && process.env.FISCAL_SWEEP_REGISTRATION_ENABLED !== 'true') {
+      return res.status(403).json({ error: 'REGISTRATION_DISABLED' });
+    }
+    const dryRun = !requestedRegistration;
     try {
-      const report = await runSweep({ limit });
+      const report = await runSweep({ limit, dryRun });
       return res.status(200).json({ report });
     } catch {
       return res.status(503).json({ error: 'SWEEP_UNAVAILABLE' });
