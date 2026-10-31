@@ -1,10 +1,12 @@
-﻿import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
 
 export default function CrmFiscalDocument({ businessId, invoiceId }) {
   const [document, setDocument] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [pdfError, setPdfError] = useState('');
+  const [openingPdf, setOpeningPdf] = useState(false);
 
   useEffect(() => {
     if (!businessId || !invoiceId) return;
@@ -58,6 +60,40 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
     };
   }, [businessId, invoiceId]);
 
+  async function openFiscalPdf() {
+    if (openingPdf || document?.status !== 'issued' || !document?.folio) return;
+    const tab = window.open('', '_blank');
+    if (!tab) {
+      setPdfError('El navegador bloqueó la pestaña. Permití las ventanas emergentes.');
+      return;
+    }
+    setOpeningPdf(true);
+    setPdfError('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Debes iniciar sesión.');
+      const params = new URLSearchParams({ businessId, invoiceId });
+      const response = await fetch(`/api/fiscal/pdf?${params}`, {
+        method: 'GET',
+        headers: { Authorization: `Bearer ${session.access_token}` },
+        cache: 'no-store',
+      });
+      if (!response.ok) throw new Error('No se pudo recuperar el PDF tributario.');
+      const blob = await response.blob();
+      if (blob.type.split(';')[0] !== 'application/pdf' || blob.size === 0) {
+        throw new Error('El servidor no devolvió un PDF válido.');
+      }
+      const url = URL.createObjectURL(blob);
+      tab.location.replace(url);
+      window.setTimeout(() => URL.revokeObjectURL(url), 300000);
+    } catch (err) {
+      tab.close();
+      setPdfError(err.message || 'No se pudo abrir el PDF.');
+    } finally {
+      setOpeningPdf(false);
+    }
+  }
+
   if (loading) {
     return <p className="text-sm text-gray-500">Consultando documento tributario...</p>;
   }
@@ -105,6 +141,15 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
           </p>
         </div>
       </div>
+      {document.status === 'issued' && document.folio && (
+        <div className="mt-5">
+          <button type="button" onClick={openFiscalPdf} disabled={openingPdf}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+            {openingPdf ? 'Abriendo PDF...' : `Ver PDF oficial — Boleta ${document.folio}`}
+          </button>
+          {pdfError && <p role="alert" className="mt-2 text-sm text-red-600">{pdfError}</p>}
+        </div>
+      )}
     </section>
   );
 }
