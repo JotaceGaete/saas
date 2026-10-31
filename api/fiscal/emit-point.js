@@ -52,7 +52,7 @@ export default async function handler(req, res) {
   }
   const admin = createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
   const issuePointSale = createConfiguredPointFiscalPilot({
-    admin, sandboxBaseUrl: process.env.SIISOLUTIONS_SANDBOX_BASE_URL,
+    admin, sandboxBaseUrl: process.env.SIISOLUTIONS_EMISSION_ENABLED === 'live' ? 'https://api.siisolutions.cl' : process.env.SIISOLUTIONS_SANDBOX_BASE_URL,
   });
   return createPointEmissionHandler({
     internalSecret: process.env.FISCAL_INTERNAL_SECRET,
