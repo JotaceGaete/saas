@@ -27,6 +27,11 @@ public static class Spooler
 
     public sealed record PrinterInfo(string Name, string Port, string Driver, uint Status, uint Jobs, bool IsDefault);
 
+    /// <summary>Datos de la cola que afectan cómo Windows entrega los bytes al hardware.</summary>
+    public sealed record PrinterDetails(
+        string Name, string Port, string Driver, string DefaultDatatype, string PrintProcessor,
+        string ServerName, uint Attributes, uint Status, uint Jobs, bool IsDefault);
+
     public sealed class SpoolerException : Exception
     {
         public SpoolerException(string message, int win32Code) : base(message) => Win32Code = win32Code;
@@ -123,6 +128,47 @@ public static class Spooler
                     string.Equals(name, defaultName, StringComparison.OrdinalIgnoreCase)));
             }
             return list;
+        }
+        finally
+        {
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
+    public static PrinterDetails? GetDetails(string printerName)
+    {
+        var defaultName = GetDefaultPrinterName();
+        EnumPrinters(PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS, null, PRINTER_INFO_LEVEL_2, IntPtr.Zero, 0, out int needed, out _);
+        if (needed <= 0) return null;
+
+        var buffer = Marshal.AllocHGlobal(needed);
+        try
+        {
+            if (!EnumPrinters(PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS, null, PRINTER_INFO_LEVEL_2, buffer, needed, out _, out int returned))
+            {
+                throw Win32(Marshal.GetLastWin32Error(), "No se pudo leer la configuración de la impresora.");
+            }
+
+            var size = Marshal.SizeOf<PRINTER_INFO_2>();
+            for (var i = 0; i < returned; i++)
+            {
+                var info = Marshal.PtrToStructure<PRINTER_INFO_2>(buffer + i * size);
+                var name = Marshal.PtrToStringUni(info.pPrinterName) ?? string.Empty;
+                if (!string.Equals(name, printerName, StringComparison.OrdinalIgnoreCase)) continue;
+
+                return new PrinterDetails(
+                    name,
+                    Marshal.PtrToStringUni(info.pPortName) ?? string.Empty,
+                    Marshal.PtrToStringUni(info.pDriverName) ?? string.Empty,
+                    Marshal.PtrToStringUni(info.pDatatype) ?? string.Empty,
+                    Marshal.PtrToStringUni(info.pPrintProcessor) ?? string.Empty,
+                    Marshal.PtrToStringUni(info.pServerName) ?? string.Empty,
+                    info.Attributes,
+                    info.Status,
+                    info.cJobs,
+                    string.Equals(name, defaultName, StringComparison.OrdinalIgnoreCase));
+            }
+            return null;
         }
         finally
         {

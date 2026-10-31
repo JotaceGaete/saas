@@ -1,6 +1,6 @@
 namespace WalinkaPrintProbe;
 
-public enum CutStyle { Modern, Legacy, None }
+public enum CutStyle { Modern, Legacy, FullModern, None }
 
 /// <summary>
 /// Ticket de prueba de 80 mm. No contiene datos de venta, cliente, RUT ni montos.
@@ -13,6 +13,7 @@ public static class TicketBuilder
         var parts = new List<byte[]>
         {
             EscPos.Init,
+            EscPos.AlignLeft,
             EscPos.Line("================================"),
             EscPos.Line("WALINKA PRINT PROBE E1"),
             EscPos.Line("PRUEBA DE IMPRESION - NO ES VENTA"),
@@ -28,7 +29,7 @@ public static class TicketBuilder
             EscPos.Line("Si ves este texto completo, la"),
             EscPos.Line("cola RAW llego a la impresora."),
             EscPos.Line("Verifica el corte al final."),
-            EscPos.Feed(4),
+            EscPos.LfRepeat(4),
         };
 
         switch (cut)
@@ -38,6 +39,9 @@ public static class TicketBuilder
                 break;
             case CutStyle.Legacy:
                 parts.Add(EscPos.CutPartialLegacy);
+                break;
+            case CutStyle.FullModern:
+                parts.Add(EscPos.CutFullModern);
                 break;
             case CutStyle.None:
                 break;

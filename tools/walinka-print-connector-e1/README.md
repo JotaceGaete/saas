@@ -54,7 +54,21 @@ Todos los comandos se ejecutan desde `publish\`.
    .\WalinkaPrintProbe.exe test-print --printer "Star TSP143" --cut legacy
    ```
 
-6. Cajón (opcional, solo con confirmación explícita):
+6. Diagnóstico de corte (v0.2). Cada variante es un job mínimo, sin ticket completo ni cajón:
+   ```powershell
+   .\WalinkaPrintProbe.exe info --printer "NOMBRE"
+   .\WalinkaPrintProbe.exe cut-probe --list-variants
+   .\WalinkaPrintProbe.exe cut-probe --printer "NOMBRE" --variant T
+   .\WalinkaPrintProbe.exe cut-probe --printer "NOMBRE" --variant A
+   .\WalinkaPrintProbe.exe cut-probe --printer "NOMBRE" --variant C
+   .\WalinkaPrintProbe.exe cut-probe --printer "NOMBRE" --variant D
+   .\WalinkaPrintProbe.exe cut-probe --printer "NOMBRE" --variant B
+   .\WalinkaPrintProbe.exe cut-probe --printer "NOMBRE" --variant E
+   ```
+   Anotá por variante: texto completo (sí/no), "V" al inicio (sí/no), corte (sí/no).
+   Ejecutá también `info` en el computador donde QZ sí corta y compará los bloques.
+
+7. Cajón (opcional, solo con confirmación explícita):
    ```powershell
    .\WalinkaPrintProbe.exe drawer --printer "Star TSP143" --confirm
    ```

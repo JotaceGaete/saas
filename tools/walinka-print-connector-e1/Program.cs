@@ -18,6 +18,8 @@ internal static class Program
             return args[0] switch
             {
                 "list" => List(),
+                "info" => Info(args),
+                "cut-probe" => CutProbeCommand(args),
                 "bytes" => WriteTicketBytes(args),
                 "test-print" => TestPrint(args),
                 "drawer" => Drawer(args),
@@ -50,7 +52,17 @@ internal static class Program
               Envía el pulso del cajón ESC p. Sin --confirm no hace nada.
               No se llama automáticamente desde test-print.
 
-          bytes --out ARCHIVO [--cut modern|legacy|none]
+          info --printer "NOMBRE"
+              Muestra driver, puerto, tipo de datos por defecto (RAW/TEXT), procesador de impresión
+              y atributos de la cola. Sirve para comparar con el otro computador que sí corta.
+
+          cut-probe --printer "NOMBRE" --variant T|A|B|C|D|E [--force]
+              Job mínimo de corte: solo unas líneas y UNA secuencia de corte distinta por variante.
+              T = solo texto (sin corte). A = GS V 66 0. B = GS V 66 3. C = GS V 65 0.
+              D = GS V 0. E = GS V 1.
+              cut-probe --list-variants  muestra las variantes sin imprimir.
+
+          bytes --out ARCHIVO [--cut modern|legacy|full|none]
               Escribe el ticket de prueba como bytes en un archivo, sin imprimir.
               Sirve para revisar la secuencia exacta antes de enviarla.
 
@@ -59,6 +71,58 @@ internal static class Program
 
           version
         """);
+        return 0;
+    }
+
+    private static int Info(string[] args)
+    {
+        var name = RequireOption(args, "--printer");
+        var d = Spooler.GetDetails(name);
+        if (d is null) return Fail($"No existe una impresora llamada \"{name}\". Revisa con 'list'.");
+
+        Console.WriteLine($"Impresora:        {d.Name}{(d.IsDefault ? " [predeterminada]" : string.Empty)}");
+        Console.WriteLine($"Driver:           {d.Driver}");
+        Console.WriteLine($"Puerto:           {d.Port}");
+        Console.WriteLine($"Tipo de datos:    {(d.DefaultDatatype.Length == 0 ? "(vacío)" : d.DefaultDatatype)}");
+        Console.WriteLine($"Procesador:       {(d.PrintProcessor.Length == 0 ? "(vacío)" : d.PrintProcessor)}");
+        Console.WriteLine($"Servidor:         {(d.ServerName.Length == 0 ? "(local)" : d.ServerName)}");
+        Console.WriteLine($"Atributos:        0x{d.Attributes:X}");
+        Console.WriteLine($"Trabajos en cola: {d.Jobs}");
+        var problems = Spooler.DescribeStatus(d.Status);
+        Console.WriteLine(problems.Count == 0 ? "Estado Windows:    sin problemas reportados" : "Estado Windows:    " + string.Join(" ", problems));
+        Console.WriteLine();
+        Console.WriteLine("Compara este bloque con el computador donde el corte funciona con QZ Tray.");
+        return 0;
+    }
+
+    private static int CutProbeCommand(string[] args)
+    {
+        if (args.Contains("--list-variants"))
+        {
+            foreach (var v in CutProbe.Variants) Console.WriteLine($"{v.Code}: {v.Label}\n    {v.Note}");
+            return 0;
+        }
+
+        var code = RequireOption(args, "--variant");
+        var variant = CutProbe.Find(code)
+            ?? throw new ArgumentException($"Variante desconocida: {code}. Usa --list-variants.");
+        var printerName = RequireOption(args, "--printer");
+        var force = args.Contains("--force");
+
+        var printer = Spooler.FindPrinter(printerName)
+            ?? throw new Spooler.SpoolerException($"No existe una impresora llamada \"{printerName}\". Revisa con 'list'.", 0);
+
+        var problems = Spooler.DescribeStatus(printer.Status);
+        if (problems.Count > 0 && !force)
+        {
+            foreach (var problem in problems) Console.WriteLine($"  - {problem}");
+            return Fail("No se envió nada. Revisa la impresora o usa --force.");
+        }
+
+        var bytes = CutProbe.Build(variant, printer.Name);
+        Spooler.SendRaw(printer.Name, bytes, $"Walinka E1 - cut-probe {variant.Code}");
+        Console.WriteLine($"Variante {variant.Code} enviada ({bytes.Length} bytes): {variant.Label}");
+        Console.WriteLine("Windows aceptó el trabajo. Confirma visualmente: texto completo, 'V' al inicio sí o no, y corte sí o no.");
         return 0;
     }
 
@@ -173,7 +237,19 @@ internal static class Program
         Check(ContainsSequence(ticket, EscPos.CutPartialModern), "ticket con corte modern contiene GS V 66 0");
         Check(!ContainsSequence(ticket, EscPos.DrawerPulse()), "ticket de prueba NO contiene pulso de cajón");
         Check(ticket.Take(2).SequenceEqual(EscPos.Init), "ticket empieza con ESC @ (inicializar)");
-        Check(ContainsSequence(TicketBuilder.Build(CutStyle.None, "TEST"), EscPos.CutPartialModern) == false, "cut none no emite corte");
+        Check(!ContainsSequence(TicketBuilder.Build(CutStyle.None, "TEST"), EscPos.CutPartialModern), "cut none no emite corte");
+        Check(!ContainsSequence(ticket, new byte[] { 0x1B, 0x64 }), "ticket NO usa ESC d (ambiguo en modo Star Line)");
+        Check(ticket.Take(4).SequenceEqual(new byte[] { 0x1B, 0x40, 0x1B, 0x61 }), "ticket inicia como Walinka: ESC @ + ESC a");
+        Check(!CutProbe.Build(CutProbe.Find("T")!, "T").Contains((byte)0x1D), "variante T no contiene GS (sin corte)");
+        foreach (var v in CutProbe.Variants)
+        {
+            var b = CutProbe.Build(v, "TEST");
+            var expectsCut = v.Cut is not null;
+            Check(expectsCut ? ContainsSequence(b, v.Cut!) : !b.Contains((byte)0x1D), $"variante {v.Code} contiene solo su corte");
+            Check(!ContainsSequence(b, new byte[] { 0x1B, 0x70 }), $"variante {v.Code} NO contiene cajón (ESC p)");
+        }
+        Check(EscPos.CutFullModern.SequenceEqual(new byte[] { 0x1D, 0x56, 0x41, 0x00 }), "corte full moderno = GS V 65 0");
+        Check(EscPos.CutFullLegacy.SequenceEqual(new byte[] { 0x1D, 0x56, 0x00 }), "corte full legacy = GS V 0");
 
         var text = Encoding.ASCII.GetString(EscPos.Text("Ñandú ✓"));
         Check(text == "?and? ?", "texto no ASCII se reemplaza por '?' (Ñandú ✓ -> ?and? ?)");
@@ -195,6 +271,7 @@ internal static class Program
     {
         "modern" => CutStyle.Modern,
         "legacy" => CutStyle.Legacy,
+        "full" => CutStyle.FullModern,
         "none" => CutStyle.None,
         _ => throw new ArgumentException($"--cut inválido: {value}. Usa modern, legacy o none."),
     };

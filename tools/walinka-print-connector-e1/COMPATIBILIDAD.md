@@ -71,3 +71,68 @@ El programa no cambia estos valores. Requisito del proyecto.
 - No se instalan drivers.
 - No se cambian configuraciones de impresoras.
 - No hay API HTTP ni emparejamiento (E2).
+
+---
+
+## 8. Diagnóstico con hardware — v0.1 (resultados reales)
+
+Hardware: Star TSP100 Cutter (TSP143), conexión USB008. Modo de la impresora: POS/ESC-POS, apagada y encendida después del cambio.
+
+| Prueba | Resultado |
+|---|---|
+| `selftest` | 8/8 OK |
+| Detección de impresora | Correcta |
+| Envío RAW | Correcto, ticket completo |
+| `--cut modern` (GS V 66 0) | Imprime, no corta |
+| `--cut legacy` (GS V 1) | Imprime, no corta |
+| Carácter "V" aislado al inicio | Aparece |
+
+En el mismo modelo, Walinka corta con QZ Tray en otro computador. Los bytes de corte son idénticos a los de producción, así que el problema no está en el comando de corte en sí.
+
+### 8.1 Diferencias de bytes encontradas al comparar con Walinka
+
+| Aspecto | Walinka (`renderEscPosReceipt.js`) | Prototipo v0.1 | Cambio en v0.2 |
+|---|---|---|---|
+| Inicio | `ESC @` | `ESC @` | Igual |
+| Alineación | `ESC a 0` antes del texto | No enviaba | Se agrega `ESC a 0` |
+| Avance antes del corte | LF repetidos | `ESC d 4` | Se cambia a LF repetidos |
+| Corte | `GS V 66 0` | `GS V 66 0` | Igual |
+
+`ESC d n` es "imprimir y avanzar n líneas" en ESC/POS. En modo Star Line tiene otro significado, según la documentación de Star que hay que verificar para el TSP100. Eso hace que el prototipo v0.1 dependa de una ambigüedad que Walinka no tiene. v0.2 elimina `ESC d` del ticket.
+
+No pude ejecutar el renderer de Walinka desde este entorno (no hay `node_modules` y sus imports no tienen extensión). La comparación es por lectura del código.
+
+### 8.2 Hipótesis, ordenadas por probabilidad
+
+1. **Configuración de la cola de Windows distinta a la del computador que sí corta.** Mismo modelo, mismos bytes, y el problema aparece solo en este PC: el driver, el tipo de datos por defecto o el procesador de impresión pueden transformar o interpretar el flujo. Qué revisar: `info --printer` en ambos PCs. Campos a comparar: Driver, Tipo de datos, Procesador, Puerto.
+2. **Modo de emulación real del firmware distinto del que se ve en la impresora.** Que el panel o la configuración diga POS no garantiza que el firmware esté en ESC/POS. Qué revisar: imprimir la página de configuración de la TSP100 (ver manual) y confirmar el modo de emulación.
+3. **La "V" aislada indica que el firmware o el driver trata bytes de control como texto.** Un byte 0x56 ('V') se imprime solo si el byte previo (0x1D, GS) no se interpreta como comando. Esto apunta a la misma causa que la hipótesis 1 o 2, no a un error de bytes. La variante T lo prueba: si T también imprime "V", el byte lo agrega la cola o el driver, no el prototipo.
+4. **Cuchilla o firmware que no acepta el corte parcial.** Las variantes C y D prueban corte total. Si ninguna corta, el problema no es la forma del comando.
+
+### 8.3 Prueba de corte independiente (v0.2)
+
+Trabajos mínimos, sin ticket completo, sin cajón. Cada uno tiene una sola secuencia de corte distinta.
+
+| Variante | Bytes de corte | Qué prueba |
+|---|---|---|
+| T | Ninguno | Si el driver o la cola agrega una "V" sin ningún comando |
+| A | `GS V 66 0` | Igual que Walinka |
+| B | `GS V 66 3` | Si el corte necesita avance |
+| C | `GS V 65 0` | Corte total moderno |
+| D | `GS V 0` | Corte total legacy |
+| E | `GS V 1` | Corte parcial legacy (igual que v0.1) |
+
+Orden recomendado: T, A, C, D, B, E. Anotar por cada una: texto completo (sí/no), "V" al inicio (sí/no), corte (sí/no).
+
+### 8.4 Qué no se debe asumir
+
+- Que cambiar de modo resuelve el corte: ya se probó y no alcanza.
+- Que el comando sea el problema: los bytes son los mismos que en producción.
+- Que "Windows aceptó el trabajo" implique impresión o corte.
+
+## 9. Qué necesitamos para cerrar E1
+
+1. Salida de `info --printer "..."` en este computador.
+2. Salida de `info --printer "..."` en el computador donde QZ corta (si podés correr el prototipo allí, o al menos el nombre del driver y el tipo de datos desde Impresoras y escáneres > Propiedades de la impresora > Avanzadas).
+3. Resultado de las variantes T, A, C, D, B, E con la anotación de texto, "V" y corte.
+4. Si el panel o la página de configuración de la TSP100 indica el modo de emulación.
