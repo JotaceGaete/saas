@@ -23,7 +23,8 @@ export function createSweepHandler({ internalSecret, runSweep }) {
     const limit = Number(req.body?.limit ?? 50);
     // Read-only by default. Registration needs a separate server-side gate.
     const requestedRegistration = req.body?.mode === 'register';
-    if (requestedRegistration && process.env.FISCAL_SWEEP_REGISTRATION_ENABLED !== 'true') {
+    if (requestedRegistration && (process.env.FISCAL_SWEEP_REGISTRATION_ENABLED !== 'true' ||
+        !Number.isFinite(Date.parse(process.env.FISCAL_SWEEP_NOT_BEFORE || '')))) {
       return res.status(403).json({ error: 'REGISTRATION_DISABLED' });
     }
     const dryRun = !requestedRegistration;
@@ -50,7 +51,9 @@ export default async function handler(req, res) {
   const repository = createFiscalIssuanceRepository(admin);
   // Note: the sweeper receives NO emission dependency by construction.
   const sweep = createPointFiscalSweeper({
-    listCandidates: createPointSweepCandidateLister(admin),
+    listCandidates: createPointSweepCandidateLister(admin, {
+      notBefore: process.env.FISCAL_SWEEP_NOT_BEFORE || null,
+    }),
     verifySale: ({ businessId, invoiceId }) => verifyPointSaleForFiscal({
       invoiceId, businessId, loadPersisted, fetchProviderOrder,
     }),
