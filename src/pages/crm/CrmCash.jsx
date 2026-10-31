@@ -40,7 +40,8 @@ import {
 import { printService } from 'lib/printing/printService';
 import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
-import { buildConnectorConfigKey, buildConnectorTarget, readConnectorConfig } from 'lib/printing/connectorConfigStorage';
+import { buildConnectorConfigKey, readConnectorConfig } from 'lib/printing/connectorConfigStorage';
+import { buildPrintTarget } from 'lib/printing/printRouting';
 
 const METHOD_ORDER = ['cash', 'card', 'bank_transfer', 'check', 'other'];
 
@@ -1932,10 +1933,16 @@ export default function CrmCash() {
     if (!payment?.invoice_id || reprintingId) return;
     setReprintError('');
     const printerConfig = readPrinterConfig(buildPrinterConfigKey(business?.id));
-    // E3: con el conector activo se usa su impresora; si no, QZ como antes.
-    const connectorTarget = buildConnectorTarget(readConnectorConfig(buildConnectorConfigKey(business?.id)));
-    const printerName = connectorTarget?.printerName ?? printerConfig.printerName;
-    if (!printerName) {
+    // E3: misma ruta única que el TPV (printRouting.js). Clave nueva: es una
+    // reimpresión explícita y sí debe salir.
+    const nonce = Math.random().toString(36).slice(2, 10);
+    const idempotencyKey = `sale:${payment.invoice_id}:reprint:${Date.now()}${nonce}`;
+    const target = buildPrintTarget({
+      connectorConfig: readConnectorConfig(buildConnectorConfigKey(business?.id)),
+      qzPrinterName: printerConfig.printerName,
+      idempotencyKey,
+    });
+    if (target.error) {
       setReprintError('No hay una impresora configurada en este equipo. Configúrala en Configuración de impresión.');
       return;
     }
@@ -1974,12 +1981,10 @@ export default function CrmCash() {
         cutStrategyId: printerConfig.cutStrategyId,
         effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,
       });
-      // Reimpresión explícita: clave nueva por intento, para que sí imprima.
-      const nonce = Math.random().toString(36).slice(2, 10);
       await printService.printReceipt(receipt, {
-        printerName,
-        idempotencyKey: `sale:${invoice.id}:reprint:${Date.now()}${nonce}`,
-        connector: connectorTarget?.connector,
+        printerName: target.printerName,
+        idempotencyKey,
+        connector: target.connector,
       });
     } catch (err) {
       setReprintError(err?.message || 'No se pudo reimprimir el comprobante.');

@@ -24,7 +24,8 @@ import {
 import { printService } from 'lib/printing/printService';
 import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
-import { buildConnectorConfigKey, buildConnectorTarget, readConnectorConfig } from 'lib/printing/connectorConfigStorage';
+import { buildConnectorConfigKey, readConnectorConfig } from 'lib/printing/connectorConfigStorage';
+import { buildPrintTarget } from 'lib/printing/printRouting';
 
 // CAJA-CIERRE-CONCILIACION-1 -- 'card' genérico se reemplaza por
 // debit_card/credit_card para ventas NUEVAS (permite conciliar cada
@@ -333,17 +334,21 @@ function CrmTerminalUI() {
   const printCurrentTicket = useCallback(async (options = {}) => {
     if (!ticketData) return;
     const printerConfig = readPrinterConfig(buildPrinterConfigKey(business?.id));
-    const connectorTarget = buildConnectorTarget(readConnectorConfig(buildConnectorConfigKey(business?.id)));
-    const printerName = connectorTarget?.printerName ?? printerConfig.printerName;
-    if (!printerName) {
-      setPrintStatus('missing_printer');
-      setPrintErrorMessage(null);
-      return;
-    }
     const saleKey = String(ticketData.sale?.id ?? ticketData.sale?.invoice_number);
     const idempotencyKey = options.reprint
       ? `sale:${saleKey}:reprint:${Date.now()}${Math.random().toString(36).slice(2, 8)}`
       : `sale:${saleKey}:ticket`;
+    // Ruta única: con el conector activo nunca cae a QZ en silencio.
+    const target = buildPrintTarget({
+      connectorConfig: readConnectorConfig(buildConnectorConfigKey(business?.id)),
+      qzPrinterName: printerConfig.printerName,
+      idempotencyKey,
+    });
+    if (target.error) {
+      setPrintStatus('missing_printer');
+      setPrintErrorMessage(null);
+      return;
+    }
     setPrintStatus('printing');
     setPrintErrorMessage(null);
     try {
@@ -362,9 +367,9 @@ function CrmTerminalUI() {
         effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,
       });
       await printService.printReceipt(receipt, {
-        printerName,
+        printerName: target.printerName,
         idempotencyKey,
-        connector: connectorTarget?.connector,
+        connector: target.connector,
       });
       // Un duplicado significa que el conector ya lo había enviado: para el
       // cajero es éxito, y no se vuelve a imprimir.

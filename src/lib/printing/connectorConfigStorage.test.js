@@ -3,7 +3,6 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildConnectorConfigKey,
-  buildConnectorTarget,
   defaultConnectorConfig,
   readConnectorConfig,
   writeConnectorConfig,
@@ -58,11 +57,7 @@ test('escribir y leer conserva la configuración saneada', () => {
   assert.equal(config.token, TOKEN);
 });
 
-test('buildConnectorTarget solo existe si está activo, emparejado y con impresora', () => {
-  assert.equal(buildConnectorTarget(defaultConnectorConfig()), null);
-  assert.equal(buildConnectorTarget({ ...defaultConnectorConfig(), enabled: true, token: TOKEN }), null);
-  assert.equal(buildConnectorTarget({ ...defaultConnectorConfig(), enabled: true, printerName: 'P' }), null);
-  const target = buildConnectorTarget({ ...defaultConnectorConfig(), enabled: true, token: TOKEN, printerName: 'P' });
-  assert.equal(target.printerName, 'P');
-  assert.equal(typeof target.connector.print, 'function');
+test('activo sin token se corrige a desactivado', () => {
+  const storage = memoryStorage({ k: JSON.stringify({ enabled: true, token: null }) });
+  assert.equal(readConnectorConfig('k', storage).enabled, false);
 });

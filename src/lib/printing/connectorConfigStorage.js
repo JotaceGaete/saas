@@ -7,7 +7,7 @@
 // equipo, de baja sensibilidad (solo permite imprimir en loopback con
 // origen permitido); se puede revocar desde el conector.
 
-import { DEFAULT_CONNECTOR_BASE_URL, assertLoopbackBaseUrl, createLocalConnectorProvider } from './providers/localConnectorProvider.js';
+import { DEFAULT_CONNECTOR_BASE_URL, assertLoopbackBaseUrl } from './providers/localConnectorProvider.js';
 
 export const CONNECTOR_CONFIG_SCHEMA_VERSION = 1;
 
@@ -45,11 +45,13 @@ function sanitize(raw) {
   } catch {
     baseUrl = base.baseUrl;
   }
+  const token = typeof raw.token === 'string' && raw.token.length >= 32 ? raw.token : null;
   return {
     schemaVersion: CONNECTOR_CONFIG_SCHEMA_VERSION,
-    enabled: raw.enabled === true,
+    // Sin token no hay emparejamiento: "activo" nunca puede existir sin él.
+    enabled: raw.enabled === true && token !== null,
     baseUrl,
-    token: typeof raw.token === 'string' && raw.token.length >= 32 ? raw.token : null,
+    token,
     printerName: typeof raw.printerName === 'string' && raw.printerName.trim() ? raw.printerName : null,
     deviceName: typeof raw.deviceName === 'string' ? raw.deviceName.slice(0, 64) : null,
   };
@@ -73,17 +75,4 @@ export function writeConnectorConfig(key, config, storage = defaultStorage()) {
   } catch {
     return false;
   }
-}
-
-/**
- * Devuelve un provider listo para imprimir, o null si el conector no está
- * activado, no está emparejado o no tiene impresora elegida. Quien llama
- * usa QZ en ese caso.
- */
-export function buildConnectorTarget(config, { fetchImpl } = {}) {
-  if (!config?.enabled || !config.token || !config.printerName) return null;
-  return {
-    connector: createLocalConnectorProvider({ baseUrl: config.baseUrl, token: config.token, fetchImpl }),
-    printerName: config.printerName,
-  };
 }

@@ -16,6 +16,8 @@ import { buildFinalValidationReceipt } from 'lib/printing/receipts/buildSaleRece
 import { buildPrinterConfigKey, readPrinterConfig, writePrinterConfig } from 'lib/printing/printerConfigStorage';
 import { listCompatibilityProfiles, getCompatibilityProfile, matchCompatibilityProfileId } from 'lib/printing/receipts/printerCompatibilityProfiles';
 import PrintConnectorSection from './components/PrintConnectorSection';
+import { usePrintConnector } from './components/usePrintConnector';
+import { buildPrintKey, CONNECTOR_TONE_CLASSES } from 'lib/printing/printRouting';
 
 // PRINT-1 — pantalla aislada de configuración/prueba de impresión térmica.
 // No toca CrmTerminal.jsx ni el flujo de cobro: solo permite elegir la
@@ -51,6 +53,18 @@ export default function CrmPrintSettings() {
   const [printing, setPrinting] = useState(false);
   const [printResult, setPrintResult] = useState(null); // { ok, message } | null
 
+  // Walinka Print Connector: cuando está activo y emparejado es la ruta
+  // principal de esta pantalla. QZ Tray no se consulta en ese caso.
+  const connector = usePrintConnector(business?.id);
+  const connectorActive = connector.active;
+  const activePrinterName = connectorActive ? connector.printerName : config.printerName;
+  const activePrinters = connectorActive ? connector.printers : printers;
+
+  // Destino de impresión: mismo criterio que el TPV (printRouting.js).
+  const printTargetFor = (kind) => (connectorActive
+    ? { printerName: activePrinterName, connector: connector.provider, idempotencyKey: buildPrintKey(kind, business?.id) }
+    : { printerName: config.printerName });
+
   useEffect(() => {
     setConfig(readPrinterConfig(configKey));
   }, [configKey]);
@@ -73,7 +87,10 @@ export default function CrmPrintSettings() {
     }
   }, []);
 
-  useEffect(() => { refreshPrinters(); }, [refreshPrinters]);
+  // QZ Tray solo se consulta cuando el conector NO es la ruta activa.
+  useEffect(() => { if (!connectorActive) refreshPrinters(); }, [refreshPrinters, connectorActive]);
+
+  const handleRefreshPrinters = () => (connectorActive ? connector.refresh() : refreshPrinters());
 
   const handleSelectPrinter = (printerName) => {
     const next = { ...config, printerName: printerName || null };
@@ -104,16 +121,16 @@ export default function CrmPrintSettings() {
   };
 
   const handlePrintTest = async () => {
-    if (!config.printerName || printing) return;
+    if (!activePrinterName || printing) return;
     setPrinting(true);
     setPrintResult(null);
     try {
       const receipt = buildTestReceipt({
         businessName: business?.name,
-        printerName: config.printerName,
+        printerName: activePrinterName,
         paperWidthMm: config.paperWidthMm,
       });
-      await printService.printReceipt(receipt, { printerName: config.printerName });
+      await printService.printReceipt(receipt, printTargetFor('test'));
       setPrintResult({ ok: true, message: 'Ticket de prueba enviado a la impresora.' });
     } catch (err) {
       setPrintResult({ ok: false, message: err?.message || 'No se pudo imprimir el ticket de prueba.' });
@@ -128,7 +145,7 @@ export default function CrmPrintSettings() {
   // el corte funcionan con el modo elegido, sin tener que interpretar un
   // diagnóstico técnico.
   const handlePrintLogoTest = async () => {
-    if (!config.printerName || printing) return;
+    if (!activePrinterName || printing) return;
     setPrinting(true);
     setPrintResult(null);
     try {
@@ -138,7 +155,7 @@ export default function CrmPrintSettings() {
         imageMode: config.imageMode,
         effectivePrintableWidthDots: config.effectivePrintableWidthDots,
       });
-      await printService.printReceipt(receipt, { printerName: config.printerName });
+      await printService.printReceipt(receipt, printTargetFor('test'));
       setPrintResult({ ok: true, message: 'Prueba de logo enviada a la impresora.' });
     } catch (err) {
       setPrintResult({ ok: false, message: err?.message || 'No se pudo imprimir la prueba de logo.' });
@@ -148,12 +165,12 @@ export default function CrmPrintSettings() {
   };
 
   const handlePrintCutTest = async () => {
-    if (!config.printerName || printing) return;
+    if (!activePrinterName || printing) return;
     setPrinting(true);
     setPrintResult(null);
     try {
       const receipt = buildCutTestReceipt({ paperWidthMm: config.paperWidthMm, cutStrategyId: config.cutStrategyId });
-      await printService.printReceipt(receipt, { printerName: config.printerName });
+      await printService.printReceipt(receipt, printTargetFor('test'));
       setPrintResult({ ok: true, message: 'Prueba de corte enviada a la impresora.' });
     } catch (err) {
       setPrintResult({ ok: false, message: err?.message || 'No se pudo imprimir la prueba de corte.' });
@@ -168,12 +185,12 @@ export default function CrmPrintSettings() {
   // prueba física diga cuál interpreta realmente esta impresora. No
   // genera ninguna venta ni toca el flujo de cobro.
   const runDiagnosticPrint = async (buildReceipt, successMessage, failureMessage) => {
-    if (!config.printerName || printing) return;
+    if (!activePrinterName || printing) return;
     setPrinting(true);
     setPrintResult(null);
     try {
       const receipt = buildReceipt();
-      await printService.printReceipt(receipt, { printerName: config.printerName });
+      await printService.printReceipt(receipt, printTargetFor('test'));
       setPrintResult({ ok: true, message: successMessage });
     } catch (err) {
       setPrintResult({ ok: false, message: err?.message || failureMessage });
@@ -302,9 +319,15 @@ export default function CrmPrintSettings() {
     'No se pudo imprimir la validación final.',
   );
 
-  const status = QZ_STATUS[qzStatus];
-  const savedPrinterMissing = Boolean(config.printerName) && qzStatus === 'connected' && !printers.includes(config.printerName);
-  const canPrint = qzStatus === 'connected' && Boolean(config.printerName) && !printing;
+  const status = connectorActive
+    ? { dot: CONNECTOR_TONE_CLASSES[connector.status.tone], label: connector.status.label }
+    : QZ_STATUS[qzStatus];
+  const savedPrinterMissing = Boolean(activePrinterName)
+    && (connectorActive ? connector.health === 'ok' : qzStatus === 'connected')
+    && !activePrinters.includes(activePrinterName);
+  const canPrint = connectorActive
+    ? connector.status.canPrint && !printing
+    : qzStatus === 'connected' && Boolean(config.printerName) && !printing;
   // PRINT-5 — una config guardada por PRINT-1 a PRINT-4 nunca tuvo
   // `profileId`; sanitizeConfig ya lo rellena con 'generic80', pero por si
   // alguna vez llega vacío/desconocido igual se infiere algo razonable
@@ -328,6 +351,10 @@ export default function CrmPrintSettings() {
       />
 
       <DashboardLayoutContent innerClassName="lg:max-w-2xl">
+        <div className="mb-6">
+          <PrintConnectorSection connector={connector} />
+        </div>
+
         <section aria-label="Impresión del TPV" className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
 
           <div className="flex items-center justify-between gap-3">
@@ -338,7 +365,7 @@ export default function CrmPrintSettings() {
             </span>
           </div>
 
-          {qzStatus === 'disconnected' && (
+          {!connectorActive && qzStatus === 'disconnected' && (
             <div className="mt-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
               <Icon name="AlertTriangle" size={14} className="mt-0.5 shrink-0" />
               <span>
@@ -355,22 +382,24 @@ export default function CrmPrintSettings() {
             </label>
             <select
               id="print-printer-select"
-              value={config.printerName || ''}
-              onChange={(e) => handleSelectPrinter(e.target.value)}
-              disabled={qzStatus !== 'connected' || printers.length === 0}
+              value={activePrinterName || ''}
+              onChange={(e) => (connectorActive ? connector.selectPrinter(e.target.value) : handleSelectPrinter(e.target.value))}
+              disabled={connectorActive
+                ? connector.health !== 'ok' || activePrinters.length === 0
+                : qzStatus !== 'connected' || printers.length === 0}
               className="mt-1.5 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500 disabled:bg-slate-50 disabled:text-slate-400"
             >
               <option value="">
-                {qzStatus === 'connected' && printers.length === 0 ? 'Sin impresoras detectadas' : 'Selecciona una impresora'}
+                {activePrinters.length === 0 ? 'Sin impresoras detectadas' : 'Selecciona una impresora'}
               </option>
-              {printers.map((name) => <option key={name} value={name}>{name}</option>)}
+              {activePrinters.map((name) => <option key={name} value={name}>{name}</option>)}
             </select>
             {savedPrinterMissing && (
               <p className="mt-1.5 text-xs text-amber-700">
-                La impresora guardada ("{config.printerName}") ya no aparece en este equipo.
+                La impresora guardada ("{activePrinterName}") ya no aparece en este equipo.
               </p>
             )}
-            {qzStatus === 'connected' && printers.length === 0 && !savedPrinterMissing && (
+            {(connectorActive ? connector.health === 'ok' : qzStatus === 'connected') && activePrinters.length === 0 && !savedPrinterMissing && (
               <p className="mt-1.5 text-xs text-slate-400">
                 El servicio de impresión está conectado, pero no se encontraron impresoras instaladas en este equipo.
               </p>
@@ -415,8 +444,8 @@ export default function CrmPrintSettings() {
           <div className="mt-5 flex flex-col gap-2 sm:flex-row">
             <button
               type="button"
-              onClick={refreshPrinters}
-              disabled={loadingPrinters}
+              onClick={handleRefreshPrinters}
+              disabled={loadingPrinters && !connectorActive}
               className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-xl border border-slate-300 px-3 py-2.5 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             >
               <Icon name={loadingPrinters ? 'Loader2' : 'RefreshCw'} size={15} className={loadingPrinters ? 'animate-spin' : ''} />
@@ -481,7 +510,6 @@ export default function CrmPrintSettings() {
           </p>
         </section>
 
-        <PrintConnectorSection businessId={business?.id} />
       </DashboardLayoutContent>
     </DashboardAppShell>
   );

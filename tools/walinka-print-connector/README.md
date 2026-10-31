@@ -121,3 +121,21 @@ Autoprueba sin impresora: `.\WalinkaPrintConnector.exe selftest` (53 pruebas).
 
 Pendiente antes de piloto: instalador, arranque automático, firma de código,
 verificación en navegador con venta real y corte del Xprinter.
+
+## Pruebas reales en Windows (antes de declarar terminado)
+
+1. `.\build.ps1` → genera `publish\WalinkaPrintConnector.exe`.
+2. `.\publish\WalinkaPrintConnector.exe selftest` → debe decir `Todo OK (53 pruebas)`.
+3. `.\publish\WalinkaPrintConnector.exe serve` (dejar la consola abierta).
+4. En otra consola: `.\publish\WalinkaPrintConnector.exe pair` y copiar el código.
+5. En Walinka (`http://localhost:5173/crm/impresion`): estado "Conectado" y código de emparejamiento.
+   Elegir la impresora XP-80C, activar "Usar para ventas".
+6. "Imprimir ticket de prueba": debe salir un ticket de 80 mm y cortarse solo.
+7. "Probar corte" y "Probar logo": deben salir por el conector.
+8. Venta real en el TPV: debe imprimir una vez y cortar. Repetir la reimpresión manual
+   debe imprimir de nuevo; un reintento automático no debe duplicar.
+9. Apagar el conector y cobrar: el TPV debe mostrar error, no imprimir por QZ Tray.
+
+Verificación de código hecha fuera de Windows: `node --test` sobre los módulos de
+impresión (46 pruebas en printRouting, localConnectorProvider y connectorConfigStorage),
+y selftest del conector (53). No se ejecutó vitest ni `vite build` en este entorno.
