@@ -40,6 +40,12 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
           // Avoid mutating a working panel session when Preview server auth is misconfigured.
           // Refreshing can fail or invalidate the browser session without fixing the server.
           const detail = await response.json().catch(() => null);
+          if (detail?.error === 'AUTH_TOKEN_REJECTED') {
+            throw new Error('AUTH_TOKEN_REJECTED: Supabase rechazó el token de esta sesión en el servidor fiscal. Revisaremos la configuración de las credenciales del Preview.');
+          }
+          if (detail?.error === 'AUTH_PROVIDER_UNAVAILABLE') {
+            throw new Error('AUTH_PROVIDER_UNAVAILABLE: El servidor fiscal no pudo validar la sesión con Supabase. Revisaremos la conexión y configuración del Preview.');
+          }
           if (detail?.error === 'AUTH_PROJECT_MISMATCH') {
             throw new Error('AUTH_PROJECT_MISMATCH: El navegador y la función fiscal usan proyectos de Supabase diferentes. Debemos corregir la configuración del Preview.');
           }
