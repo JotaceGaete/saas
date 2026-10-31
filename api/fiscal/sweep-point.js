@@ -24,6 +24,7 @@ export function createSweepHandler({ internalSecret, runSweep }) {
     // Read-only by default. Registration needs a separate server-side gate.
     const requestedRegistration = req.body?.mode === 'register';
     if (requestedRegistration && (process.env.FISCAL_SWEEP_REGISTRATION_ENABLED !== 'true' ||
+        !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(process.env.FISCAL_SWEEP_NOT_BEFORE || '') ||
         !Number.isFinite(Date.parse(process.env.FISCAL_SWEEP_NOT_BEFORE || '')))) {
       return res.status(403).json({ error: 'REGISTRATION_DISABLED' });
     }
