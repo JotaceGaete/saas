@@ -60,7 +60,7 @@ export function createPointFiscalSweeper({ listCandidates, verifySale, registerP
  * Candidate query: Point operations finalized into a sale, minus sales that
  * already have any ledger row. Read-only.
  */
-export function createPointSweepCandidateLister(admin, { sinceDays = 14 } = {}) {
+export function createPointSweepCandidateLister(admin, { sinceDays = 14, notBefore = null } = {}) {
   return async function listCandidates({ limit }) {
     const rollingSince = Date.now() - sinceDays * 86400000;
     const cutoff = notBefore ? Date.parse(notBefore) : NaN;
