@@ -94,6 +94,23 @@ export function createPgStore(cfg) {
       ));
     },
 
+    // Reclamo con credenciales en una sola transacción SQL (ver crm_fiscal_claim_with_credentials).
+    async claimWithCredentials(businessId, saleId, operationId) {
+      const raw = await scalar(
+        `select public.crm_fiscal_claim_with_credentials($1, $2, $3) as j`, [businessId, saleId, operationId], 'j',
+      );
+      return {
+        claimed: raw?.claimed === true,
+        credentials: raw?.claimed === true ? mapCredentialRecord(raw.credentials) : null,
+      };
+    },
+
+    async releaseClaim(businessId, saleId, operationId) {
+      return Boolean(await scalar(
+        `select public.crm_fiscal_release_claim($1, $2, $3) as ok`, [businessId, saleId, operationId], 'ok',
+      ));
+    },
+
     async finalize(businessId, saleId, operationId, out) {
       return Boolean(await scalar(
         `select public.crm_finalize_fiscal_issuance($1, $2, $3, $4, $5, $6, $7) as ok`,

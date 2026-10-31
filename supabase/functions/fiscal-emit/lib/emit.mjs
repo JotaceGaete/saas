@@ -133,13 +133,28 @@ export function createFiscalEmitter({
       operationId,
     });
 
-    const credRecord = await store.loadCredentialRecord(businessId);
-    if (!credRecord) throw new FiscalError('CREDENTIALS_MISSING');
-    const creds = openSecret(credRecord, { key, businessId });
+    // Reclamo atómico con credenciales (pending -> sending) bajo el mismo candado que conectar,
+    // reemplazar o desconectar. Las credenciales se leen DENTRO del reclamo: una emisión nunca usa
+    // una clave que cambió durante su preparación. Si otro proceso ganó, no llamamos al proveedor.
+    let claim;
+    try {
+      claim = await store.claimWithCredentials(businessId, sale.id, operationId);
+    } catch (err) {
+      // Mismo código público con cualquier almacén (SQL o memoria).
+      if (err?.code === 'FISCAL_CREDENTIALS_MISSING') throw new FiscalError('CREDENTIALS_MISSING');
+      throw err;
+    }
+    if (!claim.claimed) throw new FiscalError('ALREADY_IN_PROGRESS');
 
-    // Reclamo atómico (pending -> sending). Si otro proceso ganó, no llamamos al proveedor.
-    const claimed = await store.claim(businessId, sale.id, operationId);
-    if (!claimed) throw new FiscalError('ALREADY_IN_PROGRESS');
+    let creds;
+    try {
+      creds = openSecret(claim.credentials, { key, businessId });
+    } catch {
+      // Falla ANTES de llamar al proveedor: se libera el reclamo para que la venta pueda reintentarse.
+      const released = await store.releaseClaim(businessId, sale.id, operationId);
+      if (!released) throw new FiscalError('PERSIST_PENDING_RECOVERY', 'claim not released; recovery will decide');
+      throw new FiscalError('CREDENTIAL_INVALID');
+    }
 
     const markUnknown = async (reason) => {
       const ok = await settle(businessId, sale.id,

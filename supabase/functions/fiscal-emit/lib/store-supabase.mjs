@@ -74,6 +74,22 @@ export function createSupabaseStore(client) {
       }));
     },
 
+    async claimWithCredentials(businessId, saleId, operationId) {
+      const raw = await rpc('crm_fiscal_claim_with_credentials', {
+        p_business_id: businessId, p_sale_id: saleId, p_operation_id: operationId,
+      });
+      return {
+        claimed: raw?.claimed === true,
+        credentials: raw?.claimed === true ? mapCredentialRecord(raw.credentials) : null,
+      };
+    },
+
+    async releaseClaim(businessId, saleId, operationId) {
+      return Boolean(await rpc('crm_fiscal_release_claim', {
+        p_business_id: businessId, p_sale_id: saleId, p_operation_id: operationId,
+      }));
+    },
+
     async storeReceipt(businessId, saleId, operationId, doc) {
       return Boolean(await rpc('crm_fiscal_store_receipt', {
         p_business_id: businessId,

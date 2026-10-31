@@ -48,7 +48,7 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
     sales.set(saleId, {
       id: saleId, businessId, status: 'pagada', paidAt: new Date(), total, discountAmount: 0,
     });
-    issuers.set(businessId, { issuerRut: '76123456-7', enabled: true, verified: true });
+    issuers.set(businessId, { issuerRut: '76123456-7', provider: 'dtecore', enabled: true, verified: true });
     lines.set(saleId, withLines
       ? [{ id: `${saleId}-l1`, name: 'Café', unitPrice: 1190, quantity: total / 1190, discountPct: 0, category: 'IVA_AFECTO_19' }]
       : []);
@@ -93,6 +93,28 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
   }
 
   const stamp = (row) => { row.updatedAt = now(); };
+
+  const claimSale = async (b, s, op) => {
+    if (!control.enabled) throw new FiscalError('FISCAL_EMISSION_DISABLED');
+    if (retroBlocks.has(s)) throw new FiscalError('FISCAL_RETROACTIVE_BLOCKED');
+    const sale = sales.get(s);
+    if (!sale || sale.businessId !== b) throw new FiscalError('Invalid fiscal issuance claim');
+    const k = key(b, s);
+    const cur = issuances.get(k);
+    if (!cur) {
+      const row = { id: `iss-${k}`, businessId: b, saleId: s, operationId: op, status: 'sending', folio: null, pdfBase64: null };
+      stamp(row);
+      issuances.set(k, row);
+      return true;
+    }
+    if (cur.status === 'pending' && cur.operationId === op) {
+      cur.status = 'sending';
+      stamp(cur);
+      return true;
+    }
+    return false;
+
+  };
 
   const store = {
     seed,
@@ -185,25 +207,25 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
 
     loadCredentialRecord: guard('loadCredentialRecord', async (b) => creds.get(b) ?? null),
 
-    claim: guard('claim', async (b, s, op) => {
-      if (!control.enabled) throw new FiscalError('FISCAL_EMISSION_DISABLED');
-      if (retroBlocks.has(s)) throw new FiscalError('FISCAL_RETROACTIVE_BLOCKED');
-      const sale = sales.get(s);
-      if (!sale || sale.businessId !== b) throw new FiscalError('Invalid fiscal issuance claim');
-      const k = key(b, s);
-      const cur = issuances.get(k);
-      if (!cur) {
-        const row = { id: `iss-${k}`, businessId: b, saleId: s, operationId: op, status: 'sending', folio: null, pdfBase64: null };
-        stamp(row);
-        issuances.set(k, row);
-        return true;
-      }
-      if (cur.status === 'pending' && cur.operationId === op) {
-        cur.status = 'sending';
-        stamp(cur);
-        return true;
-      }
-      return false;
+    claim: guard('claim', claimSale),
+
+    claimWithCredentials: guard('claimWithCredentials', async (b, s, op) => {
+      // Espejo de public.crm_fiscal_claim_with_credentials: credenciales y emisor se leen en el mismo paso que el reclamo.
+      const c = creds.get(b);
+      if (!c) throw new FiscalError('FISCAL_CREDENTIALS_MISSING');
+      const iss = issuers.get(b);
+      if (!iss || iss.provider !== c.provider) throw new FiscalError('FISCAL_PROVIDER_MISMATCH');
+      if (!(await claimSale(b, s, op))) return { claimed: false, credentials: null };
+      return { claimed: true, credentials: c };
+    }),
+
+    // Espejo de public.crm_fiscal_release_claim: solo sending -> pending con la misma operación.
+    releaseClaim: guard('releaseClaim', async (b, s, op) => {
+      const cur = issuances.get(key(b, s));
+      if (!cur || cur.status !== 'sending' || cur.operationId !== op) return false;
+      cur.status = 'pending';
+      stamp(cur);
+      return true;
     }),
 
     // Espejo de public.crm_fiscal_store_receipt: exige 'sending'; mismo contenido = idempotente.

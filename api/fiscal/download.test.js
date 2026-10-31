@@ -16,6 +16,7 @@ function response() {
 function db(document) {
   return { from(table) {
     const q = { select() { return q; }, eq() { return q; },
+      in() { return q; },
       async maybeSingle() { return { data: table === 'crm_invoices' ? { id: S } : document, error: null }; } };
     return q;
   } };
@@ -78,4 +79,9 @@ test('download rejects non-GET requests', async () => {
   const res = response();
   await handler({ ...req, method: 'POST' }, res);
   assert.equal(res.code, 405);
+});
+
+test('descarga acepta el proveedor histórico y el canónico, nunca otros', async () => {
+  const { LEDGER_PROVIDER_IDS } = await import('../../supabase/functions/fiscal-emit/lib/provider-ids.mjs');
+  assert.deepEqual([...LEDGER_PROVIDER_IDS].sort(), ['dtecore', 'siisolutions']);
 });

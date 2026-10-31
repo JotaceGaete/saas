@@ -19,6 +19,37 @@ alter table fiscal.admin_audit drop constraint if exists admin_audit_action_chec
 alter table fiscal.admin_audit add constraint admin_audit_action_check
   check (action in ('reconcile_attempt', 'reconcile_result', 'owner_changed', 'credentials_saved', 'credentials_removed'));
 
+-- 0b. Proveedor canónico del emisor. 'dtecore' es el identificador interno de DTECore. Los valores
+--     históricos del piloto ('sii_solutions') se conservan: no se reescriben filas.
+alter table fiscal.issuers drop constraint if exists issuers_provider_check;
+alter table fiscal.issuers add constraint issuers_provider_check
+  check (provider in ('sii_solutions', 'dtecore'));
+
+-- 0c. Ventana de 'sending' que bloquea la administración de credenciales. Un 'sending' más antiguo
+--     que esta ventana se considera abandonado: lo resuelve la recuperación (pasa a 'unknown', que
+--     NO bloquea). Debe ser mayor que el timeout del proveedor (FISCAL_STALE_AFTER_MS, por defecto
+--     15 min, y el timeout de emisión es menor).
+create or replace function fiscal.sending_stale_window()
+returns interval
+language sql
+immutable
+as $$ select interval '15 minutes' $$;
+
+-- Hay una emisión activa y reciente para el negocio. 'unknown' y 'sending' abandonados no cuentan.
+create or replace function fiscal.has_fresh_sending(p_business_id uuid)
+returns boolean
+language sql
+stable
+security invoker
+set search_path = public, fiscal
+as $$
+  select exists (
+    select 1 from public.crm_fiscal_issuances f
+     where f.business_id = p_business_id and f.status = 'sending'
+       and f.updated_at > now() - fiscal.sending_stale_window()
+  );
+$$;
+
 -- 1. Estado de conexión (sin secretos).
 create or replace function public.crm_fiscal_connection_status(p_business_id uuid)
 returns jsonb
@@ -61,8 +92,7 @@ begin
   end if;
 
   perform pg_advisory_xact_lock(hashtextextended('fiscal_connection:' || p_business_id::text, 0));
-  if exists (select 1 from public.crm_fiscal_issuances
-              where business_id = p_business_id and status = 'sending') then
+  if fiscal.has_fresh_sending(p_business_id) then
     raise exception 'FISCAL_OPERATION_IN_PROGRESS';
   end if;
 
@@ -72,10 +102,11 @@ begin
      set provider = 'dtecore', key_version = excluded.key_version, ciphertext = excluded.ciphertext,
          iv = excluded.iv, auth_tag = excluded.auth_tag, updated_at = now();
 
-  insert into fiscal.issuers (business_id, issuer_rut, enabled, verified)
-  values (p_business_id, p_issuer_rut, false, false)
+  insert into fiscal.issuers (business_id, issuer_rut, enabled, verified, provider)
+  values (p_business_id, p_issuer_rut, false, false, 'dtecore')
   on conflict (business_id) do update
-     set issuer_rut = excluded.issuer_rut, enabled = false, verified = false, updated_at = now();
+     set issuer_rut = excluded.issuer_rut, enabled = false, verified = false,
+         provider = 'dtecore', updated_at = now();
 
   insert into fiscal.admin_audit (business_id, sale_id, actor_user_id, action, outcome, detail)
   values (p_business_id, null, p_actor_user_id, 'credentials_saved', 'stored',
@@ -98,8 +129,7 @@ begin
     raise exception 'Invalid fiscal connection input';
   end if;
   perform pg_advisory_xact_lock(hashtextextended('fiscal_connection:' || p_business_id::text, 0));
-  if exists (select 1 from public.crm_fiscal_issuances
-              where business_id = p_business_id and status = 'sending') then
+  if fiscal.has_fresh_sending(p_business_id) then
     raise exception 'FISCAL_OPERATION_IN_PROGRESS';
   end if;
 

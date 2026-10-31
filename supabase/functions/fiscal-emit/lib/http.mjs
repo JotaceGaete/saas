@@ -27,6 +27,9 @@ const STATUS_BY_CODE = {
   FISCAL_RETROACTIVE_BLOCKED: 409,
   PROVIDER_NOT_READY: 503,
   CREDENTIALS_MISSING: 503,
+  // Configuración de proveedor o credencial inválida: no es reintentable hasta corregir la configuración.
+  CREDENTIAL_INVALID: 503,
+  FISCAL_PROVIDER_MISMATCH: 503,
 };
 
 export function statusFor(err) {

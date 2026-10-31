@@ -9,6 +9,7 @@
 //  - Entrada estricta: solo los campos de cada acción. Cualquier otro campo se rechaza.
 
 import { seal } from '../../supabase/functions/fiscal-emit/lib/secrets.mjs';
+import { CANONICAL_PROVIDER } from '../../supabase/functions/fiscal-emit/lib/provider-ids.mjs';
 
 const KEY_VERSION = 1;
 const CONNECT_FIELDS = new Set(['action', 'apiKey', 'issuerRut']);
@@ -98,7 +99,7 @@ export function createFiscalConnectionService({ admin, masterKey }) {
     if (!apiKey) return fail(400, 'INVALID_API_KEY');
 
     // Sellado: la clave no sale de este bloque. Solo viajan bytes cifrados a la base.
-    const sealed = seal({ apiKey }, { key: masterKey, businessId, provider: 'dtecore', keyVersion: KEY_VERSION });
+    const sealed = seal({ apiKey }, { key: masterKey, businessId, provider: CANONICAL_PROVIDER, keyVersion: KEY_VERSION });
     const { error } = await admin.rpc('crm_fiscal_save_credentials', {
       p_business_id: businessId,
       p_actor_user_id: actorId,

@@ -3,6 +3,7 @@
 // Read-only: never contacts DTECore and never emits or retries a DTE.
 import { createClient } from '@supabase/supabase-js';
 import { createFiscalRoleGuard } from '../_lib/siisolutions-fiscal-role-guard.js';
+import { LEDGER_PROVIDER_IDS as FISCAL_PROVIDER_IDS } from '../../supabase/functions/fiscal-emit/lib/provider-ids.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const FORMATS = { pdf: { column: 'pdf_base64', mime: 'application/pdf', magic: '%PDF-' }, xml: { column: 'xml_base64', mime: 'application/xml', magic: '<?xml' } };
@@ -24,7 +25,7 @@ export function createFiscalDownloadHandler({ admin, assertAccess }) {
     const column = FORMATS[format].column;
     const { data: document, error } = await admin.from('crm_fiscal_issuances')
       .select('status,folio,' + column)
-      .eq('business_id', businessId).eq('sale_id', invoiceId).eq('dte_type', 39).eq('provider', 'siisolutions').maybeSingle();
+      .eq('business_id', businessId).eq('sale_id', invoiceId).eq('dte_type', 39).in('provider', FISCAL_PROVIDER_IDS).maybeSingle();
     if (error) return res.status(503).json({ error: 'SERVER_ERROR' });
     if (document?.status !== 'issued' || !Number.isSafeInteger(document?.folio) || document.folio <= 0) return res.status(404).json({ error: 'DOCUMENT_NOT_AVAILABLE' });
     const encoded = document[column];
