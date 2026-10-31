@@ -139,3 +139,95 @@ verificación en navegador con venta real y corte del Xprinter.
 Verificación de código hecha fuera de Windows: `node --test` sobre los módulos de
 impresión (32 pruebas en printRouting, localConnectorProvider y connectorConfigStorage),
 y selftest del conector (53). No se ejecutó vitest ni `vite build` en este entorno.
+
+---
+
+# E4 — Instalador y ejecución automática (Windows)
+
+## Decisiones
+
+- **Instalador: Inno Setup 6**, por usuario (`PrivilegesRequired=lowest`), sin administrador.
+  Motivo: un solo `.exe` de instalación, desinstalador, entradas de menú Inicio y
+  mantenimiento sencillo en un script `.iss`. WiX exige más infraestructura para lo mismo.
+- **Sin bandeja ni app residente (por ahora).** Un vigilante en segundo plano basta. Una
+  bandeja agrega un proceso de interfaz que hay que mantener; se evalúa después del piloto.
+- **Inicio con sesión**: entrada `HKCU\Software\Microsoft\Windows\CurrentVersion\Run` que
+  lanza `conhost.exe --headless WalinkaPrintConnector.exe watch`. `--headless` evita la
+  ventana de consola (Windows 10 1903 o superior). No requiere administrador.
+- **Vigilante (`watch`)**: ejecuta `serve` como proceso hijo sin ventana. Si `serve`
+  termina inesperadamente, lo reinicia con espera creciente (1, 2, 5, 10, 30 s). Un proceso
+  que estuvo sano al menos 1 minuto reinicia el contador. Log en
+  `%LOCALAPPDATA%\WalinkaPrintConnector\logs\connector.log` (se recorta a 2 MB, sin tickets ni tokens).
+- **Instancia única**: mutex `Local\WalinkaPrintConnector.Watch` y `…Serve`. Un segundo
+  arranque responde "ya está en ejecución" y sale con código 4.
+- **Parada**: `WalinkaPrintConnector.exe stop` activa el evento
+  `Local\WalinkaPrintConnector.Stop`; el vigilante y el servicio terminan limpiamente.
+- **Puerto ocupado**: si 47801 responde como Walinka Print Connector, `serve` sale con código 0.
+  Si lo usa otra aplicación, sale con código 3 y explica qué hacer.
+- **Datos fuera del programa**: `%LOCALAPPDATA%\WalinkaPrintConnector` (configuración,
+  emparejamiento, logs). El instalador nunca los toca; por eso una actualización conserva
+  el emparejamiento. Al desinstalar pregunta si los borra.
+
+## Orígenes de producción
+
+- La configuración por defecto solo tiene `https://go.ventalink.app` y `https://go.walinka.com`.
+- `http://localhost` se rechaza salvo que `config.json` tenga `"AllowLocalDevOrigin": true`
+  (solo desarrollo). **Un equipo de desarrollo con `localhost:5173` debe agregar ese flag**
+  en `%LOCALAPPDATA%\WalinkaPrintConnector\config.json`, o `serve` no arrancará.
+
+## Generar el instalador
+
+Requisitos en la máquina de build: .NET 8 SDK y Inno Setup 6 (`winget install JRSoftware.InnoSetup`).
+
+```
+cd tools\walinka-print-connector
+.\installer\build-installer.ps1
+```
+
+Resultado: `tools\walinka-print-connector\installer-output\WalinkaPrintConnector-Setup-0.3.0.exe`.
+La versión sale de `WalinkaPrintConnector.csproj`; subirla ahí antes de cada release.
+
+## Instalar y probar en tu computadora
+
+1. Ejecutar `WalinkaPrintConnector-Setup-0.3.0.exe`. No pide administrador.
+2. Al terminar, el conector queda corriendo. Menú Inicio → Walinka → "Estado del conector".
+3. Reiniciar Windows y comprobar que el conector arranca solo (`Estado del conector` debe mostrar que responde).
+4. En Walinka: Configuración de impresión → emparejar, elegir la XP-80C, activar para ventas.
+5. Probar ticket de prueba, corte, venta real y reimpresión (ver lista de Windows más arriba).
+6. Matar el proceso `WalinkaPrintConnector.exe` desde el Administrador de tareas y comprobar que vuelve en pocos segundos.
+7. Ocupar el puerto (`python -m http.server 47801 --bind 127.0.0.1`) y ejecutar `serve`: debe avisar y salir con código 3.
+8. Instalar encima de la versión anterior y comprobar que el emparejamiento sigue activo.
+9. Desinstalar desde Configuración → Aplicaciones y elegir si se borra la configuración.
+
+Menú Inicio: Reiniciar conector, Detener conector, Estado del conector, Desinstalar.
+
+## Estado de las pruebas
+
+Verificado en este entorno (Linux, sin Windows):
+- `selftest`: 60 pruebas OK (incluye reglas de reinicio, nombres de instancia y orígenes de producción).
+- Compilación del código del conector con Roslyn (csc) contra los paquetes de referencia .NET 8.
+- Puerto ocupado por otra aplicación: `serve` sale con código 3.
+- Sintaxis del script de build revisada a ojo; no se ejecutó.
+
+Pendiente, NO verificado (requiere Windows):
+- Compilación del instalador con ISCC y el instalador generado.
+- Instancia única y parada con `stop`: los objetos `Local\` no existen fuera de Windows. La lógica compila y se prueba en Windows, nada más.
+- Vigilante: reinicio tras matar el proceso, espera creciente, inicio con sesión, `conhost --headless`.
+- Instalación limpia, actualización conservando emparejamiento, desinstalación en Windows 10 y 11.
+- Impresión y corte desde el instalador instalado (ya probado con el ejecutable de pruebas, no con el instalador).
+
+## Riesgo abierto: cajón portamonedas (ESC p)
+
+El conector no expone ningún comando de cajón, pero el contenido de un trabajo es bytes
+ESC/POS arbitrarios. Un origen permitido con token válido podría enviar `ESC p` (0x1B 0x70)
+dentro de un trabajo. El origen y el token lo limitan, pero no lo bloquean.
+
+Un filtro simple de bytes **no es seguro**: el raster del logo es binario y puede contener
+0x1B 0x70 legítimamente. Las opciones reales son:
+1. Analizar el flujo ESC/POS comando por comando (longitudes conocidas) y rechazar `ESC p` y `DLE DC4`
+   fuera del raster. Es la opción correcta, pero requiere trabajo y pruebas con cada comando.
+2. Hacer que Walinka envíe el logo siempre en formato que no pueda confundirse (por ejemplo, un
+   perfil de solo texto para el cajón) y el conector rechace cualquier trabajo que no lo cumpla.
+3. Aceptar el riesgo documentado mientras el origen esté restringido a Walinka y el token sea privado.
+
+Recomendación: opción 1 antes de vender a terceros. Se necesita tu decisión antes de avanzar.

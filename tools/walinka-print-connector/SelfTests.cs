@@ -45,7 +45,7 @@ public static class SelfTests
         Check(cfg.Validate() is null, "configuración por defecto válida");
         Check(new ConnectorConfig { AllowedOrigins = new() { "*" } }.Validate() is not null, "comodín en orígenes rechazado");
         Check(new ConnectorConfig { AllowedOrigins = new() { "http://ejemplo.com" } }.Validate() is not null, "http remoto rechazado");
-        Check(new ConnectorConfig { AllowedOrigins = new() { "http://localhost:5173" } }.Validate() is null, "http://localhost aceptado para desarrollo");
+        Check(new ConnectorConfig { AllowedOrigins = new() { "http://localhost:5173" } }.Validate() is not null, "http://localhost rechazado en producción (sin flag de desarrollo)");
         Check(new ConnectorConfig { AllowedOrigins = new() { "https://go.ventalink.app/ruta" } }.Validate() is not null, "origen con ruta rechazado");
 
         // --- Payload ---
@@ -123,6 +123,23 @@ public static class SelfTests
             // --- Secretos ---
             Check(Secrets.Sha256Hex("a") == Secrets.Sha256Hex("a") && Secrets.Sha256Hex("a") != Secrets.Sha256Hex("b"), "hash SHA-256 determinista");
             Check(Secrets.ConstantTimeEquals("abc", "abc") && !Secrets.ConstantTimeEquals("abc", "abd"), "comparación en tiempo constante");
+
+            // --- E4: orígenes de producción ---
+            var prodCfg = new ConnectorConfig();
+            Check(prodCfg.Validate() is null && !prodCfg.AllowedOrigins.Any(o => o.Contains("localhost")),
+                "configuración por defecto solo tiene orígenes de producción");
+            var devWithoutFlag = new ConnectorConfig { AllowedOrigins = new() { "http://localhost:5173" } };
+            Check(devWithoutFlag.Validate() is not null, "localhost rechazado sin AllowLocalDevOrigin");
+            var devWithFlag = new ConnectorConfig { AllowLocalDevOrigin = true, AllowedOrigins = new() { "http://localhost:5173" } };
+            Check(devWithFlag.Validate() is null, "localhost aceptado solo con AllowLocalDevOrigin");
+
+            // --- E4: vigilante y reinicios ---
+            Check(Supervisor.DelayFor(0) == TimeSpan.FromSeconds(1) && Supervisor.DelayFor(99) == TimeSpan.FromSeconds(30),
+                "espera de reinicio crece y se limita a 30 s");
+            Check(Supervisor.NextAttempt(3, TimeSpan.FromSeconds(5)) == 4, "reinicio rápido incrementa el contador");
+            Check(Supervisor.NextAttempt(3, TimeSpan.FromMinutes(5)) == 0, "un proceso estable reinicia el contador");
+            Check(Instances.ServeMutexName != Instances.WatchMutexName && Instances.StopEventName.StartsWith("Local\\", StringComparison.Ordinal),
+                "nombres de instancia y parada en el espacio Local (sin administrador)");
         }
         finally
         {

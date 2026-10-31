@@ -1,6 +1,7 @@
+using System.Net.Http;
 namespace WalinkaPrintConnector;
 
-// Walinka Print Connector — versión 0.2 (E2/E3).
+// Walinka Print Connector — versión 0.3 (E4: instalador, vigilante, instancia única).
 // Servicio local en 127.0.0.1 con emparejamiento por código y token.
 // Sin apertura de cajón: ningún endpoint ni comando lo ejecuta en esta versión.
 internal static class Program
@@ -21,6 +22,12 @@ internal static class Program
             {
                 case "serve":
                     return await Serve(dataDir);
+                case "watch":
+                    return Supervisor.Run(dataDir);
+                case "stop":
+                    return Stop();
+                case "restart":
+                    return Restart(dataDir);
                 case "pair":
                     return Pair(dataDir);
                 case "unpair":
@@ -68,6 +75,16 @@ internal static class Program
               Inicia el servicio en 127.0.0.1:{ConnectorConfig.DefaultPort} (puerto en config.json).
               Déjalo corriendo mientras uses Walinka.
 
+          watch [--data-dir RUTA]
+              Vigilante en segundo plano: ejecuta serve y lo reinicia si se cae.
+              Es lo que se inicia con Windows. Una sola instancia por sesión.
+
+          stop
+              Detiene el vigilante y el servicio.
+
+          restart
+              Detiene y vuelve a iniciar el vigilante.
+
           pair [--data-dir RUTA]
               Genera un código de 6 dígitos válido 5 minutos. Escríbelo en Walinka > Configuración de impresión.
               Un código ya usado o vencido no sirve; genera uno nuevo.
@@ -99,12 +116,40 @@ internal static class Program
     private static async Task<int> Serve(string dataDir)
     {
         var config = ConnectorConfig.LoadOrCreate(dataDir);
+
+        using var serveMutex = Instances.TryAcquire(Instances.ServeMutexName);
+        if (serveMutex is null)
+        {
+            Console.WriteLine("El conector ya está en ejecución en esta sesión.");
+            return 4;
+        }
+
+        if (!PortIsFree(config.Port))
+        {
+            if (await IsOurServiceAsync(config.Port))
+            {
+                Console.WriteLine($"Walinka Print Connector ya responde en 127.0.0.1:{config.Port}.");
+                return 0;
+            }
+            Console.WriteLine($"El puerto {config.Port} está ocupado por otra aplicación.");
+            Console.WriteLine("Cierra esa aplicación o cambia el puerto en config.json y reinicia el conector.");
+            return 3;
+        }
+
+        // Un `serve` manual limpia una parada pendiente; si lo arrancó el
+        // vigilante, el vigilante es quien reinicia la señal.
+        using var stopEvent = Instances.OpenStopEvent(resetFirst: !Instances.IsHeld(Instances.WatchMutexName));
         using var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) =>
         {
             e.Cancel = true;
             cts.Cancel();
         };
+        _ = Task.Run(() =>
+        {
+            stopEvent.WaitOne();
+            cts.Cancel();
+        });
 
         Console.WriteLine($"Walinka Print Connector {Version} escuchando en 127.0.0.1:{config.Port}.");
         Console.WriteLine($"Orígenes permitidos: {string.Join(", ", config.AllowedOrigins)}");
@@ -116,8 +161,81 @@ internal static class Program
         }
         catch (OperationCanceledException)
         {
-            // Salida normal con Ctrl+C.
+            // Salida normal: Ctrl+C o señal de parada.
         }
+        catch (IOException ex) when (ex.InnerException is System.Net.Sockets.SocketException { SocketErrorCode: System.Net.Sockets.SocketError.AddressAlreadyInUse })
+        {
+            Console.WriteLine($"El puerto {config.Port} se ocupó justo al iniciar. Reinicia el conector.");
+            return 3;
+        }
+        return 0;
+    }
+
+    private static bool PortIsFree(int port)
+    {
+        try
+        {
+            var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+            listener.Start();
+            listener.Stop();
+            return true;
+        }
+        catch (System.Net.Sockets.SocketException)
+        {
+            return false;
+        }
+    }
+
+    private static async Task<bool> IsOurServiceAsync(int port)
+    {
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            var json = await http.GetStringAsync($"http://127.0.0.1:{port}/v1/health");
+            return json.Contains("walinka-print-connector", StringComparison.Ordinal);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static int Stop()
+    {
+        if (!Instances.RequestStop())
+        {
+            Console.WriteLine("El conector no está en ejecución.");
+            return 0;
+        }
+        Console.WriteLine("Solicitud de parada enviada.");
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (!Instances.IsHeld(Instances.WatchMutexName) && !Instances.IsHeld(Instances.ServeMutexName))
+            {
+                Console.WriteLine("Conector detenido.");
+                return 0;
+            }
+            Thread.Sleep(300);
+        }
+        Console.WriteLine("El conector no terminó a tiempo. Revisa el log en %LOCALAPPDATA%\\WalinkaPrintConnector\\logs.");
+        return 1;
+    }
+
+    private static int Restart(string dataDir)
+    {
+        Stop();
+        var exe = Environment.ProcessPath ?? throw new InvalidOperationException("No se pudo determinar la ruta del ejecutable.");
+        // Mismo arranque que el registro de inicio: sin ventana de consola.
+        var info = new System.Diagnostics.ProcessStartInfo(
+            Path.Combine(Environment.SystemDirectory, "conhost.exe"),
+            $"--headless \"{exe}\" watch --data-dir \"{dataDir}\"")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        System.Diagnostics.Process.Start(info);
+        Console.WriteLine("Conector iniciado de nuevo.");
         return 0;
     }
 
