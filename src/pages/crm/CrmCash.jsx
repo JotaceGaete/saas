@@ -41,6 +41,7 @@ import { printService } from 'lib/printing/printService';
 import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
 import { buildConnectorConfigKey, readConnectorConfig } from 'lib/printing/connectorConfigStorage';
+import { canReprintMovement, buildReprintKey, reprintBlockedMessage, REPRINT_LABEL } from 'lib/cash/cashMovementActions';
 import { buildPrintTarget } from 'lib/printing/printRouting';
 
 const METHOD_ORDER = ['cash', 'card', 'bank_transfer', 'check', 'other'];
@@ -470,17 +471,7 @@ function MovementsTable({
                           >
                             Ver venta
                           </button>
-                          {entry.invoice?.source === 'pos' && (
-                            <button
-                              type="button"
-                              onClick={() => onReprintReceipt?.(entry)}
-                              disabled={reprintingId === entry.id}
-                              className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                            >
-                              {reprintingId === entry.id && <Icon name="Loader2" size={12} className="animate-spin" />}
-                              Reimprimir
-                            </button>
-                          )}
+                          <ReprintButton entry={entry} reprintingId={reprintingId} onReprintReceipt={onReprintReceipt} />
                         </div>
                       ) : (
                         <span className="text-xs text-gray-400">—</span>
@@ -494,6 +485,8 @@ function MovementsTable({
                         >
                           Editar
                         </button>
+                        {/* Misma regla que caja cerrada: la reimpresión no depende del estado de la caja. */}
+                        <ReprintButton entry={entry} reprintingId={reprintingId} onReprintReceipt={onReprintReceipt} />
                         {sessionOpen ? (
                           <button
                             type="button"
@@ -593,6 +586,23 @@ function ReconciliationSummaryTable({ reconciliation, session, currency }) {
         <p className="mt-2 text-xs text-gray-500">Observación: {session.closing_notes}</p>
       )}
     </div>
+  );
+}
+
+// Botón "Reimprimir ticket". Única implementación para caja abierta y cerrada.
+// La visibilidad la decide canReprintMovement (lib/cash/cashMovementActions.js).
+function ReprintButton({ entry, reprintingId, onReprintReceipt }) {
+  if (!canReprintMovement(entry)) return null;
+  return (
+    <button
+      type="button"
+      onClick={() => onReprintReceipt?.(entry)}
+      disabled={reprintingId === entry.id}
+      className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+    >
+      {reprintingId === entry.id && <Icon name="Loader2" size={12} className="animate-spin" />}
+      {REPRINT_LABEL}
+    </button>
   );
 }
 
@@ -1930,20 +1940,18 @@ export default function CrmCash() {
   const [reprintError, setReprintError] = useState('');
 
   const handleReprintReceipt = async (payment) => {
-    if (!payment?.invoice_id || reprintingId) return;
+    if (!canReprintMovement(payment) || reprintingId) return;
     setReprintError('');
     const printerConfig = readPrinterConfig(buildPrinterConfigKey(business?.id));
-    // E3: misma ruta única que el TPV (printRouting.js). Clave nueva: es una
-    // reimpresión explícita y sí debe salir.
-    const nonce = Math.random().toString(36).slice(2, 10);
-    const idempotencyKey = `sale:${payment.invoice_id}:reprint:${Date.now()}${nonce}`;
+    // Misma ruta única que el TPV (printRouting.js): con el conector activo nunca
+    // cae a QZ en silencio. Clave nueva por clic: es una reimpresión explícita.
     const target = buildPrintTarget({
       connectorConfig: readConnectorConfig(buildConnectorConfigKey(business?.id)),
       qzPrinterName: printerConfig.printerName,
-      idempotencyKey,
+      idempotencyKey: buildReprintKey(payment.invoice_id),
     });
     if (target.error) {
-      setReprintError('No hay una impresora configurada en este equipo. Configúrala en Configuración de impresión.');
+      setReprintError(reprintBlockedMessage({ route: target.route }));
       return;
     }
     setReprintingId(payment.id);
@@ -1983,10 +1991,12 @@ export default function CrmCash() {
       });
       await printService.printReceipt(receipt, {
         printerName: target.printerName,
-        idempotencyKey,
+        idempotencyKey: target.idempotencyKey,
         connector: target.connector,
       });
     } catch (err) {
+      // Error del conector (desconectado, sin impresora...) se muestra tal cual.
+      // Nunca se reintenta por QZ en silencio.
       setReprintError(err?.message || 'No se pudo reimprimir el comprobante.');
     } finally {
       setReprintingId(null);
