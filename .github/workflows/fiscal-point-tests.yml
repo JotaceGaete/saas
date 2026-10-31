@@ -8,6 +8,8 @@ on:
       - 'api/_lib/siisolutions-sweep.js'
       - 'api/_lib/siisolutions-sweep.test.js'
       - 'api/fiscal/sweep-point.js'
+      - 'api/fiscal/download.js'
+      - 'api/fiscal/download.test.js'
       - '.github/workflows/fiscal-point-tests.yml'
   pull_request:
     paths:
@@ -29,5 +31,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      - name: Run isolated fiscal Point sweep tests (no secrets or database)
-        run: node --test api/_lib/siisolutions-sweep.test.js
+      - name: Install locked dependencies
+        run: npm ci --ignore-scripts
+      - name: Run fiscal safety tests (no secrets or database)
+        run: node --test api/_lib/siisolutions-sweep.test.js api/fiscal/download.test.js
