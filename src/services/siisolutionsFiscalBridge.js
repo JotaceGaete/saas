@@ -6,8 +6,8 @@
 export async function requestCashBoletaForCompletedSale({
   businessId, invoiceId, accessToken, fetchImpl = fetch,
 }) {
-  if (!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(businessId || '') ||
-      !/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(invoiceId || '')) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(businessId || '') ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(invoiceId || '')) {
     return { state: 'blocked', reason: 'INVALID_SALE_REFERENCE' };
   }
   if (typeof accessToken !== 'string' || !accessToken) {
@@ -28,6 +28,9 @@ export async function requestCashBoletaForCompletedSale({
     });
     const body = await response.json().catch(() => null);
     if (!response.ok) {
+      if (response.status === 409 && body?.state === 'already_claimed') {
+        return { state: 'already_claimed', reason: 'RECONCILIATION_REQUIRED' };
+      }
       return {
         state: 'blocked',
         reason: body?.error || body?.reason || `HTTP_${response.status}`,
