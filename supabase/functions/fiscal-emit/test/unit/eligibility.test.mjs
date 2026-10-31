@@ -5,7 +5,7 @@ import { evaluateEligibility } from '../../lib/eligibility.mjs';
 const OP = 'WLK-b1-s1';
 const base = () => ({
   sale: { id: 's1', businessId: 'b1', status: 'pagada', paidAt: new Date(), total: 2380, discountAmount: 0 },
-  business: { id: 'b1', userId: 'u1', countryCode: 'CL' },
+  business: { id: 'b1', userId: 'u1', countryCode: 'CL', sucursal: { nombre: 'SUCURSAL DE PRUEBA', codigo: '1' } },
   issuer: { issuerRut: '76123456-7', enabled: true, verified: true },
   emissionEnabled: true,
   taxLinesVerified: true,
@@ -98,4 +98,8 @@ test('dos operaciones Point para la misma venta no son elegibles', () => {
 
 test('sin ningún pago confirmado no es elegible', () => {
   assert.throws(() => run({ payments: [] }), { code: 'NO_CONFIRMED_PAYMENT' });
+});
+
+test('sin sucursal del comercio: la elegibilidad se rechaza antes de reclamar nada', () => {
+  assert.throws(() => run({ business: { id: 'b1', userId: 'u1', countryCode: 'CL', sucursal: null } }), { code: 'SUCURSAL_NOT_CONFIGURED' });
 });

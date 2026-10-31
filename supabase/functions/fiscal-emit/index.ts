@@ -1,7 +1,7 @@
 // Supabase Edge Function: emisor fiscal DTE 39. Solo lee el entorno y sirve; la lógica está en app.ts.
 //
 // ESTADO: el envoltorio se compila y se prueba en Deno (test/deno/app.test.ts). El almacén contra
-// PostgREST real NO está verificado. Proveedor: DTECore BLOQUEADO; esta función no emite nada hoy.
+// PostgREST real NO está verificado. Proveedor: bloqueado por defecto; SII Solutions solo con FISCAL_PROVIDER=siisolutions.
 //
 // Seguridad:
 //  - Requiere Authorization: Bearer <JWT de usuario>; el usuario se resuelve con auth.getUser().
@@ -11,6 +11,13 @@
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
 import { buildFiscalHandler } from './app.ts';
 import { createDtecoreBlockedProvider } from './lib/providers/dtecore-blocked.mjs';
+import { createSiisolutionsHttpProvider } from './lib/providers/siisolutions-http.mjs';
+
+// Proveedor: bloqueado salvo FISCAL_PROVIDER=siisolutions (activación explícita en el entorno).
+// Aun activado, la emisión exige sucursal configurada, emisor habilitado y control de emisión.
+const provider = Deno.env.get('FISCAL_PROVIDER') === 'siisolutions'
+  ? createSiisolutionsHttpProvider({ baseUrl: 'https://api.siisolutions.cl', ready: true })
+  : createDtecoreBlockedProvider();
 
 const service = createClient(
   Deno.env.get('SUPABASE_URL') ?? '',
@@ -20,7 +27,7 @@ const service = createClient(
 
 const handler = buildFiscalHandler({
   db: service as any,
-  provider: createDtecoreBlockedProvider(),
+  provider,
   masterKey: Deno.env.get('FISCAL_MASTER_KEY'),
 });
 

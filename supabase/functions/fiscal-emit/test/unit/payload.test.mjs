@@ -1,12 +1,13 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildBoletaPayload, santiagoDate, BOLETA_DEFAULTS } from '../../lib/payload.mjs';
+import { buildBoletaPayload, santiagoDate, CONSUMIDOR_FINAL } from '../../lib/payload.mjs';
 
 const OP = 'WLK-b1-s1';
 const RUT = '76123456-7';
 const FECHA = '2026-10-31';
 const line = (over = {}) => ({ name: 'Café', unitPrice: 1190, quantity: 2, discountPct: 0, category: 'IVA_AFECTO_19', ...over });
-const build = (over = {}) => buildBoletaPayload({ operationId: OP, rutOperador: RUT, lines: [line()], montoPago: 2380, medioPago: 'EF', fechaEmision: FECHA, ...over });
+const SUC = { nombre: 'SUCURSAL DE PRUEBA', codigo: '1' };
+const build = (over = {}) => buildBoletaPayload({ operationId: OP, rutOperador: RUT, lines: [line()], montoPago: 2380, medioPago: 'EF', fechaEmision: FECHA, sucursal: SUC, ...over });
 
 test('nombres y tipos del ejemplo oficial: montoPago y vuelto texto, total y descuentoGlobal número', () => {
   const p = build();
@@ -26,7 +27,9 @@ test('nombres y tipos del ejemplo oficial: montoPago y vuelto texto, total y des
   assert.equal(p.modoEntrada, 'json');
   assert.equal(p.enviarCorreo, false);
   assert.deepEqual(p.referencias, []);
-  assert.equal(p.cliente.rut, BOLETA_DEFAULTS.cliente.rut);
+  assert.equal(p.cliente.rut, CONSUMIDOR_FINAL.rut);
+  assert.equal(p.sucursalEmision, SUC.nombre);
+  assert.equal(p.sucursalCodigo, SUC.codigo);
 });
 
 test('precio de detalle es NETO (ejemplo: precio 10000 -> precioSubtotal 11900 bruto); subtotal es bruto', () => {
@@ -91,4 +94,9 @@ test('sin operationId o sin RUT se rechaza', () => {
 test('santiagoDate usa la fecha local de Santiago, no UTC', () => {
   // 2026-11-01 02:30 UTC = 2026-10-31 23:30 en Santiago (UTC-03 en octubre).
   assert.equal(santiagoDate(new Date('2026-11-01T02:30:00Z')), '2026-10-31');
+});
+
+test('sin sucursal configurada se rechaza: no hay valor por defecto', () => {
+  assert.throws(() => build({ sucursal: undefined }), { code: 'SUCURSAL_NOT_CONFIGURED' });
+  assert.throws(() => build({ sucursal: { nombre: '', codigo: '0' } }), { code: 'SUCURSAL_NOT_CONFIGURED' });
 });

@@ -67,7 +67,8 @@ export function createPgStore(cfg) {
       const r = (await run((c) => c.query(
         `select id, user_id, country_code from public.wa_businesses where id = $1`, [businessId],
       ))).rows[0];
-      return r && { id: r.id, userId: r.user_id, countryCode: r.country_code };
+      // sucursal: no existe fuente en producción todavía; null hace que la emisión se rechace.
+      return r && { id: r.id, userId: r.user_id, countryCode: r.country_code, sucursal: null };
     },
 
     async getIssuance(businessId, saleId) {

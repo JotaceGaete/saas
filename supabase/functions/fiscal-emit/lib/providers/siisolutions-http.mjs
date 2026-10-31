@@ -40,11 +40,12 @@ export function createSiisolutionsHttpProvider({
   baseUrl,
   fetchImpl = globalThis.fetch,
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  ready = false, // false por defecto; la función solo lo pone en true con FISCAL_PROVIDER=siisolutions
 } = {}) {
   const origin = assertSafeBaseUrl(baseUrl);
   return {
     name: 'siisolutions',
-    ready: false, // bloqueado: requiere autorización explícita y contrato verificado
+    ready: ready === true,
     async emit({ payload, credentials }) {
       if (!credentials?.apiKey) throw classedError('PROVIDER_AUTH', 'missing api key');
       const res = await fetchImpl(`${origin}${SIISOLUTIONS_EMIT_PATH}`, {

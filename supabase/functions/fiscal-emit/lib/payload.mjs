@@ -5,8 +5,8 @@
 // SUPUESTOS PENDIENTES DE CONFIRMAR (no verificados contra un entorno real):
 //  - Los precios del TPV son BRUTOS (IVA incluido). El ejemplo oficial muestra precio neto
 //    10000 con total 11900 (IVA 19%), así que para líneas IVA_AFECTO_19 se envía precio = neto.
-//  - Sucursal y cliente por defecto (BOLETA_DEFAULTS) son los del ejemplo; el negocio real
-//    debe tener sus propios valores.
+//  - Cliente por defecto (CONSUMIDOR_FINAL) es el del ejemplo; no está confirmado que el
+//    proveedor lo acepte como regla. La sucursal NO tiene valor por defecto: es obligatoria.
 
 import { FiscalError } from './errors.mjs';
 
@@ -14,10 +14,7 @@ export const MAX_DESCRIPCION = 80;
 export const MEDIO_PAGO = Object.freeze({ CASH: 'EF', POINT: 'PE' });
 export const IVA_RATE = 0.19;
 
-export const BOLETA_DEFAULTS = Object.freeze({
-  sucursalEmision: 'CASA MATRIZ',
-  sucursalCodigo: '0',
-  cliente: Object.freeze({
+export const CONSUMIDOR_FINAL = Object.freeze({
     idCliente: 0,
     rut: '66666666',
     digito: '6',
@@ -30,8 +27,7 @@ export const BOLETA_DEFAULTS = Object.freeze({
     fono: '',
     email: '',
     cargo: '',
-    nombreSucursal: '',
-  }),
+  nombreSucursal: '',
 });
 
 // Fecha de emisión YYYY-MM-DD en hora de Santiago (la boleta se emite el día de la venta).
@@ -49,8 +45,8 @@ export function buildBoletaPayload({
   montoPago,
   medioPago,
   fechaEmision,
-  sucursal = { nombre: BOLETA_DEFAULTS.sucursalEmision, codigo: BOLETA_DEFAULTS.sucursalCodigo },
-  cliente = BOLETA_DEFAULTS.cliente,
+  sucursal,
+  cliente = CONSUMIDOR_FINAL,
 }) {
   if (!operationId || typeof operationId !== 'string') {
     throw new FiscalError('PAYLOAD_INVALID', 'operationId required');
@@ -64,6 +60,9 @@ export function buildBoletaPayload({
   }
   if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fechaEmision ?? ''))) {
     throw new FiscalError('PAYLOAD_INVALID', 'fechaEmision must be YYYY-MM-DD');
+  }
+  if (!sucursal?.nombre || !sucursal?.codigo) {
+    throw new FiscalError('SUCURSAL_NOT_CONFIGURED', 'sucursal del comercio no configurada');
   }
   if (!Array.isArray(lines) || lines.length === 0) {
     throw new FiscalError('PAYLOAD_INVALID', 'at least one line required');

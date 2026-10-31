@@ -44,7 +44,7 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
   const rkey = (b, u) => `${b}|${u}`;
 
   function seed({ businessId, userId, saleId, total = 2380, cash = true, withLines = true, point = null, active = true, owner = true }) {
-    businesses.set(businessId, { id: businessId, userId, countryCode: 'CL', isActive: active });
+    businesses.set(businessId, { id: businessId, userId, countryCode: 'CL', isActive: active, sucursal: { nombre: 'SUCURSAL DE PRUEBA', codigo: '1' } });
     sales.set(saleId, {
       id: saleId, businessId, status: 'pagada', paidAt: new Date(), total, discountAmount: 0,
     });
@@ -174,7 +174,7 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
 
     loadBusiness: guard('loadBusiness', async (bid) => {
       const b = businesses.get(bid);
-      return b ? { id: b.id, userId: b.userId, countryCode: b.countryCode } : null;
+      return b ? { id: b.id, userId: b.userId, countryCode: b.countryCode, sucursal: b.sucursal ?? null } : null;
     }),
 
     // Espejo de fiscal.actor_role: fila de rol activa en negocio activo; el de mayor privilegio.

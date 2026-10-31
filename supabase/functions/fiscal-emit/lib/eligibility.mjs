@@ -81,6 +81,7 @@ export function evaluateEligibility({
     montoPago: total,
     medioPago,
     fechaEmision: santiagoDate(sale.paidAt),
+    sucursal: business.sucursal,
   });
   return { medioPago, montoPago: total, payload };
 }

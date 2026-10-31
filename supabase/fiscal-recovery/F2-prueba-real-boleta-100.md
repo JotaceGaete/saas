@@ -45,3 +45,13 @@ Reglas de la prueba:
 - Error de validación (400): copiar el texto exacto de `error` y corregir el payload. No reintentar la misma venta sin corregir.
 - Resultado incierto (timeout, 5xx, 401, red): **no repetir**. El botón queda bloqueado; resolver por reconciliación.
 - Un único intento real. Cualquier otro requiere nueva autorización.
+
+## 4. Estado tras la revisión de producción (31-oct)
+
+- Sucursal: no existe fuente en el esquema de producción. La emisión se rechaza con
+  `SUCURSAL_NOT_CONFIGURED` antes de reclamar la venta. Los valores de ejemplo se eliminaron del código.
+- Emisor (Bonita Casualidad, RUT 77804207-K): `enabled=false`, `verified=false` en producción.
+- Precio bruto/neto: no hay campo de IVA en `crm_invoice_items`; no se puede determinar desde el código.
+- La boleta 51106 corresponde a una venta de $100 (ítem "prueba", precio 100) del mismo comercio.
+  Su XML no está guardado en producción; el propietario puede verificar `MntNeto`/`MntTotal` en el proveedor.
+- Activación: `FISCAL_PROVIDER=siisolutions` en la función (no desplegada).
