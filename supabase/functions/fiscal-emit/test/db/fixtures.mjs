@@ -58,8 +58,8 @@ export async function makeFixture(c, opts = {}) {
     [businessId, userId],
   );
   await c.query(
-    `insert into fiscal.issuers (business_id, issuer_rut, provider, enabled, verified)
-     values ($1, '76123456-7', 'dtecore', $2, $3)`,
+    `insert into fiscal.issuers (business_id, issuer_rut, provider, enabled, verified, sucursal_nombre, sucursal_codigo)
+     values ($1, '76123456-7', 'dtecore', $2, $3, 'SUCURSAL DE PRUEBA', '1')`,
     [businessId, o.issuerEnabled, o.issuerVerified],
   );
   if (o.withCredentials) {
