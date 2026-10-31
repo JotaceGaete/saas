@@ -25,7 +25,9 @@ create table if not exists public.crm_fiscal_issuances (
 create index if not exists crm_fiscal_issuances_status_idx on public.crm_fiscal_issuances (business_id, status, created_at);
 alter table public.crm_fiscal_issuances enable row level security;
 -- Intentionally no client policies: all writes require trusted backend.
-revoke all on public.crm_fiscal_issuances from anon, authenticated;
+revoke all on public.crm_fiscal_issuances from public, anon, authenticated;
+-- Explicit server-only access: do not depend on platform default privileges.
+grant select, insert, update on public.crm_fiscal_issuances to service_role;
 comment on table public.crm_fiscal_issuances is 'Server-only issuance ledger. Unknown means reconciliation required before any retry; never automatically reissue.';
 
 -- Atomic claim: only a newly inserted pending operation may transition to sending.
