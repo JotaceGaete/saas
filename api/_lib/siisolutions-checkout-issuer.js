@@ -14,10 +14,11 @@ export async function issueCheckoutBoleta({
   const check = assessBoletaEligibility({ sale, payment, businessId, issuerBusinessId });
   if (!check.eligible) return { state: 'blocked', reason: check.reason };
 
-  if (process.env.SIISOLUTIONS_EMISSION_ENABLED !== 'simulation' ||
+  const mode = process.env.SIISOLUTIONS_EMISSION_ENABLED;
+  if (!['simulation', 'live'].includes(mode) ||
       !sandboxBaseUrl || !/^https:\/\//.test(sandboxBaseUrl) ||
-      new URL(sandboxBaseUrl).hostname === new URL(SII_BASE_URL).hostname) {
-    return { state: 'blocked', reason: 'SANDBOX_NOT_CONFIGURED' };
+      (mode === 'live' ? new URL(sandboxBaseUrl).origin !== SII_BASE_URL : new URL(sandboxBaseUrl).hostname === new URL(SII_BASE_URL).hostname)) {
+    return { state: 'blocked', reason: 'FISCAL_PROVIDER_NOT_CONFIGURED' };
   }
   if (!apiKey || !repository?.claimPending || !repository?.finalize) {
     throw new Error('Trusted fiscal repository and provider credentials required');
