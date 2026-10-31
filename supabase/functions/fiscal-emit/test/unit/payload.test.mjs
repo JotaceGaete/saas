@@ -107,15 +107,9 @@ test('desglose neto/IVA: $100 bruto -> neto 84 + IVA 16 = 100 exacto', () => {
   assert.equal(p.detalles[0].precioSubtotal, 100);
 });
 
-test('desglose neto/IVA: cualquier línea afecta que no cuadre exacto se rechaza', () => {
-  for (const unitPrice of [1, 2, 3, 7, 101, 999, 1234]) {
-    const sub = unitPrice;
-    const net = Math.round(unitPrice / 1.19);
-    const ok = net + Math.round(net * 0.19) === sub;
-    if (ok) {
-      assert.doesNotThrow(() => build({ lines: [line({ unitPrice, quantity: 1 })], montoPago: unitPrice }), String(unitPrice));
-    } else {
-      assert.throws(() => build({ lines: [line({ unitPrice, quantity: 1 })], montoPago: unitPrice }), { code: 'PRICE_MISMATCH' }, String(unitPrice));
-    }
-  }
+test('precios de rounding no se rechazan: $999 se construye sin error y el monto cuadra con la suma bruta', () => {
+  const p = build({ lines: [line({ unitPrice: 999, quantity: 1 })], montoPago: 999 });
+  assert.equal(p.total, 999);
+  assert.equal(p.detalles[0].precioSubtotal, 999);
+  assert.equal(p.detalles[0].precio, 839); // round(999 / 1.19)
 });

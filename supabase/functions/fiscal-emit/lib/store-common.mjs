@@ -8,7 +8,11 @@ export function mapEmissionContext(raw) {
   if (!raw || typeof raw !== 'object') throw new FiscalError('CONTEXT_INVALID');
   return {
     issuer: raw.issuer
-      ? { issuerRut: raw.issuer.issuer_rut, enabled: raw.issuer.enabled, verified: raw.issuer.verified }
+      ? {
+          issuerRut: raw.issuer.issuer_rut, enabled: raw.issuer.enabled, verified: raw.issuer.verified,
+          sucursal: raw.issuer.sucursal_nombre && raw.issuer.sucursal_codigo
+            ? { nombre: raw.issuer.sucursal_nombre, codigo: raw.issuer.sucursal_codigo } : null,
+        }
       : null,
     emissionEnabled: raw.emission_enabled === true,
     taxLinesVerified: raw.tax_lines_verified === true,

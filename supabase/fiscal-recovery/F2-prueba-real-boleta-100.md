@@ -55,3 +55,28 @@ Reglas de la prueba:
 - La boleta 51106 corresponde a una venta de $100 (ítem "prueba", precio 100) del mismo comercio.
   Su XML no está guardado en producción; el propietario puede verificar `MntNeto`/`MntTotal` en el proveedor.
 - Activación: `FISCAL_PROVIDER=siisolutions` en la función (no desplegada).
+
+## 5. Estado final antes de autorizar (31-oct, 20:20)
+
+Bloqueos reales en producción (verificado con SELECT):
+- `fiscal.business_credentials`, `crm_fiscal_claim_with_credentials` y `crm_fiscal_save_credentials` no existen.
+  Dependen de `20261101_fiscal_connection.sql` y `20261102_fiscal_provider_claim_guard.sql`, aún sin aplicar.
+- `crm_fiscal_emission_context` de producción no devuelve sucursal. La versión con sucursal está en
+  `proposed/20261031_issuer_sucursal_config.sql` (no aplicado).
+- `fiscal.dte39_emission_control.enabled = false`.
+- `fiscal.issuers` de Bonita Casualidad: `enabled=false`, `verified=false`, sin sucursal.
+- Sin fuente de sucursal verificada. Valores del proveedor pendientes de confirmar.
+
+Redondeo: `round(precio_bruto / 1.19)` puede producir un total distinto de un peso (p. ej. 999 -> neto 839).
+El contrato no define cómo el proveedor redondea el IVA. Se verifica en el XML emitido (`MntTotal` = monto),
+pero una boleta ya emitida no se puede deshacer. No se rechaza la venta por esto; se confirma antes.
+
+Pasos mínimos, no ejecutados:
+1. Autorizar la lectura del XML de la 51106 (`scratchpad/consulta-solo-lectura-51106.md`) y leer `Sucursal`.
+2. Aplicar en producción, con autorización: 20261031_fiscal_single_ledger_guard, 20261101, 20261102 y
+   20261031_issuer_sucursal_config (en ese orden).
+3. Guardar la sucursal verificada en `fiscal.issuers` (sucursal_nombre, sucursal_codigo).
+4. Pasar `emission_control.enabled` a true y `issuers.enabled/verified` a true solo en el momento de la prueba autorizada.
+5. Desplegar `fiscal-emit` con `FISCAL_PROVIDER=siisolutions` y `FISCAL_MASTER_KEY`. Sin despliegue autorizado no se hace nada.
+6. Crear la venta de $100 en efectivo y pulsar el botón una sola vez. Verificar XML y PDF.
+7. Si el proveedor responde error de validación, copiar el texto exacto. Si el resultado es incierto, no repetir.

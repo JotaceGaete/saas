@@ -49,8 +49,7 @@ export function createSupabaseStore(client) {
 
     async loadBusiness(businessId) {
       const r = await select('wa_businesses', 'id, user_id, country_code', 'id', businessId);
-      // sucursal: no existe fuente en producción todavía; null hace que la emisión se rechace.
-      return r && { id: r.id, userId: r.user_id, countryCode: r.country_code, sucursal: null };
+      return r && { id: r.id, userId: r.user_id, countryCode: r.country_code };
     },
 
     async loadActorRole(businessId, userId) {

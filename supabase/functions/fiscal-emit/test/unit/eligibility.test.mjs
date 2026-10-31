@@ -5,8 +5,8 @@ import { evaluateEligibility } from '../../lib/eligibility.mjs';
 const OP = 'WLK-b1-s1';
 const base = () => ({
   sale: { id: 's1', businessId: 'b1', status: 'pagada', paidAt: new Date(), total: 2380, discountAmount: 0 },
-  business: { id: 'b1', userId: 'u1', countryCode: 'CL', sucursal: { nombre: 'SUCURSAL DE PRUEBA', codigo: '1' } },
-  issuer: { issuerRut: '76123456-7', enabled: true, verified: true },
+  business: { id: 'b1', userId: 'u1', countryCode: 'CL' },
+  issuer: { issuerRut: '76123456-7', enabled: true, verified: true, sucursal: { nombre: 'SUCURSAL DE PRUEBA', codigo: '1' } },
   emissionEnabled: true,
   taxLinesVerified: true,
   lines: [{ name: 'Café', unitPrice: 1190, quantity: 2, discountPct: 0, category: 'IVA_AFECTO_19' }],
@@ -101,5 +101,5 @@ test('sin ningún pago confirmado no es elegible', () => {
 });
 
 test('sin sucursal del comercio: la elegibilidad se rechaza antes de reclamar nada', () => {
-  assert.throws(() => run({ business: { id: 'b1', userId: 'u1', countryCode: 'CL', sucursal: null } }), { code: 'SUCURSAL_NOT_CONFIGURED' });
+  assert.throws(() => run({ issuer: { issuerRut: '76123456-7', enabled: true, verified: true, sucursal: null } }), { code: 'SUCURSAL_NOT_CONFIGURED' });
 });
