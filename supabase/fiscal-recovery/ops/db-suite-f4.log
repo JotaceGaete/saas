@@ -2,691 +2,691 @@ TAP version 13
 # Subtest: serialización: el reclamo espera a un reemplazo de credenciales en curso y usa la clave NUEVA
 ok 1 - serialización: el reclamo espera a un reemplazo de credenciales en curso y usa la clave NUEVA
   ---
-  duration_ms: 378.270535
+  duration_ms: 398.560292
   type: 'test'
   ...
 # Subtest: sending reciente bloquea: reemplazar o desconectar durante una emisión falla sin cambios
 ok 2 - sending reciente bloquea: reemplazar o desconectar durante una emisión falla sin cambios
   ---
-  duration_ms: 20.386419
+  duration_ms: 19.902018
   type: 'test'
   ...
 # Subtest: sending abandonado (más antiguo que la ventana) NO bloquea la administración de credenciales
 ok 3 - sending abandonado (más antiguo que la ventana) NO bloquea la administración de credenciales
   ---
-  duration_ms: 27.736587
+  duration_ms: 22.786707
   type: 'test'
   ...
 # Subtest: unknown NO bloquea: documentos históricos en 'unknown' no impiden administrar credenciales
 ok 4 - unknown NO bloquea: documentos históricos en 'unknown' no impiden administrar credenciales
   ---
-  duration_ms: 20.196752
+  duration_ms: 18.700638
   type: 'test'
   ...
 # Subtest: sin credenciales: el reclamo falla con FISCAL_CREDENTIALS_MISSING y no crea fila
 ok 5 - sin credenciales: el reclamo falla con FISCAL_CREDENTIALS_MISSING y no crea fila
   ---
-  duration_ms: 21.846156
+  duration_ms: 12.75536
   type: 'test'
   ...
 # Subtest: emisor y credenciales con proveedores distintos: FISCAL_PROVIDER_MISMATCH sin fila
 ok 6 - emisor y credenciales con proveedores distintos: FISCAL_PROVIDER_MISMATCH sin fila
   ---
-  duration_ms: 15.361423
+  duration_ms: 11.168815
   type: 'test'
   ...
 # Subtest: el ledger registra el proveedor canónico en emisiones nuevas
 ok 7 - el ledger registra el proveedor canónico en emisiones nuevas
   ---
-  duration_ms: 19.590191
+  duration_ms: 13.211938
   type: 'test'
   ...
 # Subtest: liberación: sending -> pending permite reintentar; liberar algo que no está en sending no hace nada
 ok 8 - liberación: sending -> pending permite reintentar; liberar algo que no está en sending no hace nada
   ---
-  duration_ms: 25.973234
+  duration_ms: 19.412262
   type: 'test'
   ...
 # Subtest: reclamo de una venta ya reclamada no devuelve credenciales
 ok 9 - reclamo de una venta ya reclamada no devuelve credenciales
   ---
-  duration_ms: 18.574909
+  duration_ms: 13.333144
   type: 'test'
   ...
 # Subtest: histórico: la recuperación sigue viendo emisiones del piloto con proveedor siisolutions
 ok 10 - histórico: la recuperación sigue viendo emisiones del piloto con proveedor siisolutions
   ---
-  duration_ms: 16.956186
+  duration_ms: 15.140986
   type: 'test'
   ...
 # Subtest: constantes de proveedor del código = restricciones de la base (emisor, ledger y credenciales)
 ok 11 - constantes de proveedor del código = restricciones de la base (emisor, ledger y credenciales)
   ---
-  duration_ms: 4.868528
+  duration_ms: 4.685743
   type: 'test'
   ...
 # Subtest: P2 reclama primero; P3 intenta pasar a claimed -> bloqueado y rechazado tras el commit
 ok 12 - P2 reclama primero; P3 intenta pasar a claimed -> bloqueado y rechazado tras el commit
   ---
-  duration_ms: 99.361709
+  duration_ms: 113.262691
   type: 'test'
   ...
 # Subtest: P3 pasa a claimed primero; P2 intenta reclamar -> bloqueado y rechazado tras el commit
 ok 13 - P3 pasa a claimed primero; P2 intenta reclamar -> bloqueado y rechazado tras el commit
   ---
-  duration_ms: 69.450805
+  duration_ms: 64.988293
   type: 'test'
   ...
 # Subtest: P2 reclama primero; P1 intenta insertar operación pending -> bloqueado y rechazado
 ok 14 - P2 reclama primero; P1 intenta insertar operación pending -> bloqueado y rechazado
   ---
-  duration_ms: 82.379095
+  duration_ms: 61.965644
   type: 'test'
   ...
 # Subtest: P1 inserta primero; P2 intenta reclamar -> bloqueado y rechazado (P1 pendiente bloquea)
 ok 15 - P1 inserta primero; P2 intenta reclamar -> bloqueado y rechazado (P1 pendiente bloquea)
   ---
-  duration_ms: 70.820802
+  duration_ms: 75.628129
   type: 'test'
   ...
 # Subtest: P2 reclama primero; P4 intenta encolar -> bloqueado y rechazado
 ok 16 - P2 reclama primero; P4 intenta encolar -> bloqueado y rechazado
   ---
-  duration_ms: 78.463292
+  duration_ms: 84.370348
   type: 'test'
   ...
 # Subtest: P4 encola primero; P2 intenta reclamar -> bloqueado y rechazado
 ok 17 - P4 encola primero; P2 intenta reclamar -> bloqueado y rechazado
   ---
-  duration_ms: 63.360142
+  duration_ms: 77.441584
   type: 'test'
   ...
 # Subtest: sin conflicto: dos reclamos P2 concurrentes -> uno gana, el otro devuelve false
 ok 18 - sin conflicto: dos reclamos P2 concurrentes -> uno gana, el otro devuelve false
   ---
-  duration_ms: 76.774079
+  duration_ms: 94.252631
   type: 'test'
   ...
 # Subtest: un P3 en skipped no bloquea P2 aunque se escriba en paralelo
 ok 19 - un P3 en skipped no bloquea P2 aunque se escriba en paralelo
   ---
-  duration_ms: 1148.347271
+  duration_ms: 1145.86986
   type: 'test'
   ...
 # Subtest: estado sin credenciales: no conectado, sin secretos en el resultado
 ok 20 - estado sin credenciales: no conectado, sin secretos en el resultado
   ---
-  duration_ms: 40.153963
+  duration_ms: 35.366941
   type: 'test'
   ...
 # Subtest: guardar: conecta el RUT y cifra; el estado no revela la clave ni el texto cifrado
 ok 21 - guardar: conecta el RUT y cifra; el estado no revela la clave ni el texto cifrado
   ---
-  duration_ms: 14.938617
+  duration_ms: 13.964275
   type: 'test'
   ...
 # Subtest: guardar: lo almacenado no contiene la clave en claro
 ok 22 - guardar: lo almacenado no contiene la clave en claro
   ---
-  duration_ms: 19.932311
+  duration_ms: 10.518352
   type: 'test'
   ...
 # Subtest: guardar: deja enabled = false y verified = false aunque antes estuviera verificado
 ok 23 - guardar: deja enabled = false y verified = false aunque antes estuviera verificado
   ---
-  duration_ms: 11.257599
+  duration_ms: 10.624664
   type: 'test'
   ...
 # Subtest: reemplazar: una sola fila por negocio y RUT actualizado
 ok 24 - reemplazar: una sola fila por negocio y RUT actualizado
   ---
-  duration_ms: 12.644338
+  duration_ms: 13.78709
   type: 'test'
   ...
 # Subtest: validación en base: RUT, longitudes de IV y tag, y bytes vacíos se rechazan
 ok 25 - validación en base: RUT, longitudes de IV y tag, y bytes vacíos se rechazan
   ---
-  duration_ms: 13.692221
+  duration_ms: 15.053894
   type: 'test'
   ...
 # Subtest: negocio inactivo: no se puede conectar
 ok 26 - negocio inactivo: no se puede conectar
   ---
-  duration_ms: 11.274273
+  duration_ms: 12.416477
   type: 'test'
   ...
 # Subtest: emisión en curso (sending): guardar y desconectar quedan bloqueados sin cambios
 ok 27 - emisión en curso (sending): guardar y desconectar quedan bloqueados sin cambios
   ---
-  duration_ms: 16.381068
+  duration_ms: 13.670518
   type: 'test'
   ...
 # Subtest: bloqueo solo por el negocio afectado: otro comercio con emisión en curso no bloquea
 ok 28 - bloqueo solo por el negocio afectado: otro comercio con emisión en curso no bloquea
   ---
-  duration_ms: 28.132721
+  duration_ms: 24.472989
   type: 'test'
   ...
 # Subtest: desconectar: borra la credencial, deshabilita el emisor y el estado queda sin conexión
 ok 29 - desconectar: borra la credencial, deshabilita el emisor y el estado queda sin conexión
   ---
-  duration_ms: 23.31739
+  duration_ms: 18.556767
   type: 'test'
   ...
 # Subtest: auditoría: registra acciones con RUT y versión, nunca la clave
 ok 30 - auditoría: registra acciones con RUT y versión, nunca la clave
   ---
-  duration_ms: 18.633793
+  duration_ms: 15.79995
   type: 'test'
   ...
 # Subtest: privilegios: solo service_role puede ejecutar las funciones de conexión
 ok 31 - privilegios: solo service_role puede ejecutar las funciones de conexión
   ---
-  duration_ms: 11.423242
+  duration_ms: 8.548172
   type: 'test'
   ...
 # Subtest: desconectar un negocio sin credenciales no falla y deja auditoría
 ok 32 - desconectar un negocio sin credenciales no falla y deja auditoría
   ---
-  duration_ms: 18.973793
+  duration_ms: 17.758923
   type: 'test'
   ...
 # Subtest: concurrencia real: 20 emisiones simultáneas -> una llamada, una fila issued
 ok 33 - concurrencia real: 20 emisiones simultáneas -> una llamada, una fila issued
   ---
-  duration_ms: 410.651831
+  duration_ms: 401.495739
   type: 'test'
   ...
 # Subtest: idempotencia: repetir una venta emitida no llama al proveedor
 ok 34 - idempotencia: repetir una venta emitida no llama al proveedor
   ---
-  duration_ms: 43.41559
+  duration_ms: 34.236123
   type: 'test'
   ...
 # Subtest: P3 pendiente en la misma venta bloquea el reclamo: cero llamadas al proveedor
 ok 35 - P3 pendiente en la misma venta bloquea el reclamo: cero llamadas al proveedor
   ---
-  duration_ms: 35.731922
+  duration_ms: 27.11593
   type: 'test'
   ...
 # Subtest: P3 en estado skipped no bloquea (limpieza autorizada)
 ok 36 - P3 en estado skipped no bloquea (limpieza autorizada)
   ---
-  duration_ms: 36.7986
+  duration_ms: 30.79573
   type: 'test'
   ...
 # Subtest: P1 (fiscal.operations) pendiente bloquea; cancelado no
 ok 37 - P1 (fiscal.operations) pendiente bloquea; cancelado no
   ---
-  duration_ms: 47.947418
+  duration_ms: 68.237545
   type: 'test'
   ...
 # Subtest: P4 (crm_point_fiscal_outbox) con fila bloquea el reclamo
 ok 38 - P4 (crm_point_fiscal_outbox) con fila bloquea el reclamo
   ---
-  duration_ms: 35.003433
+  duration_ms: 39.803413
   type: 'test'
   ...
 # Subtest: timeout -> unknown; reintento bloqueado; reconciliación manual -> issued
 ok 39 - timeout -> unknown; reintento bloqueado; reconciliación manual -> issued
   ---
-  duration_ms: 354.612677
+  duration_ms: 366.479532
   type: 'test'
   ...
 # Subtest: respuesta sin PDF -> unknown, nunca issued
 ok 40 - respuesta sin PDF -> unknown, nunca issued
   ---
-  duration_ms: 25.187655
+  duration_ms: 34.206212
   type: 'test'
   ...
 # Subtest: rechazo explícito -> failed con código; no se reintenta
 ok 41 - rechazo explícito -> failed con código; no se reintenta
   ---
-  duration_ms: 36.716506
+  duration_ms: 54.506186
   type: 'test'
   ...
 # Subtest: tenant: otro comercio no puede emitir ni reimprimir la venta
 ok 42 - tenant: otro comercio no puede emitir ni reimprimir la venta
   ---
-  duration_ms: 23.577178
+  duration_ms: 25.13342
   type: 'test'
   ...
 # Subtest: tenant: la RPC rechaza un reclamo con business_id ajeno a la venta (aunque se llame directo)
 ok 43 - tenant: la RPC rechaza un reclamo con business_id ajeno a la venta (aunque se llame directo)
   ---
-  duration_ms: 17.998298
+  duration_ms: 22.350186
   type: 'test'
   ...
 # Subtest: tenant: un usuario ajeno no aparece como dueño de la venta
 ok 44 - tenant: un usuario ajeno no aparece como dueño de la venta
   ---
-  duration_ms: 13.54332
+  duration_ms: 15.278349
   type: 'test'
   ...
 # Subtest: guarda SQL: emisión global deshabilitada bloquea el reclamo
 ok 45 - guarda SQL: emisión global deshabilitada bloquea el reclamo
   ---
-  duration_ms: 14.729932
+  duration_ms: 12.593833
   type: 'test'
   ...
 # Subtest: guarda SQL: emisor no verificado bloquea el reclamo
 ok 46 - guarda SQL: emisor no verificado bloquea el reclamo
   ---
-  duration_ms: 11.060994
+  duration_ms: 12.793152
   type: 'test'
   ...
 # Subtest: guarda SQL: venta no pagada bloquea el reclamo
 ok 47 - guarda SQL: venta no pagada bloquea el reclamo
   ---
-  duration_ms: 9.694571
+  duration_ms: 15.864825
   type: 'test'
   ...
 # Subtest: guarda SQL: línea sin verificación tributaria bloquea el reclamo
 ok 48 - guarda SQL: línea sin verificación tributaria bloquea el reclamo
   ---
-  duration_ms: 8.624274
+  duration_ms: 16.97412
   type: 'test'
   ...
 # Subtest: guarda SQL: verificación con huella antigua (línea editada) bloquea el reclamo
 ok 49 - guarda SQL: verificación con huella antigua (línea editada) bloquea el reclamo
   ---
-  duration_ms: 11.594346
+  duration_ms: 17.194258
   type: 'test'
   ...
 # Subtest: claim atómico: el segundo reclamo de la misma operación devuelve false y no duplica
 ok 50 - claim atómico: el segundo reclamo de la misma operación devuelve false y no duplica
   ---
-  duration_ms: 16.081721
+  duration_ms: 20.620161
   type: 'test'
   ...
 # Subtest: pago mixto (efectivo + Point) se rechaza sin tocar el ledger
 ok 51 - pago mixto (efectivo + Point) se rechaza sin tocar el ledger
   ---
-  duration_ms: 23.304604
+  duration_ms: 30.408519
   type: 'test'
   ...
 # Subtest: Point confirmada con monto exacto -> issued con medio PE
 ok 52 - Point confirmada con monto exacto -> issued con medio PE
   ---
-  duration_ms: 34.919891
+  duration_ms: 50.500671
   type: 'test'
   ...
 # Subtest: reimpresión: devuelve el PDF guardado y no llama al proveedor
 ok 53 - reimpresión: devuelve el PDF guardado y no llama al proveedor
   ---
-  duration_ms: 32.160709
+  duration_ms: 39.683998
   type: 'test'
   ...
 # Subtest: credenciales: en la base solo hay ciphertext; se abren con la clave correcta
 ok 54 - credenciales: en la base solo hay ciphertext; se abren con la clave correcta
   ---
-  duration_ms: 11.981757
+  duration_ms: 13.566419
   type: 'test'
   ...
 # Subtest: credenciales: copiar la fila a otro comercio no se puede abrir
 ok 55 - credenciales: copiar la fila a otro comercio no se puede abrir
   ---
-  duration_ms: 19.975019
+  duration_ms: 19.239429
   type: 'test'
   ...
 # Subtest: credenciales: roles anon y authenticated no pueden leer la tabla ni crm_invoices sin RLS
 ok 56 - credenciales: roles anon y authenticated no pueden leer la tabla ni crm_invoices sin RLS
   ---
-  duration_ms: 16.776047
+  duration_ms: 13.580724
   type: 'test'
   ...
 # Subtest: la función de conflicto y la de líneas no son ejecutables por anon
 ok 57 - la función de conflicto y la de líneas no son ejecutables por anon
   ---
-  duration_ms: 2.71015
+  duration_ms: 2.601338
   type: 'test'
   ...
 # Subtest: la guarda de conexión rechaza hosts remotos y bases que no terminan en _test
 ok 58 - la guarda de conexión rechaza hosts remotos y bases que no terminan en _test
   ---
-  duration_ms: 0.601268
+  duration_ms: 1.076119
   type: 'test'
   ...
 # Subtest: evidencia: guarda hashes SHA-256 del XML y PDF, no el contenido
 ok 59 - evidencia: guarda hashes SHA-256 del XML y PDF, no el contenido
   ---
-  duration_ms: 28.294957
+  duration_ms: 29.141714
   type: 'test'
   ...
 # Subtest: evidencia: solo-anexar: UPDATE y DELETE fallan
 ok 60 - evidencia: solo-anexar: UPDATE y DELETE fallan
   ---
-  duration_ms: 22.361957
+  duration_ms: 22.836454
   type: 'test'
   ...
 # Subtest: evidencia: resultado failed (no encontrada) cambia a failed sin folio y deja evidencia
 ok 61 - evidencia: resultado failed (no encontrada) cambia a failed sin folio y deja evidencia
   ---
-  duration_ms: 28.25774
+  duration_ms: 36.73663
   type: 'test'
   ...
 # Subtest: evidencia: la RPC rechaza issued sin PDF aunque se llame directo a SQL
 ok 62 - evidencia: la RPC rechaza issued sin PDF aunque se llame directo a SQL
   ---
-  duration_ms: 17.61799
+  duration_ms: 21.355505
   type: 'test'
   ...
 # Subtest: evidencia: operación distinta de la del ledger se rechaza (FISCAL_NOT_RECONCILABLE)
 ok 63 - evidencia: operación distinta de la del ledger se rechaza (FISCAL_NOT_RECONCILABLE)
   ---
-  duration_ms: 18.936451
+  duration_ms: 28.804573
   type: 'test'
   ...
 # Subtest: evidencia: anon y authenticated no pueden leer la tabla
 ok 64 - evidencia: anon y authenticated no pueden leer la tabla
   ---
-  duration_ms: 3.089971
+  duration_ms: 3.350284
   type: 'test'
   ...
 # Subtest: mantenimiento: P1 cancelada, P3 skipped y sus ediciones no se bloquean aunque exista P2
 ok 65 - mantenimiento: P1 cancelada, P3 skipped y sus ediciones no se bloquean aunque exista P2
   ---
-  duration_ms: 15.94948
+  duration_ms: 25.377141
   type: 'test'
   ...
 # Subtest: mantenimiento: una fila P4 histórica en estado no activo se puede actualizar aunque exista P2
 ok 66 - mantenimiento: una fila P4 histórica en estado no activo se puede actualizar aunque exista P2
   ---
-  duration_ms: 13.607948
+  duration_ms: 20.873658
   type: 'test'
   ...
 # Subtest: mantenimiento: P4 activo con P2 existente sigue bloqueado al actualizar estado
 ok 67 - mantenimiento: P4 activo con P2 existente sigue bloqueado al actualizar estado
   ---
-  duration_ms: 20.57653
+  duration_ms: 22.510938
   type: 'test'
   ...
 # Subtest: paridad SQL/JS: efectivo exacto
 ok 68 - paridad SQL/JS: efectivo exacto
   ---
-  duration_ms: 107.278476
+  duration_ms: 128.004769
   type: 'test'
   ...
 # Subtest: paridad SQL/JS: Point confirmada
 ok 69 - paridad SQL/JS: Point confirmada
   ---
-  duration_ms: 30.849213
+  duration_ms: 37.521456
   type: 'test'
   ...
 # Subtest: paridad SQL/JS: Point en pending
 ok 70 - paridad SQL/JS: Point en pending
   ---
-  duration_ms: 32.181204
+  duration_ms: 43.006223
   type: 'test'
   ...
 # Subtest: paridad SQL/JS: Point sin finalizar
 ok 71 - paridad SQL/JS: Point sin finalizar
   ---
-  duration_ms: 25.103394
+  duration_ms: 39.929096
   type: 'test'
   ...
 # Subtest: paridad SQL/JS: Point monto distinto
 ok 72 - paridad SQL/JS: Point monto distinto
   ---
-  duration_ms: 21.597972
+  duration_ms: 25.283438
   type: 'test'
   ...
 # Subtest: paridad SQL/JS: Point moneda USD
 ok 73 - paridad SQL/JS: Point moneda USD
   ---
-  duration_ms: 18.980771
+  duration_ms: 23.030122
   type: 'test'
   ...
 # Subtest: paridad SQL/JS: efectivo + Point
 ok 74 - paridad SQL/JS: efectivo + Point
   ---
-  duration_ms: 16.811302
+  duration_ms: 24.793735
   type: 'test'
   ...
 # Subtest: paridad SQL/JS: sin pagos
 ok 75 - paridad SQL/JS: sin pagos
   ---
-  duration_ms: 17.738226
+  duration_ms: 19.946027
   type: 'test'
   ...
 # Subtest: paridad SQL/JS: tarjeta sin operación Point
 ok 76 - paridad SQL/JS: tarjeta sin operación Point
   ---
-  duration_ms: 16.78736
+  duration_ms: 22.96414
   type: 'test'
   ...
 # Subtest: paridad SQL/JS: Point con tarjeta adicional
 ok 77 - paridad SQL/JS: Point con tarjeta adicional
   ---
-  duration_ms: 20.085425
+  duration_ms: 31.984749
   type: 'test'
   ...
 # Subtest: paridad SQL/JS: transferencia bancaria sola
 ok 78 - paridad SQL/JS: transferencia bancaria sola
   ---
-  duration_ms: 16.576113
+  duration_ms: 26.688276
   type: 'test'
   ...
 # Subtest: paridad SQL/JS: efectivo que no suma
 ok 79 - paridad SQL/JS: efectivo que no suma
   ---
-  duration_ms: 19.416567
+  duration_ms: 31.730741
   type: 'test'
   ...
 # Subtest: paridad SQL/JS: efectivo anulado
 ok 80 - paridad SQL/JS: efectivo anulado
   ---
-  duration_ms: 21.781678
+  duration_ms: 33.726395
   type: 'test'
   ...
 # Subtest: SQL rechaza un reclamo con Point no confirmada aunque la aplicación no lo compruebe
 ok 81 - SQL rechaza un reclamo con Point no confirmada aunque la aplicación no lo compruebe
   ---
-  duration_ms: 19.881293
+  duration_ms: 35.438435
   type: 'test'
   ...
 # Subtest: SQL rechaza un reclamo con pago mixto aunque la aplicación no lo compruebe
 ok 82 - SQL rechaza un reclamo con pago mixto aunque la aplicación no lo compruebe
   ---
-  duration_ms: 14.54006
+  duration_ms: 27.861421
   type: 'test'
   ...
 # Subtest: SQL rechaza un reclamo sin ningún pago confirmado
 ok 83 - SQL rechaza un reclamo sin ningún pago confirmado
   ---
-  duration_ms: 12.88652
+  duration_ms: 18.55298
   type: 'test'
   ...
 # Subtest: el contexto de emisión no devuelve credenciales
 ok 84 - el contexto de emisión no devuelve credenciales
   ---
-  duration_ms: 15.545868
+  duration_ms: 20.777348
   type: 'test'
   ...
 # Subtest: roles: el dueño recibe fiscal_owner al crearse el negocio (trigger); un no miembro no tiene rol
 ok 85 - roles: el dueño recibe fiscal_owner al crearse el negocio (trigger); un no miembro no tiene rol
   ---
-  duration_ms: 67.110344
+  duration_ms: 63.715321
   type: 'test'
   ...
 # Subtest: roles: revocar la fila quita el acceso aunque el usuario sea wa_businesses.user_id
 ok 86 - roles: revocar la fila quita el acceso aunque el usuario sea wa_businesses.user_id
   ---
-  duration_ms: 12.407532
+  duration_ms: 20.067342
   type: 'test'
   ...
 # Subtest: roles: negocio inactivo no concede rol aunque la fila exista
 ok 87 - roles: negocio inactivo no concede rol aunque la fila exista
   ---
-  duration_ms: 16.15602
+  duration_ms: 12.746892
   type: 'test'
   ...
 # Subtest: roles: fiscal_viewer no emite (FISCAL_ROLE_REQUIRED), pero sí reimprime
 ok 88 - roles: fiscal_viewer no emite (FISCAL_ROLE_REQUIRED), pero sí reimprime
   ---
-  duration_ms: 77.014214
+  duration_ms: 101.8339
   type: 'test'
   ...
 # Subtest: permisos: anon y authenticated no pueden ejecutar las funciones de rol, recibo ni recuperación
 ok 89 - permisos: anon y authenticated no pueden ejecutar las funciones de rol, recibo ni recuperación
   ---
-  duration_ms: 19.011238
+  duration_ms: 19.309122
   type: 'test'
   ...
 # Subtest: recibo: exige fila en sending, es idempotente con el mismo contenido y rechaza contenido distinto
 ok 90 - recibo: exige fila en sending, es idempotente con el mismo contenido y rechaza contenido distinto
   ---
-  duration_ms: 25.519368
+  duration_ms: 33.023097
   type: 'test'
   ...
 # Subtest: recibo: solo-anexar (UPDATE y DELETE fallan)
 ok 91 - recibo: solo-anexar (UPDATE y DELETE fallan)
   ---
-  duration_ms: 19.2545
+  duration_ms: 33.488121
   type: 'test'
   ...
 # Subtest: finalize_from_receipt: con recibo completa a issued sin proveedor; sin recibo devuelve false
 ok 92 - finalize_from_receipt: con recibo completa a issued sin proveedor; sin recibo devuelve false
   ---
-  duration_ms: 37.232506
+  duration_ms: 59.900409
   type: 'test'
   ...
 # Subtest: mark_stale_unknown: vencida sin recibo -> unknown; con recibo -> nunca; reciente -> nunca
 ok 93 - mark_stale_unknown: vencida sin recibo -> unknown; con recibo -> nunca; reciente -> nunca
   ---
-  duration_ms: 59.819653
+  duration_ms: 79.35562
   type: 'test'
   ...
 # Subtest: list_stale_sending: indica qué filas vencidas tienen recibo
 ok 94 - list_stale_sending: indica qué filas vencidas tienen recibo
   ---
-  duration_ms: 62.678833
+  duration_ms: 46.351045
   type: 'test'
   ...
 # Subtest: extremo a extremo: fallo al finalizar -> PERSIST_PENDING_RECOVERY; recuperación desde recibo; cero llamadas al proveedor
 ok 95 - extremo a extremo: fallo al finalizar -> PERSIST_PENDING_RECOVERY; recuperación desde recibo; cero llamadas al proveedor
   ---
-  duration_ms: 42.699381
+  duration_ms: 41.012642
   type: 'test'
   ...
 # Subtest: extremo a extremo: caída antes del recibo -> recuperación marca unknown; no se reemite
 ok 96 - extremo a extremo: caída antes del recibo -> recuperación marca unknown; no se reemite
   ---
-  duration_ms: 48.492152
+  duration_ms: 53.010922
   type: 'test'
   ...
 # Subtest: cambio de dueño: el anterior pierde todo rol fiscal, el nuevo recibe fiscal_owner, queda auditado
 ok 97 - cambio de dueño: el anterior pierde todo rol fiscal, el nuevo recibe fiscal_owner, queda auditado
   ---
-  duration_ms: 50.215813
+  duration_ms: 52.859503
   type: 'test'
   ...
 # Subtest: cambio de dueño sin cambio de user_id no toca roles ni audita
 ok 98 - cambio de dueño sin cambio de user_id no toca roles ni audita
   ---
-  duration_ms: 11.224386
+  duration_ms: 11.20788
   type: 'test'
   ...
 # Subtest: admin_audit no admite UPDATE ni DELETE
 ok 99 - admin_audit no admite UPDATE ni DELETE
   ---
-  duration_ms: 21.922624
+  duration_ms: 20.418165
   type: 'test'
   ...
 # Subtest: las cuatro ventas Point antiguas están bloqueadas en la migración
 ok 100 - las cuatro ventas Point antiguas están bloqueadas en la migración
   ---
-  duration_ms: 2.800769
+  duration_ms: 1.763926
   type: 'test'
   ...
 # Subtest: reclamo de una venta bloqueada -> FISCAL_RETROACTIVE_BLOCKED, sin fila nueva
 ok 101 - reclamo de una venta bloqueada -> FISCAL_RETROACTIVE_BLOCKED, sin fila nueva
   ---
-  duration_ms: 19.599849
+  duration_ms: 19.625372
   type: 'test'
   ...
 # Subtest: recibo: no se asocia a otro negocio ni a otra operación; no se sobrescribe
 ok 102 - recibo: no se asocia a otro negocio ni a otra operación; no se sobrescribe
   ---
-  duration_ms: 38.01847
+  duration_ms: 45.904722
   type: 'test'
   ...
 # Subtest: cajero no concilia un unknown; la fila queda igual y se audita el intento
 ok 103 - cajero no concilia un unknown; la fila queda igual y se audita el intento
   ---
-  duration_ms: 26.4523
+  duration_ms: 32.641566
   type: 'test'
   ...
 # Subtest: reconciliador con evidencia: resuelve, registra evidencia y audita inicio y resultado
 ok 104 - reconciliador con evidencia: resuelve, registra evidencia y audita inicio y resultado
   ---
-  duration_ms: 26.402738
+  duration_ms: 33.268288
   type: 'test'
   ...
 # Subtest: reconciliador que firma por otro -> EVIDENCE_REVIEWER_MISMATCH, sin cambios
 ok 105 - reconciliador que firma por otro -> EVIDENCE_REVIEWER_MISMATCH, sin cambios
   ---
-  duration_ms: 22.189826
+  duration_ms: 27.090042
   type: 'test'
   ...
 # Subtest: tras cambio de dueño el dueño anterior ya no puede conciliar aunque tuviera rol reconciliador
 ok 106 - tras cambio de dueño el dueño anterior ya no puede conciliar aunque tuviera rol reconciliador
   ---
-  duration_ms: 20.725876
+  duration_ms: 25.423014
   type: 'test'
   ...
 # Subtest: la RPC rechaza a un revisor distinto del actor, aunque la aplicación no lo hubiera validado
 ok 107 - la RPC rechaza a un revisor distinto del actor, aunque la aplicación no lo hubiera validado
   ---
-  duration_ms: 16.536244
+  duration_ms: 20.547363
   type: 'test'
   ...
 # Subtest: si la auditoría falla dentro de la transacción, la evidencia y el estado se revierten por completo
 ok 108 - si la auditoría falla dentro de la transacción, la evidencia y el estado se revierten por completo
   ---
-  duration_ms: 22.591612
+  duration_ms: 25.716629
   type: 'test'
   ...
 # Subtest: authenticated y anon no pueden actualizar wa_businesses.user_id; sí otras columnas
 ok 109 - authenticated y anon no pueden actualizar wa_businesses.user_id; sí otras columnas
   ---
-  duration_ms: 2.656881
+  duration_ms: 1.970506
   type: 'test'
   ...
 # Subtest: un bloqueo por venta no afecta a una venta nueva del mismo negocio
 ok 110 - un bloqueo por venta no afecta a una venta nueva del mismo negocio
   ---
-  duration_ms: 21.915758
+  duration_ms: 32.218462
   type: 'test'
   ...
 # Subtest: orden: la guarda cruzada P3 se ejecuta antes que protect_dte39_outbox_transition
 ok 111 - orden: la guarda cruzada P3 se ejecuta antes que protect_dte39_outbox_transition
   ---
-  duration_ms: 15.588794
+  duration_ms: 17.981079
   type: 'test'
   ...
 # Subtest: protect sigue activo: cambiar el folio de una fila issued falla
 ok 112 - protect sigue activo: cambiar el folio de una fila issued falla
   ---
-  duration_ms: 32.607144
+  duration_ms: 33.907917
   type: 'test'
   ...
 # Subtest: protect sigue activo: unknown no cambia de estado
 ok 113 - protect sigue activo: unknown no cambia de estado
   ---
-  duration_ms: 12.488314
+  duration_ms: 24.717427
   type: 'test'
   ...
 # Subtest: protect sigue activo: claimed no vuelve a pending
 ok 114 - protect sigue activo: claimed no vuelve a pending
   ---
-  duration_ms: 9.371185
+  duration_ms: 15.416805
   type: 'test'
   ...
 # Subtest: si la guarda cruzada bloquea, protect no llega a evaluarse y la fila no cambia
 ok 115 - si la guarda cruzada bloquea, protect no llega a evaluarse y la fila no cambia
   ---
-  duration_ms: 12.489423
+  duration_ms: 13.212931
   type: 'test'
   ...
 1..115
@@ -697,4 +697,4 @@ ok 115 - si la guarda cruzada bloquea, protect no llega a evaluarse y la fila no
 # cancelled 0
 # skipped 0
 # todo 0
-# duration_ms 6460.464245
+# duration_ms 6933.323335
