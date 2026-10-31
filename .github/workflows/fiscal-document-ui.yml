@@ -1,0 +1,28 @@
+name: Fiscal document UI safety
+
+on:
+  pull_request:
+    paths:
+      - 'src/pages/crm/CrmFiscalDocument.jsx'
+      - 'src/pages/crm/CrmInvoiceEditor.jsx'
+      - '.github/workflows/fiscal-document-ui.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-readonly:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Compile CRM UI
+        run: npm run build
+      - name: Check fiscal document endpoints
+        run: node --test api/fiscal/document.test.js api/fiscal/download.test.js api/fiscal/pdf.test.js
