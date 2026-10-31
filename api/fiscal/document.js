@@ -68,9 +68,16 @@ export default async function handler(req, res) {
   catch { return res.status(503).json({ error: 'SERVER_CONFIG_INVALID' }); }
   let authFailure = '';
   const authenticate = async token => {
-    const { data, error } = await admin.auth.getUser(token);
+    let data;
+    let error;
+    try {
+      ({ data, error } = await admin.auth.getUser(token));
+    } catch {
+      authFailure = 'AUTH_PROVIDER_UNAVAILABLE';
+      throw new Error('Auth provider unavailable');
+    }
     if (error || !data?.user?.id) {
-      authFailure = error?.status === 401 || error?.status === 403 ? 'AUTH_TOKEN_REJECTED' : 'AUTH_PROVIDER_UNAVAILABLE';
+      authFailure = error?.status === 401 || error?.status === 403 ? 'AUTH_TOKEN_REJECTED' : (error ? 'AUTH_PROVIDER_UNAVAILABLE' : 'AUTH_USER_MISSING');
       throw new Error('Invalid session');
     }
     return data.user.id;
