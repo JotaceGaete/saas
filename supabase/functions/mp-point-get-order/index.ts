@@ -145,6 +145,7 @@ Deno.serve(async (req) => {
 
   let invoiceId = operation.crm_invoice_id ?? null;
   let finalized = !!invoiceId;
+  let finalizedInThisRequest = false;
   let finalizedSale: Record<string, unknown> | null = null;
   if (invoiceId) {
     const { data: existingInvoice } = await ctx.admin.from('crm_invoices').select('*').eq('id', invoiceId).maybeSingle();
@@ -170,6 +171,7 @@ Deno.serve(async (req) => {
     invoiceId = invoice?.id ?? null;
     finalizedSale = invoice ?? null;
     finalized = !!invoiceId;
+    finalizedInThisRequest = finalized;
   } else if (['failed', 'expired', 'canceled', 'refunded'].includes(order.status)) {
     const { error: releaseError } = await ctx.admin.rpc('crm_point_release_stock', { p_operation_id: operation.id });
     if (releaseError) {
@@ -186,8 +188,10 @@ Deno.serve(async (req) => {
   // processed order and the idempotent local finalizer has an invoice.
   // Both webhook and polling may reach this point: the fiscal repository
   // must atomically claim one DTE per sale; never retry unknown outcomes.
-  if (order.status === 'processed' && invoiceId) {
-    await requestPointBoletaEmission(ctx.businessId, invoiceId);
+  if (order.status === 'processed' && finalizedInThisRequest && invoiceId) {
+    // Do not delay the cashier's Point status response for a fiscal network call.
+    // This handoff is best-effort; a durable outbox is still required for guaranteed delivery.
+    void requestPointBoletaEmission(ctx.businessId, invoiceId);
   }
 
   return pointJson({
