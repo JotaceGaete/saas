@@ -51,7 +51,7 @@ export default async function handler(req, res) {
   // A mismatch is diagnostic only; authorization still requires getUser + owner guard.
   // Never return token contents or Supabase project identifiers to the browser.
   const bearer = req.headers?.authorization;
-  if (typeof bearer === 'string' && /^Bearer [^\\s]+$/.test(bearer)) {
+  if (typeof bearer === 'string' && bearer.startsWith('Bearer ') && bearer.slice(7).trim() && !/\s/.test(bearer.slice(7))) {
     try {
       const token = bearer.slice(7);
       const payload = JSON.parse(Buffer.from(token.split('.')[1] || '', 'base64url').toString('utf8'));
