@@ -1,0 +1,25 @@
+name: Printer onboarding checks
+
+on:
+  pull_request:
+    paths:
+      - 'src/lib/printing/printerOnboarding.js'
+      - 'src/lib/printing/printerOnboarding.test.js'
+      - 'src/lib/printing/printService.js'
+      - '.github/workflows/printer-onboarding.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  printer-onboarding:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Test setup diagnostics without a printer or payment
+        run: node --test src/lib/printing/printerOnboarding.test.js
