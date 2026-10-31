@@ -40,6 +40,30 @@ public sealed class ConnectorConfig
         return loaded;
     }
 
+    /// <summary>
+    /// Comprueba config.json sin crearlo ni modificarlo. Devuelve null si está bien
+    /// (o si no existe todavía: se creará con valores de producción).
+    /// </summary>
+    public static string? CheckFile(string dataDir)
+    {
+        var path = Path.Combine(dataDir, "config.json");
+        if (!File.Exists(path)) return null;
+        try
+        {
+            var loaded = JsonSerializer.Deserialize<ConnectorConfig>(File.ReadAllText(path));
+            if (loaded is null) return $"config.json está vacío o no es válido: {path}";
+            return loaded.Validate();
+        }
+        catch (JsonException ex)
+        {
+            return $"config.json tiene un error de formato (línea {ex.LineNumber?.ToString() ?? "?"}): {path}";
+        }
+        catch (IOException ex)
+        {
+            return $"no se pudo leer config.json: {ex.Message}";
+        }
+    }
+
     public string? Validate()
     {
         if (Port < 1024 || Port > 65535) return "el puerto debe estar entre 1024 y 65535.";

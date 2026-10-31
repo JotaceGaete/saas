@@ -48,6 +48,8 @@ internal static class Program
                     return WriteTicketBytes(args);
                 case "selftest":
                     return SelfTests.Run();
+                case "validate":
+                    return ValidateFile(args);
                 case "version":
                     Console.WriteLine(Version);
                     return 0;
@@ -59,7 +61,14 @@ internal static class Program
         {
             return Fail(ex.Message);
         }
-        catch (Exception ex) when (ex is InvalidDataException or ArgumentException)
+        catch (InvalidDataException ex)
+        {
+            // Configuración inválida: fallo permanente (ver ExitCodes).
+            Console.Error.WriteLine($"Configuración inválida: {ex.Message}");
+            Console.Error.WriteLine("Corrige config.json y ejecuta: WalinkaPrintConnector.exe restart");
+            return ExitCodes.ConfigInvalid;
+        }
+        catch (ArgumentException ex)
         {
             return Fail(ex.Message);
         }
@@ -69,6 +78,10 @@ internal static class Program
     {
         Console.WriteLine($"""
         Walinka Print Connector {Version}
+
+        Validación:
+          validate --file RUTA.bin
+              Revisa que un trabajo ESC/POS tenga solo comandos permitidos y longitudes válidas.
 
         Servicio:
           serve [--data-dir RUTA]
@@ -115,13 +128,20 @@ internal static class Program
 
     private static async Task<int> Serve(string dataDir)
     {
+        var configError = ConnectorConfig.CheckFile(dataDir);
+        if (configError is not null)
+        {
+            Console.Error.WriteLine($"Configuración inválida: {configError}");
+            Console.Error.WriteLine("Corrige config.json. El vigilante reintentará solo cuando sea válido.");
+            return ExitCodes.ConfigInvalid;
+        }
         var config = ConnectorConfig.LoadOrCreate(dataDir);
 
         using var serveMutex = Instances.TryAcquire(Instances.ServeMutexName);
         if (serveMutex is null)
         {
             Console.WriteLine("El conector ya está en ejecución en esta sesión.");
-            return 4;
+            return ExitCodes.AlreadyRunning;
         }
 
         if (!PortIsFree(config.Port))
@@ -133,7 +153,7 @@ internal static class Program
             }
             Console.WriteLine($"El puerto {config.Port} está ocupado por otra aplicación.");
             Console.WriteLine("Cierra esa aplicación o cambia el puerto en config.json y reinicia el conector.");
-            return 3;
+            return ExitCodes.PortBusy;
         }
 
         // Un `serve` manual limpia una parada pendiente; si lo arrancó el
@@ -166,7 +186,7 @@ internal static class Program
         catch (IOException ex) when (ex.InnerException is System.Net.Sockets.SocketException { SocketErrorCode: System.Net.Sockets.SocketError.AddressAlreadyInUse })
         {
             Console.WriteLine($"El puerto {config.Port} se ocupó justo al iniciar. Reinicia el conector.");
-            return 3;
+            return ExitCodes.PortBusy;
         }
         return 0;
     }
@@ -198,6 +218,22 @@ internal static class Program
         {
             return false;
         }
+    }
+
+    private static int ValidateFile(string[] args)
+    {
+        var path = GetOption(args, "--file");
+        if (path is null || !File.Exists(path)) return Fail("Indica un archivo existente: validate --file RUTA.bin");
+        var bytes = File.ReadAllBytes(path);
+        var error = PayloadPolicy.ValidatePayload(bytes);
+        if (error is null)
+        {
+            Console.WriteLine($"OK: {bytes.Length} bytes, estructura ESC/POS válida.");
+            return 0;
+        }
+        var (_, offset) = EscPosStreamValidator.Validate(bytes);
+        Console.WriteLine($"RECHAZADO: {error} (posición {offset}).");
+        return 2;
     }
 
     private static int Stop()

@@ -216,18 +216,108 @@ Pendiente, NO verificado (requiere Windows):
 - Instalación limpia, actualización conservando emparejamiento, desinstalación en Windows 10 y 11.
 - Impresión y corte desde el instalador instalado (ya probado con el ejecutable de pruebas, no con el instalador).
 
-## Riesgo abierto: cajón portamonedas (ESC p)
+## Seguridad ESC/POS (E4.1): cajón portamonedas bloqueado
 
-El conector no expone ningún comando de cajón, pero el contenido de un trabajo es bytes
-ESC/POS arbitrarios. Un origen permitido con token válido podría enviar `ESC p` (0x1B 0x70)
-dentro de un trabajo. El origen y el token lo limitan, pero no lo bloquean.
+Cada trabajo se valida comando por comando antes de llegar a la cola de Windows
+(`EscPosStreamValidator.cs`). No se buscan bytes sueltos: cada comando se consume con su
+longitud. Por eso los datos de imagen (`GS v 0`, `ESC *`) pueden contener 0x1B 0x70 sin
+que se rechacen, y un `ESC p` real fuera de esos datos sí se rechaza.
 
-Un filtro simple de bytes **no es seguro**: el raster del logo es binario y puede contener
-0x1B 0x70 legítimamente. Las opciones reales son:
-1. Analizar el flujo ESC/POS comando por comando (longitudes conocidas) y rechazar `ESC p` y `DLE DC4`
-   fuera del raster. Es la opción correcta, pero requiere trabajo y pruebas con cada comando.
-2. Hacer que Walinka envíe el logo siempre en formato que no pueda confundirse (por ejemplo, un
-   perfil de solo texto para el cajón) y el conector rechace cualquier trabajo que no lo cumpla.
-3. Aceptar el riesgo documentado mientras el origen esté restringido a Walinka y el token sea privado.
+Comandos admitidos: `ESC @`, `ESC a`, `ESC E`, `ESC 2`, `ESC 3`, `ESC d`, `ESC $`, `ESC *`
+(m = 0, 1, 32, 33), `GS !` (0x00, 0x01, 0x10, 0x11), `GS V` (0, 1, 48, 49, 65, 66) y
+`GS v 0`, más texto imprimible y LF. Todo lo demás se rechaza con un código concreto:
+`escpos_drawer_blocked`, `escpos_truncated`, `escpos_unknown_command`, `escpos_bad_parameter`,
+`escpos_control_not_allowed`.
 
-Recomendación: opción 1 antes de vender a terceros. Se necesita tu decisión antes de avanzar.
+Comprobar un archivo sin imprimirlo:
+`.\WalinkaPrintConnector.exe validate --file ticket.bin`
+
+Verificado: los bytes reales generados por el renderizador de Walinka (ticket de prueba,
+corte moderno y legacy, raster de logo en `GS v 0`, imagen en `ESC *` de 8 y 24 puntos,
+posición absoluta) pasan la validación. El `selftest` cubre 83 casos, incluidos los
+rechazos.
+
+Límite conocido: el validador no decide si un comando es seguro para una impresora concreta;
+solo garantiza la forma del flujo. El cajón no se abre desde ningún endpoint ni comando.
+
+---
+
+## Comerciantes: instalar, configurar y actualizar
+
+### Instalar
+1. Descargar `WalinkaPrintConnector-Setup-<versión>.exe` desde Walinka.
+2. Ejecutarlo. No pide administrador. Dejar marcada la opción de iniciar con Windows.
+3. Al terminar, el conector queda corriendo. Menú Inicio → Walinka → "Estado del conector".
+
+### Configuración inicial
+1. En Walinka: Configuración de impresión → Walinka Print Connector.
+2. Ejecutar en el equipo: `WalinkaPrintConnector.exe pair` (abrir PowerShell en la carpeta del conector).
+   Muestra un código de 6 dígitos válido 5 minutos.
+3. Escribir el código en Walinka y pulsar "Emparejar".
+4. Elegir la impresora (por ejemplo, la XP-80C) y activar "Usar para ventas".
+5. Pulsar "Imprimir ticket de prueba": debe salir completo y cortarse solo.
+
+### Solución de problemas
+| Síntoma | Qué hacer |
+|---|---|
+| Walinka dice "Conector no encontrado" | Menú Inicio → "Estado del conector". Si no responde, "Reiniciar conector". |
+| "Configuración inválida" en el log o en la consola | Revisar `%LOCALAPPDATA%\WalinkaPrintConnector\config.json` y corregirlo. El vigilante reintenta solo cada 30 s. |
+| "El puerto 47801 está ocupado" | Cerrar la aplicación que usa el puerto y reiniciar el conector. |
+| "No hay impresoras" | Instalar la impresora en Windows (Configuración → Impresoras) y pulsar "Verificar conector". |
+| La impresora no corta | Probar "Probar corte" desde Walinka. Si no corta, revisar el modelo y la cola de Windows. |
+| El ticket no sale | Ver el log en `%LOCALAPPDATA%\WalinkaPrintConnector\logs\connector.log`. |
+
+### Actualizar
+1. Ejecutar el instalador nuevo encima de la versión anterior. Se detiene el conector, se actualiza y se reinicia.
+2. La configuración y el emparejamiento se conservan: no hace falta emparejar de nuevo.
+
+### Desinstalar
+Configuración → Aplicaciones → Walinka Print Connector → Desinstalar. Al final pregunta si
+borrar también la configuración y el emparejamiento. Responder "No" permite reinstalar
+sin emparejar otra vez.
+
+---
+
+## Desarrollo vs. producción
+
+| | Producción (instalador) | Desarrollo (equipo de pruebas) |
+|---|---|---|
+| Orígenes permitidos | `https://go.ventalink.app`, `https://go.walinka.com` | Además `http://localhost:5173` |
+| Cómo se habilita | Por defecto | `"AllowLocalDevOrigin": true` en `config.json` |
+| Instalador | Sí | No, se ejecuta desde `publish\` |
+
+El instalador nunca escribe `localhost` ni activa `AllowLocalDevOrigin`. Un equipo de
+desarrollo que use `localhost:5173` debe agregar el flag a mano en su `config.json`.
+
+---
+
+## Estado de las pruebas
+
+### Automatizadas (sin Windows)
+- `selftest` del conector: 83 pruebas OK (seguridad, pairing, cola, ESC/POS, configuración, vigilante).
+- Bytes reales de Walinka validados con `validate`: ticket de prueba, cortes moderno y legacy,
+  raster de logo, imagen `ESC *`, posición absoluta.
+- Tests `node --test` del lado Walinka (cliente, configuración y enrutamiento): 39 OK.
+- Compilación del código con Roslyn, incluido el validador.
+- Puerto ocupado y configuración inválida: códigos de salida correctos (3 y 2).
+- No ejecutadas en este entorno: vitest de las pantallas, `vite build`, y `build-installer.ps1`
+  (PowerShell no disponible aquí; el script se revisó a mano).
+
+### Físicas (requieren Windows)
+Pendientes de la lista que acompaña al PR. Las ya confirmadas en E4 son: instalación, inicio,
+detección desde Walinka, XP-80C, impresión y corte sin QZ Tray, y conservación de configuración.
+
+---
+
+## Licencia de Inno Setup (revisión antes de distribuir)
+
+- La licencia de Inno Setup permite uso comercial y redistribución, con cuatro condiciones:
+  conservar los avisos de copyright, no atribuirse el software, marcar las versiones modificadas
+  y, en el caso de web sites en pantallas "Acerca de", mantener las direcciones.
+- El sitio de Jordan Russell pide que los usuarios comerciales (empresas o freelancers con ingresos
+  anuales superiores a USD 5.000) compren licencia, aunque no es obligatoria. Aplica a cualquier versión.
+- Lo que no pude verificar: el texto exacto del aviso «Non-commercial use only» que aparece en la
+  versión 7 del compilador. Hay que revisarlo en la consola de ISCC antes de decidir.
+- Antes de distribuir comercialmente: decidir si se compra la licencia (Single User para un solo
+  compilador) y confirmar con el autor si el instalador generado necesita algún aviso de copyright.
+  Esta revisión no autoriza la distribución por sí sola.

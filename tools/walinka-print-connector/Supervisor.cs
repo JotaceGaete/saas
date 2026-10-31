@@ -28,13 +28,17 @@ internal static class Supervisor
     public static int NextAttempt(int currentAttempts, TimeSpan ranFor)
         => ranFor >= StableRunThreshold ? 0 : currentAttempts + 1;
 
+    // Espera fija cuando no conviene reintentar rápido: configuración inválida,
+    // puerto ocupado o servicio ya activo en otro proceso.
+    public static readonly TimeSpan SlowRetry = TimeSpan.FromSeconds(30);
+
     public static int Run(string dataDir)
     {
         using var watchMutex = Instances.TryAcquire(Instances.WatchMutexName);
         if (watchMutex is null)
         {
             Console.WriteLine("El conector ya está en ejecución en esta sesión.");
-            return 4;
+            return ExitCodes.AlreadyRunning;
         }
 
         using var stop = Instances.OpenStopEvent(resetFirst: true);
@@ -43,37 +47,89 @@ internal static class Supervisor
         log.Write($"Vigilante iniciado (versión {ConnectorServer.AppVersion}).");
 
         int attempts = 0;
+        string? lastProblem = null; // evita repetir el mismo aviso en cada espera
         while (!stop.WaitOne(0))
         {
+            // 1) Configuración inválida: no se lanza serve hasta que se corrija.
+            var configError = ConnectorConfig.CheckFile(dataDir);
+            if (configError is not null)
+            {
+                Report(log, ref lastProblem, $"Configuración inválida, el servicio no se inicia: {configError}. Corrige config.json; se reintentará solo.");
+                if (stop.WaitOne(SlowRetry)) break;
+                continue;
+            }
+
+            // 2) Lanzar serve y esperar a que termine o llegue la parada.
             var started = DateTime.UtcNow;
             var child = StartServe(exe, dataDir, log);
             if (child is null)
             {
                 attempts = NextAttempt(attempts, TimeSpan.Zero);
+                if (stop.WaitOne(DelayFor(attempts))) break;
+                continue;
             }
-            else
+
+            WaitForExitOrStop(child, stop);
+            if (!child.HasExited)
             {
-                WaitForExitOrStop(child, stop);
-                if (!child.HasExited)
-                {
-                    KillTree(child);
-                    log.Write("Servicio detenido por solicitud.");
-                    child.Dispose();
-                    break;
-                }
-                var code = child.ExitCode;
+                KillTree(child);
+                log.Write("Servicio detenido por solicitud.");
                 child.Dispose();
-                if (stop.WaitOne(0)) break;
-
-                attempts = NextAttempt(attempts, DateTime.UtcNow - started);
-                log.Write($"El servicio terminó inesperadamente (código {code}). Reinicio en {DelayFor(attempts).TotalSeconds:0} s.");
+                break;
             }
 
-            if (stop.WaitOne(DelayFor(attempts))) break;
+            var code = child.ExitCode;
+            child.Dispose();
+            if (stop.WaitOne(0)) break;
+
+            // 3) Clasificar la salida: permanente, ya activo, puerto ocupado o caída.
+            switch (code)
+            {
+                case ExitCodes.ConfigInvalid:
+                    Report(log, ref lastProblem, "El servicio reportó configuración inválida. Corrige config.json; se reintentará solo.");
+                    if (stop.WaitOne(SlowRetry)) return Finish(log);
+                    break;
+
+                case ExitCodes.PortBusy:
+                    Report(log, ref lastProblem, $"El puerto {ConnectorConfig.DefaultPort} está ocupado. Cierra la aplicación que lo usa; se reintentará cada 30 s.");
+                    if (stop.WaitOne(SlowRetry)) return Finish(log);
+                    break;
+
+                case ExitCodes.Ok:
+                    // Ya hay un servicio sano respondiendo en el puerto: no hace falta reiniciar.
+                    Report(log, ref lastProblem, "Ya hay un servicio de Walinka Print Connector respondiendo. Se revisará cada 30 s.");
+                    if (stop.WaitOne(SlowRetry)) return Finish(log);
+                    break;
+
+                case ExitCodes.AlreadyRunning:
+                    Report(log, ref lastProblem, "Otro proceso del conector ya está activo en la sesión.");
+                    if (stop.WaitOne(SlowRetry)) return Finish(log);
+                    break;
+
+                default:
+                    lastProblem = null;
+                    attempts = NextAttempt(attempts, DateTime.UtcNow - started);
+                    log.Write($"El servicio terminó inesperadamente (código {code}). Reinicio en {DelayFor(attempts).TotalSeconds:0} s.");
+                    if (stop.WaitOne(DelayFor(attempts))) return Finish(log);
+                    break;
+            }
         }
 
+        return Finish(log);
+    }
+
+    private static int Finish(ConnectorLog log)
+    {
         log.Write("Vigilante detenido.");
-        return 0;
+        return ExitCodes.Ok;
+    }
+
+    // Escribe el aviso una sola vez mientras el problema siga igual.
+    private static void Report(ConnectorLog log, ref string? last, string message)
+    {
+        if (message == last) return;
+        last = message;
+        log.Write(message);
     }
 
     private static Process? StartServe(string exe, string dataDir, ConnectorLog log)
