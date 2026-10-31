@@ -17,6 +17,8 @@ begin
        where o.business_id = p_business_id and o.crm_invoice_id = p_sale_id
          and o.mp_status = 'processed' and o.mp_order_id is not null
          and o.finalized_at is not null and o.currency = 'CLP'
+         and o.amount = (select i.total from public.crm_invoices i
+                         where i.id = p_sale_id and i.business_id = p_business_id)
      )
      or (select count(*) from public.crm_pos_point_operations o
          where o.business_id = p_business_id and o.crm_invoice_id = p_sale_id) <> 1
