@@ -48,6 +48,20 @@ export default async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-store');
     return res.status(503).json({ error: 'SERVER_NOT_CONFIGURED' });
   }
+  // A mismatch is diagnostic only; authorization still requires getUser + owner guard.
+  // Never return token contents or Supabase project identifiers to the browser.
+  const bearer = req.headers?.authorization;
+  if (typeof bearer === 'string' && /^Bearer [^\\s]+$/.test(bearer)) {
+    try {
+      const token = bearer.slice(7);
+      const payload = JSON.parse(Buffer.from(token.split('.')[1] || '', 'base64url').toString('utf8'));
+      const issuer = typeof payload.iss === 'string' ? payload.iss.replace(/\\/$/, '') : '';
+      if (issuer && issuer !== new URL(url).origin + '/auth/v1') {
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(401).json({ error: 'AUTH_PROJECT_MISMATCH' });
+      }
+    } catch { /* Invalid tokens are rejected by the standard owner guard. */ }
+  }
   const options = { auth: { persistSession: false, autoRefreshToken: false } };
   const admin = createClient(url, secret, options);
   const authenticate = async token => {
