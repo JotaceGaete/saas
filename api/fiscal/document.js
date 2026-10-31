@@ -5,7 +5,7 @@ import { createBusinessOwnerGuard } from '../_lib/siisolutions-owner-guard.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export function createFiscalDocumentHandler({ admin, assertOwner }) {
+export function createFiscalDocumentHandler({ admin, assertOwner, getAuthFailure }) {
   return async function handle(req, res) {
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('Allow', 'GET');
@@ -13,7 +13,7 @@ export function createFiscalDocumentHandler({ admin, assertOwner }) {
     const { businessId, invoiceId } = req.query || {};
     if (!UUID.test(invoiceId || '')) return res.status(400).json({ error: 'INVALID_REQUEST' });
     const guard = await assertOwner({ bearer: req.headers?.authorization, businessId });
-    if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
+    if (!guard.ok) return res.status(guard.status).json({ error: guard.status === 401 ? (getAuthFailure?.() || guard.error) : guard.error });
 
     const { data: invoice, error: invoiceError } = await admin.from('crm_invoices')
       .select('id,total').eq('id', invoiceId).eq('business_id', businessId).maybeSingle();
@@ -66,13 +66,17 @@ export default async function handler(req, res) {
   let admin;
   try { admin = createClient(url, secret, options); }
   catch { return res.status(503).json({ error: 'SERVER_CONFIG_INVALID' }); }
+  let authFailure = '';
   const authenticate = async token => {
     const { data, error } = await admin.auth.getUser(token);
-    if (error || !data?.user?.id) throw new Error('Invalid session');
+    if (error || !data?.user?.id) {
+      authFailure = error?.status === 401 || error?.status === 403 ? 'AUTH_TOKEN_REJECTED' : 'AUTH_PROVIDER_UNAVAILABLE';
+      throw new Error('Invalid session');
+    }
     return data.user.id;
   };
   const assertOwner = createBusinessOwnerGuard({ authenticate, admin });
-  return createFiscalDocumentHandler({ admin, assertOwner })(
+  return createFiscalDocumentHandler({ admin, assertOwner, getAuthFailure: () => authFailure })(
     { ...req, query: req.query || Object.fromEntries(new URL(req.url, 'http://x').searchParams) },
     res,
   );
