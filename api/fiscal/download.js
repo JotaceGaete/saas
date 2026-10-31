@@ -48,6 +48,6 @@ export default async function handler(req, res) {
   };
   const assertOwner = createBusinessOwnerGuard({ authenticate, admin });
   return createFiscalDownloadHandler({ admin, assertOwner })(
-    { ...req, query: req.query || Object.fromEntries(new URL(req.url, 'http://x').searchParams) }, res
+    Object.assign(req, { query: req.query || Object.fromEntries(new URL(req.url, 'http://x').searchParams) }), res
   );
 }
