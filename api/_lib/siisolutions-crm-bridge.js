@@ -20,9 +20,12 @@ export function normalizeCrmFiscalSale({ invoice, items, payments, verifiedPoint
   if (received.length !== 1) return { ready: false, reason: 'MIXED_PAYMENTS_UNSUPPORTED' };
   const payment = received[0];
   const isPoint = payment.payment_method === 'mercado_pago';
-  if (payment.payment_method !== 'cash' && !isPoint) {
+  const supportedManualMethods = ['cash', 'bank_transfer', 'debit_card', 'credit_card', 'mercado_pago'];
+  if (!supportedManualMethods.includes(payment.payment_method)) {
     return { ready: false, reason: 'UNSUPPORTED_PAYMENT_METHOD' };
   }
+  // A Mercado Pago label can represent an external payment or Point.
+  // It is always treated as Point until independently verified by the provider.
   // This proof must be assembled by a trusted server after querying Mercado Pago.
   // A CRM payment-method label alone never proves a successful Point payment.
   if (isPoint && (!verifiedPointPayment ||
@@ -71,7 +74,7 @@ export function normalizeCrmFiscalSale({ invoice, items, payments, verifiedPoint
         }
       : {
           business_id: invoice.business_id, sale_id: invoice.id,
-          method: 'cash', amount: total, currency: 'CLP',
+          method: payment.payment_method, amount: total, currency: 'CLP',
           status: 'received', received_by_cashier: false,
         },
     requiresCashierVerification: !isPoint,
