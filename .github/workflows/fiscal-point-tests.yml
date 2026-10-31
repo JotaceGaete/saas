@@ -1,0 +1,33 @@
+name: Fiscal Point safety tests
+
+on:
+  push:
+    branches:
+      - feat/boleta-documento-ui
+    paths:
+      - 'api/_lib/siisolutions-sweep.js'
+      - 'api/_lib/siisolutions-sweep.test.js'
+      - 'api/fiscal/sweep-point.js'
+      - '.github/workflows/fiscal-point-tests.yml'
+  pull_request:
+    paths:
+      - 'api/_lib/siisolutions-sweep.js'
+      - 'api/_lib/siisolutions-sweep.test.js'
+      - 'api/fiscal/sweep-point.js'
+      - '.github/workflows/fiscal-point-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fiscal-sweep:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run isolated fiscal Point sweep tests (no secrets or database)
+        run: node --test api/_lib/siisolutions-sweep.test.js
