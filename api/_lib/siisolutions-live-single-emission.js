@@ -23,7 +23,7 @@ const BASE64 = /^[A-Za-z0-9+/]+={0,2}$/;
  * the XML must decode to a DTE whose <Folio> equals the assigned folio, and
  * the PDF must start with the %PDF- signature. Does not prove SII acceptance.
  */
-export function validateDocumentBytes({ folio, xmlBase64, pdfBase64 }) {
+export function validateDocumentBytes({ folio, xmlBase64, pdfBase64, expectedTotal = null }) {
   if (typeof xmlBase64 !== 'string' || typeof pdfBase64 !== 'string' ||
       xmlBase64.length % 4 !== 0 || pdfBase64.length % 4 !== 0 ||
       !BASE64.test(xmlBase64) || !BASE64.test(pdfBase64)) return false;
@@ -32,7 +32,63 @@ export function validateDocumentBytes({ folio, xmlBase64, pdfBase64 }) {
   if (!xml.includes('<DTE') || !xml.includes('</DTE>')) return false;
   const folioMatch = xml.match(/<Folio>\s*(\d+)\s*<\/Folio>/);
   if (!folioMatch || Number(folioMatch[1]) !== folio) return false;
+  if (expectedTotal !== null) {
+    // The commercial total is authoritative: the document must state exactly
+    // that amount. IVA is informational here; it never changes the total.
+    const total = xml.match(/<MntTotal>\s*(\d+)\s*<\/MntTotal>/);
+    if (!total || Number(total[1]) !== expectedTotal) return false;
+    const neto = xml.match(/<MntNeto>\s*(\d+)\s*<\/MntNeto>/);
+    const iva = xml.match(/<IVA>\s*(\d+)\s*<\/IVA>/);
+    if (neto && iva && Number(neto[1]) + Number(iva[1]) !== expectedTotal) return false;
+  }
   return pdf.subarray(0, 5).toString('latin1') === '%PDF-';
+}
+
+const DOC_FIELD = { xml: 'xmlBase64', pdf: 'pdfBase64' };
+const ALLOWED_DOC_TYPES = /^(application\/json|application\/xml|text\/xml|application\/pdf|application\/octet-stream|text\/plain)(;|$)/;
+
+// Extracts one document from a GET response: raw bytes (XML or PDF), a JSON
+// envelope with base64 fields, or base64 text. Returns base64 or null.
+function documentCandidate(kind, bytes, contentType) {
+  const text = bytes.toString('latin1');
+  if (contentType.startsWith('application/json')) {
+    let parsed;
+    try { parsed = JSON.parse(text); } catch { return null; }
+    const value = parsed?.[DOC_FIELD[kind]];
+    return typeof value === 'string' && BASE64.test(value) ? value : null;
+  }
+  if (kind === 'pdf' && bytes.subarray(0, 5).toString('latin1') === '%PDF-') return bytes.toString('base64');
+  if (kind === 'xml' && text.includes('<DTE')) return bytes.toString('base64');
+  const trimmed = text.trim();
+  return trimmed.length > 0 && BASE64.test(trimmed) ? trimmed : null;
+}
+
+/**
+ * Retrieves the XML and PDF of an already-assigned folio with GET only. Never
+ * calls the emission POST. Returns { folio, xmlBase64, pdfBase64 } only when
+ * both documents pass content validation (folio and total); otherwise null.
+ */
+export async function retrieveIssuedDocuments({
+  folio, apiKey, expectedTotal, fetchImpl = fetch, timeoutMs = DOCS_TIMEOUT_MS,
+}) {
+  if (!Number.isSafeInteger(folio) || folio <= 0 || typeof apiKey !== 'string' || !apiKey.trim()) return null;
+  const got = {};
+  for (const kind of ['xml', 'pdf']) {
+    const response = await fetchImpl(`${PRODUCTION_ORIGIN}/dte/documentos/39/${folio}/${kind}`, {
+      method: 'GET',
+      headers: { 'x-api-key': apiKey, Accept: '*/*' },
+      redirect: 'error',
+      signal: AbortSignal.timeout(timeoutMs),
+    });
+    if (!response.ok) return null;
+    const contentType = (response.headers.get('content-type') || '').toLowerCase();
+    if (!ALLOWED_DOC_TYPES.test(contentType)) return null;
+    const candidate = documentCandidate(kind, Buffer.from(await response.arrayBuffer()), contentType);
+    if (!candidate) return null;
+    got[kind] = candidate;
+  }
+  const docs = { folio, xmlBase64: got.xml, pdfBase64: got.pdf };
+  return validateDocumentBytes({ ...docs, expectedTotal }) ? docs : null;
 }
 
 const safeFolio = value => (Number.isSafeInteger(value) && value > 0 ? value : null);
@@ -43,7 +99,7 @@ const safeFolio = value => (Number.isSafeInteger(value) && value > 0 ? value : n
  * Any ambiguity is `unknown`, with the folio kept when the provider assigned one.
  */
 export function classifyLiveIssuance({
-  networkError = false, statusCode, body = null, retrievedDocuments = null,
+  networkError = false, statusCode, body = null, retrievedDocuments = null, expectedTotal = null,
 }) {
   if (networkError || !Number.isInteger(statusCode) || statusCode >= 500) {
     return { state: 'unknown', folio: null, reason: 'PROVIDER_OUTCOME_UNKNOWN' };
@@ -65,13 +121,13 @@ export function classifyLiveIssuance({
   const inlineXml = typeof body.xmlBase64 === 'string' && body.xmlBase64.length > 0 ? body.xmlBase64 : null;
   const inlinePdf = typeof body.pdfBase64 === 'string' && body.pdfBase64.length > 0 ? body.pdfBase64 : null;
   if (inlineXml && inlinePdf) {
-    if (validateDocumentBytes({ folio, xmlBase64: inlineXml, pdfBase64: inlinePdf })) {
+    if (validateDocumentBytes({ folio, xmlBase64: inlineXml, pdfBase64: inlinePdf, expectedTotal })) {
       return { state: 'issued', folio, xmlBase64: inlineXml, pdfBase64: inlinePdf };
     }
     return { state: 'unknown', folio, reason: 'DOCUMENT_BYTES_INVALID' };
   }
   if (retrievedDocuments && retrievedDocuments.folio === folio &&
-      validateDocumentBytes({ folio, xmlBase64: retrievedDocuments.xmlBase64, pdfBase64: retrievedDocuments.pdfBase64 })) {
+      validateDocumentBytes({ folio, xmlBase64: retrievedDocuments.xmlBase64, pdfBase64: retrievedDocuments.pdfBase64, expectedTotal })) {
     return { state: 'issued', folio, xmlBase64: retrievedDocuments.xmlBase64, pdfBase64: retrievedDocuments.pdfBase64 };
   }
   return { state: 'unknown', folio, reason: 'FOLIO_ASSIGNED_DOCUMENTS_NOT_RETRIEVED' };
@@ -105,6 +161,8 @@ function loadVerifiedIssuer(env, businessId) {
 export function createLiveSingleEmission({
   admin, env = process.env, fetchImpl = fetch, retrieveDocuments = null,
 }) {
+  // retrieveDocuments may be injected (tests). By default, GET-only retrieval
+  // uses the same issuer key and the same fixed production origin.
   if (!admin?.from || !admin?.rpc) throw new Error('Trusted service-role client required');
   return async function issueLiveSingleBoleta({ businessId, saleId, authorizationId, amount }) {
     if (![businessId, saleId, authorizationId].every(v => typeof v === 'string' && UUID.test(v))) {
@@ -184,12 +242,19 @@ export function createLiveSingleEmission({
       });
       body = await response.json().catch(() => null);
       let documents = null;
-      const provisional = classifyLiveIssuance({ statusCode: response.status, body });
-      if (provisional.state === 'unknown' && provisional.folio && retrieveDocuments) {
-        documents = await retrieveDocuments({ folio: provisional.folio, timeoutMs: DOCS_TIMEOUT_MS })
+      const provisional = classifyLiveIssuance({ statusCode: response.status, body, expectedTotal: amount });
+      // Retrieval only after a 2xx that assigned a folio but did not return valid bytes.
+      const httpOk = response.status >= 200 && response.status < 300;
+      if (httpOk && provisional.state === 'unknown' && provisional.folio) {
+        const retrieve = retrieveDocuments ?? (({ folio, timeoutMs }) => retrieveIssuedDocuments({
+          folio, apiKey: issuer.apiKey, expectedTotal: amount, fetchImpl, timeoutMs,
+        }));
+        documents = await retrieve({ folio: provisional.folio, timeoutMs: DOCS_TIMEOUT_MS })
           .catch(() => null);
       }
-      outcome = classifyLiveIssuance({ statusCode: response.status, body, retrievedDocuments: documents });
+      outcome = classifyLiveIssuance({
+        statusCode: response.status, body, retrievedDocuments: documents, expectedTotal: amount,
+      });
     } catch {
       outcome = classifyLiveIssuance({ networkError: true });
     }

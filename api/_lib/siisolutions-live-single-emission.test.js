@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyLiveIssuance, createLiveSingleEmission, validateDocumentBytes } from './siisolutions-live-single-emission.js';
+import { classifyLiveIssuance, createLiveSingleEmission, retrieveIssuedDocuments, validateDocumentBytes } from './siisolutions-live-single-emission.js';
 
 const BIZ = '11111111-1111-4111-8111-111111111111';
 const SALE = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -10,6 +10,12 @@ const OTHER = '33333333-3333-4333-8333-333333333333';
 const VALID_XML_B64 = 'PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iSVNPLTg4NTktMSI/PjxEVEUgdmVyc2lvbj0iMS4wIj48RG9jdW1lbnRvPjxFbmNhYmV6YWRvPjxJZERvYz48VGlwb0RURT4zOTwvVGlwb0RURT48Rm9saW8+NTExMDU8L0ZvbGlvPjwvSWREb2M+PC9FbmNhYmV6YWRvPjwvRG9jdW1lbnRvPjwvRFRFPg==';
 const VALID_PDF_B64 = 'JVBERi0xLjQKMSAwIG9iago8PD4+CmVuZG9iagolJUVPRgo=';
 const PROD_EMIT = 'https://api.siisolutions.cl/dte/boletas/emitir';
+const docXml = (folio, total, neto = Math.round(total / 1.19), iva = total - neto) =>
+  Buffer.from(`<?xml version="1.0" encoding="ISO-8859-1"?><DTE version="1.0"><Documento><Encabezado><IdDoc><TipoDTE>39</TipoDTE><Folio>${folio}</Folio></IdDoc><Totales><MntNeto>${neto}</MntNeto><IVA>${iva}</IVA><MntTotal>${total}</MntTotal></Totales></Encabezado></Documento></DTE>`, 'latin1');
+const DOC_XML_B64 = docXml(51105, 100).toString('base64');
+const PDF_BYTES = Buffer.from(VALID_PDF_B64, 'base64');
+const isPost = opts => (opts?.method ?? 'GET') === 'POST';
+const postCount = fetch => fetch.calls.filter(c => isPost(c.opts)).length;
 const FORBIDDEN_TABLES = ['fiscal.pos_dte39_outbox', 'fiscal.operations', 'crm_point_fiscal_outbox'];
 
 const armedEnv = (overrides = {}) => ({
@@ -66,7 +72,7 @@ function fakeFetch(responder) {
   const fn = async (url, opts) => {
     calls.push({ url, opts });
     const r = await responder(url, opts);
-    return new Response(r.raw ?? JSON.stringify(r.body ?? null), { status: r.status });
+    return new Response(r.raw ?? JSON.stringify(r.body ?? null), { status: r.status, headers: r.headers });
   };
   fn.calls = calls;
   return fn;
@@ -218,7 +224,7 @@ test('success without inline documents: finalized as unknown WITH folio, one sen
   const db = fakeAdmin(baseData());
   const net = fakeFetch(() => ({ status: 200, body: issuedBody(51105) }));
   const r = await run({ admin: db, env: armedEnv(), fetchImpl: net });
-  assert.equal(net.calls.length, 1);
+  assert.equal(postCount(net), 1);
   assert.equal(net.calls[0].url, PROD_EMIT);
   assert.equal(r.state, 'unknown');
   assert.equal(r.folio, 51105);
@@ -231,7 +237,7 @@ test('success without inline documents: finalized as unknown WITH folio, one sen
 test('injected document retrieval that succeeds finalizes as issued with bytes', async () => {
   const db = fakeAdmin(baseData());
   const net = fakeFetch(() => ({ status: 200, body: issuedBody(51105) }));
-  const retrieveDocuments = async ({ folio }) => ({ folio, xmlBase64: 'PD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0iSVNPLTg4NTktMSI/PjxEVEUgdmVyc2lvbj0iMS4wIj48RG9jdW1lbnRvPjxFbmNhYmV6YWRvPjxJZERvYz48VGlwb0RURT4zOTwvVGlwb0RURT48Rm9saW8+NTExMDU8L0ZvbGlvPjwvSWREb2M+PC9FbmNhYmV6YWRvPjwvRG9jdW1lbnRvPjwvRFRFPg==', pdfBase64: 'JVBERi0xLjQKMSAwIG9iago8PD4+CmVuZG9iagolJUVPRgo=' });
+  const retrieveDocuments = async ({ folio }) => ({ folio, xmlBase64: DOC_XML_B64, pdfBase64: VALID_PDF_B64 });
   const r = await run({ admin: db, env: armedEnv(), fetchImpl: net, retrieveDocuments });
   assert.equal(r.state, 'issued');
   const fin = db.calls.rpcs.find(c => c.name === 'crm_finalize_fiscal_issuance').args;
@@ -289,7 +295,7 @@ test('finalize failure: reported for reconciliation, not resent', async () => {
   const net = fakeFetch(() => ({ status: 200, body: issuedBody(51105) }));
   const r = await run({ admin: db, env: armedEnv(), fetchImpl: net });
   assert.equal(r.reason, 'FINALIZE_FAILED_RECONCILE');
-  assert.equal(net.calls.length, 1);
+  assert.equal(postCount(net), 1);
 });
 
 // ---- Isolation ----------------------------------------------------------
@@ -344,4 +350,161 @@ test('inline bytes that fail content validation are unknown with folio, not issu
   assert.equal(r.state, 'unknown');
   assert.equal(r.reason, 'DOCUMENT_BYTES_INVALID');
   assert.equal(r.folio, 51105);
+});
+
+// ---- Document recovery: inline path and GET-only path --------------------
+
+const KEY = 'TEST-KEY-NOT-REAL';
+const docsResponse = (kind, bytes, contentType) => ({ status: 200, headers: { 'content-type': contentType }, raw: bytes });
+
+test('valid totals: MntTotal must equal the authorized amount; IVA is consistent', () => {
+  assert.equal(validateDocumentBytes({ folio: 51105, xmlBase64: DOC_XML_B64, pdfBase64: VALID_PDF_B64, expectedTotal: 100 }), true);
+  const off = docXml(51105, 119, 100, 19).toString('base64');
+  assert.equal(validateDocumentBytes({ folio: 51105, xmlBase64: off, pdfBase64: VALID_PDF_B64, expectedTotal: 100 }), false);
+  const inconsistent = Buffer.from(docXml(51105, 100).toString('latin1').replace('<IVA>16</IVA>', '<IVA>19</IVA>'), 'latin1').toString('base64');
+  assert.equal(validateDocumentBytes({ folio: 51105, xmlBase64: inconsistent, pdfBase64: VALID_PDF_B64, expectedTotal: 100 }), false);
+});
+
+test('path 1: POST returns valid inline XML and PDF; no GET is made', async () => {
+  const db = fakeAdmin(baseData());
+  const net = fakeFetch(() => ({ status: 200, body: issuedBody(51105, { xmlBase64: DOC_XML_B64, pdfBase64: VALID_PDF_B64 }) }));
+  const r = await run({ admin: db, env: armedEnv(), fetchImpl: net });
+  assert.equal(r.state, 'issued');
+  assert.equal(net.calls.length, 1);
+  assert.equal(postCount(net), 1);
+  const fin = db.calls.rpcs.find(c => c.name === 'crm_finalize_fiscal_issuance').args;
+  assert.equal(fin.p_xml_base64, DOC_XML_B64);
+});
+
+test('path 1: inline documents whose MntTotal is not 100 are unknown with folio; no second POST', async () => {
+  const db = fakeAdmin(baseData());
+  const bad = docXml(51105, 119, 100, 19).toString('base64');
+  const net = fakeFetch(() => ({ status: 200, body: issuedBody(51105, { xmlBase64: bad, pdfBase64: VALID_PDF_B64 }) }));
+  const r = await run({ admin: db, env: armedEnv(), fetchImpl: net });
+  assert.equal(r.state, 'unknown');
+  assert.equal(r.folio, 51105);
+  assert.equal(postCount(net), 1);
+});
+
+test('path 2: no inline bytes; GET XML and PDF (binary) are retrieved with the same key, never a second POST', async () => {
+  const db = fakeAdmin(baseData());
+  const net = fakeFetch((url) => {
+    if (url.endsWith('/xml')) return docsResponse('xml', docXml(51105, 100), 'application/xml; charset=ISO-8859-1');
+    if (url.endsWith('/pdf')) return docsResponse('pdf', PDF_BYTES, 'application/pdf');
+    return { status: 200, body: issuedBody(51105) };
+  });
+  const r = await run({ admin: db, env: armedEnv(), fetchImpl: net });
+  assert.equal(r.state, 'issued');
+  assert.equal(postCount(net), 1);
+  const gets = net.calls.filter(c => !isPost(c.opts));
+  assert.deepEqual(gets.map(c => c.url), [
+    'https://api.siisolutions.cl/dte/documentos/39/51105/xml',
+    'https://api.siisolutions.cl/dte/documentos/39/51105/pdf',
+  ]);
+  for (const g of gets) {
+    assert.equal(g.opts.headers['x-api-key'], KEY);
+    assert.equal(g.opts.redirect, 'error');
+    assert.equal(g.opts.method, 'GET');
+  }
+  const fin = db.calls.rpcs.find(c => c.name === 'crm_finalize_fiscal_issuance').args;
+  assert.equal(fin.p_status, 'issued');
+  assert.equal(fin.p_folio, 51105);
+  assert.equal(fin.p_xml_base64, DOC_XML_B64);
+});
+
+test('path 2: JSON envelope with base64 fields is accepted', async () => {
+  const db = fakeAdmin(baseData());
+  const envelope = JSON.stringify({ xmlBase64: DOC_XML_B64, pdfBase64: VALID_PDF_B64 });
+  const net = fakeFetch((url) => url.includes('/dte/documentos/')
+    ? docsResponse('json', envelope, 'application/json')
+    : { status: 200, body: issuedBody(51105) });
+  const r = await run({ admin: db, env: armedEnv(), fetchImpl: net });
+  assert.equal(r.state, 'issued');
+  assert.equal(postCount(net), 1);
+});
+
+test('path 2: base64 text used as both XML and PDF is rejected (PDF signature check fails)', async () => {
+  const net = fakeFetch(() => docsResponse('x', DOC_XML_B64, 'text/plain'));
+  const docs = await retrieveIssuedDocuments({ folio: 51105, apiKey: KEY, expectedTotal: 100, fetchImpl: net });
+  // The same base64 text serves as both XML and PDF here, so the PDF check must fail closed.
+  assert.equal(docs, null);
+});
+
+test('path 2: HTML response (e.g. a login page) is rejected: unknown with folio, no second POST', async () => {
+  const db = fakeAdmin(baseData());
+  const net = fakeFetch((url) => url.includes('/dte/documentos/')
+    ? docsResponse('html', '<html>login</html>', 'text/html')
+    : { status: 200, body: issuedBody(51105) });
+  const r = await run({ admin: db, env: armedEnv(), fetchImpl: net });
+  assert.equal(r.state, 'unknown');
+  assert.equal(r.folio, 51105);
+  assert.equal(postCount(net), 1);
+  const fin = db.calls.rpcs.find(c => c.name === 'crm_finalize_fiscal_issuance').args;
+  assert.equal(fin.p_folio, 51105);
+  assert.equal(fin.p_xml_base64, null);
+});
+
+test('path 2: GET 500 keeps folio as unknown and is not retried as POST', async () => {
+  const db = fakeAdmin(baseData());
+  const net = fakeFetch((url) => url.includes('/dte/documentos/')
+    ? { status: 500, body: { error: 'x' } }
+    : { status: 200, body: issuedBody(51105) });
+  const r = await run({ admin: db, env: armedEnv(), fetchImpl: net });
+  assert.equal(r.state, 'unknown');
+  assert.equal(r.folio, 51105);
+  assert.equal(postCount(net), 1);
+});
+
+test('path 2: retrieved XML whose total differs from the authorized amount is not issued', async () => {
+  const db = fakeAdmin(baseData());
+  const bad = docXml(51105, 119, 100, 19).toString('base64');
+  const net = fakeFetch((url) => {
+    if (url.endsWith('/xml')) return docsResponse('xml', Buffer.from(bad, 'base64'), 'application/xml');
+    if (url.endsWith('/pdf')) return docsResponse('pdf', PDF_BYTES, 'application/pdf');
+    return { status: 200, body: issuedBody(51105) };
+  });
+  const r = await run({ admin: db, env: armedEnv(), fetchImpl: net });
+  assert.equal(r.state, 'unknown');
+  assert.equal(r.folio, 51105);
+  assert.equal(postCount(net), 1);
+});
+
+test('path 2: retrieved folio differing from the assigned folio is not issued', async () => {
+  const db = fakeAdmin(baseData());
+  const wrong = docXml(99999, 100).toString('base64');
+  const net = fakeFetch((url) => {
+    if (url.endsWith('/xml')) return docsResponse('xml', Buffer.from(wrong, 'base64'), 'application/xml');
+    if (url.endsWith('/pdf')) return docsResponse('pdf', PDF_BYTES, 'application/pdf');
+    return { status: 200, body: issuedBody(51105) };
+  });
+  const r = await run({ admin: db, env: armedEnv(), fetchImpl: net });
+  assert.equal(r.state, 'unknown');
+  assert.equal(r.folio, 51105);
+});
+
+test('path 2 is not attempted for a non-2xx response; 409 keeps folio without GET', async () => {
+  const db = fakeAdmin(baseData());
+  const net = fakeFetch(() => ({ status: 409, body: { folioExistente: 51104 } }));
+  const r = await run({ admin: db, env: armedEnv(), fetchImpl: net });
+  assert.equal(r.state, 'unknown');
+  assert.equal(r.folio, 51104);
+  assert.equal(net.calls.length, 1);
+});
+
+test('retrieveIssuedDocuments rejects an invalid folio or missing key without any request', async () => {
+  const net = fakeFetch(() => ({ status: 200, raw: '' }));
+  assert.equal(await retrieveIssuedDocuments({ folio: 0, apiKey: KEY, expectedTotal: 100, fetchImpl: net }), null);
+  assert.equal(await retrieveIssuedDocuments({ folio: 51105, apiKey: '', expectedTotal: 100, fetchImpl: net }), null);
+  assert.equal(net.calls.length, 0);
+});
+
+test('IVA does not change the commercial total: POST sends 100 and its lines sum to 100', async () => {
+  const db = fakeAdmin(baseData());
+  const net = fakeFetch(() => ({ status: 200, body: issuedBody(51105, { xmlBase64: DOC_XML_B64, pdfBase64: VALID_PDF_B64 }) }));
+  await run({ admin: db, env: armedEnv(), fetchImpl: net });
+  const sent = JSON.parse(net.calls.find(c => isPost(c.opts)).opts.body);
+  assert.equal(sent.montoPago, '100');
+  assert.equal(sent.vuelto, '0');
+  assert.equal(sent.descuentoGlobal, 0);
+  assert.equal(sent.detalles.reduce((sum, d) => sum + d.precioSubtotal, 0), 100);
 });
