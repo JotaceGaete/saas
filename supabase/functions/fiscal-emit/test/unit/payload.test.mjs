@@ -100,3 +100,22 @@ test('sin sucursal configurada se rechaza: no hay valor por defecto', () => {
   assert.throws(() => build({ sucursal: undefined }), { code: 'SUCURSAL_NOT_CONFIGURED' });
   assert.throws(() => build({ sucursal: { nombre: '', codigo: '0' } }), { code: 'SUCURSAL_NOT_CONFIGURED' });
 });
+
+test('desglose neto/IVA: $100 bruto -> neto 84 + IVA 16 = 100 exacto', () => {
+  const p = build({ lines: [line({ unitPrice: 100, quantity: 1 })], montoPago: 100 });
+  assert.equal(p.detalles[0].precio, 84);
+  assert.equal(p.detalles[0].precioSubtotal, 100);
+});
+
+test('desglose neto/IVA: cualquier línea afecta que no cuadre exacto se rechaza', () => {
+  for (const unitPrice of [1, 2, 3, 7, 101, 999, 1234]) {
+    const sub = unitPrice;
+    const net = Math.round(unitPrice / 1.19);
+    const ok = net + Math.round(net * 0.19) === sub;
+    if (ok) {
+      assert.doesNotThrow(() => build({ lines: [line({ unitPrice, quantity: 1 })], montoPago: unitPrice }), String(unitPrice));
+    } else {
+      assert.throws(() => build({ lines: [line({ unitPrice, quantity: 1 })], montoPago: unitPrice }), { code: 'PRICE_MISMATCH' }, String(unitPrice));
+    }
+  }
+});

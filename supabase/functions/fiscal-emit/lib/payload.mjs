@@ -87,11 +87,20 @@ export function buildBoletaPayload({
     const esExento = l.category === 'EXENTO';
     const subtotal = l.unitPrice * l.quantity; // bruto: lo que paga el cliente
     grossSum += subtotal;
+    const precio = esExento ? l.unitPrice : Math.round(l.unitPrice / (1 + IVA_RATE));
+    if (!esExento) {
+      // Desglose obligatorio antes de enviar: neto + IVA debe ser exactamente el bruto de la línea.
+      const neto = precio * l.quantity;
+      const iva = Math.round(neto * IVA_RATE);
+      if (neto + iva !== subtotal) {
+        throw new FiscalError('PRICE_MISMATCH', `line ${idx + 1}: neto ${neto} + IVA ${iva} != ${subtotal}`);
+      }
+    }
     return {
       linea: idx + 1,
       descripcion,
       DscItem: '',
-      precio: esExento ? l.unitPrice : Math.round(l.unitPrice / (1 + IVA_RATE)),
+      precio,
       cantidad: l.quantity,
       precioPorcentajeDescuento: 0,
       precioDescuento: 0,
