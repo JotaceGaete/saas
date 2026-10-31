@@ -31,6 +31,9 @@ export async function requestCashBoletaForCompletedSale({
       if (response.status === 409 && body?.state === 'already_claimed') {
         return { state: 'already_claimed', reason: 'RECONCILIATION_REQUIRED' };
       }
+      if (response.status >= 500 || body?.error === 'ISSUANCE_OUTCOME_REQUIRES_REVIEW') {
+        return { state: 'unknown', reason: body?.error || `HTTP_${response.status}_RECONCILIATION_REQUIRED` };
+      }
       return {
         state: 'blocked',
         reason: body?.error || body?.reason || `HTTP_${response.status}`,
