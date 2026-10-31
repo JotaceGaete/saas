@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { supabase } from '../../../lib/supabase';
+import { requestCashBoletaForCompletedSale } from '../../../services/siisolutionsFiscalBridge';
 
 /**
  * Optional, explicit manual fiscal simulation. Never runs on sale creation.
@@ -19,23 +20,15 @@ export default function ManualFiscalSimulation({ businessId, invoiceId, paymentM
     try {
       const { data, error } = await supabase.auth.getSession();
       if (error || !data?.session?.access_token) throw new Error('Sesión no disponible');
-      const response = await fetch('/api/siisolutions-manual-cash', {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${data.session.access_token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ businessId, invoiceId }),
+      const result = await requestCashBoletaForCompletedSale({
+        businessId, invoiceId, accessToken: data.session.access_token,
       });
-      const result = await response.json();
-      if (!response.ok) {
-        setStatus(response.status === 409
-          ? 'La venta ya tiene una solicitud fiscal. Revisar antes de volver a intentar.'
-          : 'No se pudo confirmar la operación. Revisar el registro fiscal antes de volver a intentar.');
+      if (result.state === 'issued') {
+        setStatus(`Documento de simulación registrado. Folio: ${result.folio ?? 'sin folio'}`);
+      } else if (result.state === 'already_claimed') {
+        setStatus('La venta ya tiene una solicitud fiscal. Conciliar antes de intentar otra operación.');
       } else {
-        setStatus(result.state === 'issued'
-          ? `Documento de simulación registrado. Folio: ${result.folio ?? 'sin folio'}`
-          : 'Solicitud registrada. Estado pendiente de revisión; no volver a emitir.');
+        setStatus('Emisión no confirmada (' + (result.reason || result.state) + '). Revisar el registro fiscal; no volver a emitir.');
       }
     } catch {
       setStatus('Resultado incierto. Revisar el registro fiscal antes de volver a intentar.');
