@@ -120,6 +120,14 @@ public static class SelfTests
             Check(!limiter.TryAcquire(now), "cuarta petición en la ventana rechazada");
             Check(limiter.TryAcquire(now.AddMinutes(2)), "tras la ventana se vuelve a permitir");
 
+            // --- Tope de reinicios del vigilante (anti ciclo infinito) ---
+            var budget = new SlidingWindowLimiter(2, TimeSpan.FromHours(1));
+            Check(!Supervisor.ExhaustedRestartBudget(budget, now) && !Supervisor.ExhaustedRestartBudget(budget, now),
+                "dos caídas dentro de la hora todavía se reinician");
+            Check(Supervisor.ExhaustedRestartBudget(budget, now), "tercera caída dentro de la hora: el vigilante se rinde");
+            Check(!Supervisor.ExhaustedRestartBudget(budget, now.AddHours(2)), "pasada la ventana vuelve a permitir reinicios");
+            Check(Supervisor.MaxRestartsPerHour == 10 && Supervisor.NewRestartBudget() is not null, "tope por defecto: 10 reinicios por hora");
+
             // --- Secretos ---
             Check(Secrets.Sha256Hex("a") == Secrets.Sha256Hex("a") && Secrets.Sha256Hex("a") != Secrets.Sha256Hex("b"), "hash SHA-256 determinista");
             Check(Secrets.ConstantTimeEquals("abc", "abc") && !Secrets.ConstantTimeEquals("abc", "abd"), "comparación en tiempo constante");

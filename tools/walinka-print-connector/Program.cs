@@ -260,7 +260,13 @@ internal static class Program
 
     private static int Restart(string dataDir)
     {
-        Stop();
+        // Si el anterior no terminó, no se lanza otro: el vigilante nuevo fallaría
+        // con "ya está en ejecución" y el usuario no vería por qué.
+        if (Stop() != 0)
+        {
+            Console.WriteLine("No se pudo detener el conector anterior. No se inició una copia nueva; revisa el log.");
+            return 1;
+        }
         var exe = Environment.ProcessPath ?? throw new InvalidOperationException("No se pudo determinar la ruta del ejecutable.");
         // Mismo arranque que el registro de inicio: sin ventana de consola.
         var info = new System.Diagnostics.ProcessStartInfo(
@@ -301,6 +307,10 @@ internal static class Program
     {
         var config = ConnectorConfig.LoadOrCreate(dataDir);
         var store = new PairingStore(dataDir);
+        var watching = Instances.IsHeld(Instances.WatchMutexName);
+        var serving = Instances.IsHeld(Instances.ServeMutexName);
+        Console.WriteLine($"Vigilante (inicio automático): {(watching ? "en ejecución" : "detenido")}");
+        Console.WriteLine($"Servicio local:                {(serving ? "en ejecución" : "detenido")}");
         Console.WriteLine($"Puerto:               {config.Port}");
         Console.WriteLine($"Equipos emparejados:  {store.PairedDeviceCount()}");
         Console.WriteLine($"Carpeta de datos:     {dataDir}");

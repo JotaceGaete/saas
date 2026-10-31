@@ -22,11 +22,25 @@ internal static class Supervisor
 
     public static readonly TimeSpan StableRunThreshold = TimeSpan.FromMinutes(1);
 
+    // Tope absoluto: si el servicio se cae más de esta cantidad de veces en una
+    // hora, el vigilante se rinde y deja de reiniciar. Sin esto, un proceso que
+    // cae cada minuto (y por eso "estable" según StableRunThreshold) se reiniciaría
+    // para siempre. Para volver a intentar: corrige la causa y ejecuta `restart`.
+    public const int MaxRestartsPerHour = 10;
+    public static readonly TimeSpan RestartWindow = TimeSpan.FromHours(1);
+
     public static TimeSpan DelayFor(int failedAttempts)
         => Backoff[Math.Clamp(failedAttempts, 0, Backoff.Length - 1)];
 
     public static int NextAttempt(int currentAttempts, TimeSpan ranFor)
         => ranFor >= StableRunThreshold ? 0 : currentAttempts + 1;
+
+    /// <summary>True cuando ya no se permite otro reinicio dentro de la ventana.</summary>
+    public static bool ExhaustedRestartBudget(SlidingWindowLimiter budget, DateTime nowUtc)
+        => !budget.TryAcquire(nowUtc);
+
+    public static SlidingWindowLimiter NewRestartBudget()
+        => new(MaxRestartsPerHour, RestartWindow);
 
     // Espera fija cuando no conviene reintentar rápido: configuración inválida,
     // puerto ocupado o servicio ya activo en otro proceso.
@@ -47,6 +61,7 @@ internal static class Supervisor
         log.Write($"Vigilante iniciado (versión {ConnectorServer.AppVersion}).");
 
         int attempts = 0;
+        var restartBudget = NewRestartBudget();
         string? lastProblem = null; // evita repetir el mismo aviso en cada espera
         while (!stop.WaitOne(0))
         {
@@ -87,41 +102,46 @@ internal static class Supervisor
             {
                 case ExitCodes.ConfigInvalid:
                     Report(log, ref lastProblem, "El servicio reportó configuración inválida. Corrige config.json; se reintentará solo.");
-                    if (stop.WaitOne(SlowRetry)) return Finish(log);
+                    if (stop.WaitOne(SlowRetry)) return Finish(log, ExitCodes.Ok);
                     break;
 
                 case ExitCodes.PortBusy:
                     Report(log, ref lastProblem, $"El puerto {ConnectorConfig.DefaultPort} está ocupado. Cierra la aplicación que lo usa; se reintentará cada 30 s.");
-                    if (stop.WaitOne(SlowRetry)) return Finish(log);
+                    if (stop.WaitOne(SlowRetry)) return Finish(log, ExitCodes.Ok);
                     break;
 
                 case ExitCodes.Ok:
                     // Ya hay un servicio sano respondiendo en el puerto: no hace falta reiniciar.
                     Report(log, ref lastProblem, "Ya hay un servicio de Walinka Print Connector respondiendo. Se revisará cada 30 s.");
-                    if (stop.WaitOne(SlowRetry)) return Finish(log);
+                    if (stop.WaitOne(SlowRetry)) return Finish(log, ExitCodes.Ok);
                     break;
 
                 case ExitCodes.AlreadyRunning:
                     Report(log, ref lastProblem, "Otro proceso del conector ya está activo en la sesión.");
-                    if (stop.WaitOne(SlowRetry)) return Finish(log);
+                    if (stop.WaitOne(SlowRetry)) return Finish(log, ExitCodes.Ok);
                     break;
 
                 default:
                     lastProblem = null;
+                    if (ExhaustedRestartBudget(restartBudget, DateTime.UtcNow))
+                    {
+                        log.Write($"El servicio se cayó más de {MaxRestartsPerHour} veces en una hora. Se detiene el reinicio automático para no entrar en un ciclo. Revisa este log, corrige la causa y ejecuta WalinkaPrintConnector.exe restart.");
+                        return Finish(log, ExitCodes.RestartLimitReached);
+                    }
                     attempts = NextAttempt(attempts, DateTime.UtcNow - started);
                     log.Write($"El servicio terminó inesperadamente (código {code}). Reinicio en {DelayFor(attempts).TotalSeconds:0} s.");
-                    if (stop.WaitOne(DelayFor(attempts))) return Finish(log);
+                    if (stop.WaitOne(DelayFor(attempts))) return Finish(log, ExitCodes.Ok);
                     break;
             }
         }
 
-        return Finish(log);
+        return Finish(log, ExitCodes.Ok);
     }
 
-    private static int Finish(ConnectorLog log)
+    private static int Finish(ConnectorLog log, int exitCode)
     {
-        log.Write("Vigilante detenido.");
-        return ExitCodes.Ok;
+        log.Write(exitCode == ExitCodes.Ok ? "Vigilante detenido." : "Vigilante detenido por límite de reinicios.");
+        return exitCode;
     }
 
     // Escribe el aviso una sola vez mientras el problema siga igual.
