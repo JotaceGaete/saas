@@ -41,7 +41,17 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
         );
 
         if (!response.ok) {
-          throw new Error('No se pudo consultar el documento tributario.');
+          const body = await response.json().catch(() => null);
+          const code = typeof body?.error === 'string' ? body.error : '';
+          const explanations = {
+            SERVER_NOT_CONFIGURED: 'Falta configurar el servidor fiscal de esta versión de prueba.',
+            UNAUTHORIZED: 'La sesión no pudo validarse. Vuelve a iniciar sesión.',
+            BUSINESS_NOT_AUTHORIZED: 'Tu cuenta no tiene autorización para consultar el documento de este comercio.',
+            INVALID_REQUEST: 'Los identificadores enviados para consultar la boleta no son válidos.',
+            INVOICE_NOT_FOUND: 'No se encontró la nota de venta para este comercio.',
+            SERVER_ERROR: 'El servidor no pudo consultar la base de datos fiscal.',
+          };
+          throw new Error(`No se pudo consultar el documento tributario (HTTP ${response.status}${code ? ` · ${code}` : ''}). ${explanations[code] || 'Revisa la configuración del despliegue o vuelve a intentarlo.'}`);
         }
 
         const result = await response.json();
