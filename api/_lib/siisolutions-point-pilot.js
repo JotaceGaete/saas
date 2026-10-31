@@ -58,8 +58,8 @@ export function createConfiguredPointFiscalPilot({ admin, sandboxBaseUrl, fetchI
     if (!readiness.issuerCredentialsConfigured) {
       return { state: 'blocked', reason: readiness.configIssue };
     }
-    if (!readiness.simulationEnabled) {
-      return { state: 'blocked', reason: 'SIMULATION_NOT_ENABLED' };
+    if (!readiness.simulationEnabled && env.SIISOLUTIONS_EMISSION_ENABLED !== 'live') {
+      return { state: 'blocked', reason: 'FISCAL_EMISSION_NOT_ENABLED' };
     }
     // Configuration failures are rejected before loading sales or contacting
     // Mercado Pago/DTECore. This wrapper never enables production emission.
