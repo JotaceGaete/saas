@@ -145,6 +145,10 @@ function configureSecurity() {
 }
 
 function ensureConnected() {
+  // Fail before opening a WebSocket when this deployment has no public QZ
+  // certificate. Otherwise QZ can return 101 and the UI misleadingly
+  // reports that the local service is unavailable.
+  getQzCertificate();
   configureSecurity();
   if (qz.websocket.isActive()) return Promise.resolve();
   return qz.websocket.connect();
