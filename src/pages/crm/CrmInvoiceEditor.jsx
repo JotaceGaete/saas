@@ -19,6 +19,7 @@ import {
 import { getProducts } from '../../services/waBusinessService';
 import { listPaymentsByInvoice, createPayment } from '../../services/crmPaymentsService';
 import CrmDocumentPdf from './CrmDocumentPdf';
+import CrmFiscalDocument from './CrmFiscalDocument';
 import {
   CrmLineItemCard,
   CrmLineItemTableRow,
@@ -676,6 +677,10 @@ export default function CrmInvoiceEditor() {
               <span className="text-xl font-bold text-white">{fmt(subtotal)}</span>
             </div>
           </div>
+
+          {!isNew && saved && business?.id && (
+            <CrmFiscalDocument businessId={business.id} invoiceId={saved.id} />
+          )}
 
           {/* ── PAGOS RECIBIDOS (solo facturas guardadas) ── */}
           {!isNew && saved && (() => {
