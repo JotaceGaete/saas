@@ -189,9 +189,10 @@ Deno.serve(async (req) => {
   // Both webhook and polling may reach this point: the fiscal repository
   // must atomically claim one DTE per sale; never retry unknown outcomes.
   if (order.status === 'processed' && finalizedInThisRequest && invoiceId) {
-    // Do not delay the cashier's Point status response for a fiscal network call.
-    // This handoff is best-effort; a durable outbox is still required for guaranteed delivery.
-    void requestPointBoletaEmission(ctx.businessId, invoiceId);
+    // Await the server-to-server handoff: a floating promise may be terminated
+    // when the Edge Function returns. The fiscal helper never throws or retries.
+    // A durable outbox is still required for guaranteed eventual delivery.
+    await requestPointBoletaEmission(ctx.businessId, invoiceId);
   }
 
   return pointJson({
