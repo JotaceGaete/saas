@@ -8,13 +8,13 @@ export function assessBoletaEligibility({ sale, payment, businessId, issuerBusin
   if (!Number.isSafeInteger(total) || total <= 0 || payment.currency !== 'CLP' || Number(payment.amount) !== total) {
     return { eligible: false, reason: 'AMOUNT_MISMATCH' };
   }
-  if (payment.method === 'cash') {
+  if (['cash', 'bank_transfer', 'debit_card', 'credit_card'].includes(payment.method)) {
     // Must originate from an authenticated cashier checkout persisted by the
     // server; a client-supplied cash flag is not proof of receipt.
     if (payment.received_by_cashier !== true || payment.voided_at || payment.status !== 'received') {
       return { eligible: false, reason: 'CASH_NOT_RECEIVED' };
     }
-    return { eligible: true, method: 'cash', reason: null };
+    return { eligible: true, method: payment.method, reason: null };
   }
   if (payment.method === 'mercado_pago') {
     if (payment.provider !== 'mercado_pago' || payment.channel !== 'point') {
