@@ -63,7 +63,11 @@ export function createPointFiscalSweeper({ listCandidates, verifySale, registerP
 export function createPointSweepCandidateLister(admin, { sinceDays = 14, notBefore = null } = {}) {
   return async function listCandidates({ limit }) {
     const rollingSince = Date.now() - sinceDays * 86400000;
-    const cutoff = notBefore ? Date.parse(notBefore) : NaN;
+    // An explicitly configured but malformed cutoff must never widen the search.
+    const cutoff = notBefore == null ? NaN : Date.parse(notBefore);
+    if (notBefore != null && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,3})?Z$/.test(notBefore) || !Number.isFinite(cutoff))) {
+      throw new Error('Invalid fiscal sweep activation cutoff');
+    }
     const since = new Date(Number.isFinite(cutoff) ? Math.max(rollingSince, cutoff) : rollingSince).toISOString();
     const { data: ops, error: opsError } = await admin.from('crm_pos_point_operations')
       .select('business_id,crm_invoice_id,created_at')
