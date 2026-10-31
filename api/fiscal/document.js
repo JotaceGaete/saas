@@ -12,8 +12,12 @@ export function createFiscalDocumentHandler({ admin, assertOwner, getAuthFailure
     if (req.method !== 'GET') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
     const { businessId, invoiceId } = req.query || {};
     if (!UUID.test(invoiceId || '')) return res.status(400).json({ error: 'INVALID_REQUEST' });
-    const guard = await assertOwner({ bearer: req.headers?.authorization, businessId });
-    if (!guard.ok) return res.status(guard.status).json({ error: guard.status === 401 ? (getAuthFailure?.() || guard.error) : guard.error });
+    const authorization = req.headers?.authorization;
+    if (typeof authorization !== 'string' || !authorization.startsWith('Bearer ') || !authorization.slice(7).trim() || /\s/.test(authorization.slice(7))) {
+      return res.status(401).json({ error: 'AUTH_HEADER_MISSING_OR_INVALID' });
+    }
+    const guard = await assertOwner({ bearer: authorization, businessId });
+    if (!guard.ok) return res.status(guard.status).json({ error: guard.status === 401 ? (getAuthFailure?.() || 'AUTH_IDENTITY_INVALID') : guard.error });
 
     const { data: invoice, error: invoiceError } = await admin.from('crm_invoices')
       .select('id,total').eq('id', invoiceId).eq('business_id', businessId).maybeSingle();
