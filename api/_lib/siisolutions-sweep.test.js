@@ -190,3 +190,21 @@ test('candidate query honors explicit activation cutoff', async () => {
   await createPointSweepCandidateLister(admin, { sinceDays: 365, notBefore: cutoff })({ limit: 10 });
   assert.equal(actualSince, cutoff);
 });
+
+test('malformed activation cutoff fails closed instead of scanning historical sales', async () => {
+  let queried = false;
+  const admin = { from() { queried = true; throw new Error('Database must not be queried'); } };
+  await assert.rejects(
+    createPointSweepCandidateLister(admin, { notBefore: 'not-a-date' })({ limit: 10 }),
+    /Invalid fiscal sweep activation cutoff/
+  );
+  assert.equal(queried, false);
+});
+
+test('activation cutoff requires explicit UTC timestamp', async () => {
+  const admin = { from() { throw new Error('Database must not be queried'); } };
+  await assert.rejects(
+    createPointSweepCandidateLister(admin, { notBefore: '2026-10-31' })({ limit: 10 }),
+    /Invalid fiscal sweep activation cutoff/
+  );
+});
