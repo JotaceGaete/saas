@@ -26,17 +26,26 @@ Migración asociada (no aplicada en producción): `supabase/fiscal-recovery/prop
 ```bash
 cd supabase/functions/fiscal-emit
 npm install
-npm test                                  # 59 pruebas unitarias
-FISCAL_TEST_PG_DB=walinka_test npm run test:db   # 26 pruebas contra Postgres local
+npm test                                  # 80 pruebas unitarias
+FISCAL_TEST_PG_DB=walinka_test npm run test:db   # 48 pruebas contra Postgres local (incluye concurrencia entre pipelines)
 ```
 
 Las pruebas de base necesitan una base local `*_test` con la migración propuesta aplicada y con
 privilegios de `service_role` (en Supabase vienen por defecto; en la base de prueba se conceden a mano).
 
+## Verificado y no verificado
+
+- Verificado con node y Postgres 16 real: toda la lógica, las RPC, las guardas SQL, la concurrencia
+  entre P1/P2/P3/P4 (transacciones intercaladas con bloqueo comprobado) y la paridad SQL/JS del pago.
+- **No verificado en runtime**: `index.ts` (Deno no está instalado; solo pasó chequeo de sintaxis) y
+  `lib/store-supabase.mjs` (probado con cliente falso; no contra PostgREST, porque no hay daemon Docker).
+- Antes de desplegar: `supabase functions serve fiscal-emit` contra una base local, y prueba de
+  `store-supabase` contra PostgREST real.
+
 ## Qué no hace todavía
 
-- `index.ts` (envoltorio Deno) **no está escrito**: falta el almacén sobre `supabase-js` (RPC + SELECT) y Deno
-  no está instalado aquí para verificarlo.
-- Conflictos entre pipelines y elegibilidad Point se comprueban también en la base; la comprobación de
-  pago Point confirmado en el reclamo SQL sigue siendo solo de aplicación (decisión pendiente).
+- Proveedor real DTECore: bloqueado hasta verificar el contrato por escrito.
+- Impresión: `lib/print-plan.mjs` prepara el plan desde el PDF guardado; no envía nada. Rasterizar el
+  PDF a GS v 0 y la prueba de PDF417 en XP-80C están pendientes. Print Connector no se modificó.
 - Registro de evidencia de reconciliación (`fiscal.dte39_reconciliation_evidence`) no se escribe aún.
+- Migración endurecida solo aplicada en `walinka_test`; no aplicada en producción.

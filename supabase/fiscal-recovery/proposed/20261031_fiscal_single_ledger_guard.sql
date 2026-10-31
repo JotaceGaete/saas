@@ -100,7 +100,9 @@ begin
     raise exception 'Invalid fiscal issuance claim';
   end if;
 
-  -- Serializa cualquier reclamo concurrente sobre la misma venta hasta fin de transacción.
+  -- Lock por venta compartido con los pipelines P1/P3/P4 (ver sección 3c): serializa cualquier
+  -- reclamo o transición fiscal de la misma venta, en cualquier pipeline, hasta fin de transacción.
+  perform pg_advisory_xact_lock(hashtextextended('fiscal_sale:' || p_sale_id::text, 0));
   perform 1 from public.crm_invoices i
    where i.id = p_sale_id and i.business_id = p_business_id
    for update;
@@ -127,6 +129,9 @@ begin
   if not fiscal.sale_tax_lines_verified(p_business_id, p_sale_id) then
     raise exception 'FISCAL_TAX_LINES_NOT_VERIFIED';
   end if;
+
+  -- Medio de pago confirmado dentro de SQL (efectivo, o Point confirmado con monto exacto).
+  perform fiscal.sale_payment_medio(p_business_id, p_sale_id);
 
   v_conflict := fiscal.sale_fiscal_conflict(p_business_id, p_sale_id);
   if v_conflict is not null then
@@ -208,5 +213,198 @@ comment on table fiscal.business_credentials is
 -- ---------------------------------------------------------------------------
 revoke execute on function fiscal.dte39_evidence_append_only() from public, anon, authenticated;
 revoke select on public.crm_invoices from anon;
+
+-- ---------------------------------------------------------------------------
+-- 3c. Validación del medio de pago dentro de SQL (espejo de lib/eligibility.mjs).
+--     Efectivo: todos los pagos recibidos y no anulados son 'cash' y suman el total.
+--     Point: exactamente una operación processed + finalized + CLP + monto exacto, sin efectivo.
+--     Devuelve 'EF' o 'PE'; si no, lanza FISCAL_*.
+-- ---------------------------------------------------------------------------
+create or replace function fiscal.sale_payment_medio(p_business_id uuid, p_sale_id uuid)
+returns text
+language plpgsql
+stable
+security invoker
+set search_path = pg_catalog, public, fiscal
+as $$
+declare
+  v_total numeric;
+  v_cash_n integer; v_cash_sum numeric;
+  v_other_n integer; v_other_sum numeric;
+  v_point_n integer; v_point_ok integer;
+begin
+  select i.total into v_total from public.crm_invoices i
+   where i.id = p_sale_id and i.business_id = p_business_id;
+  if v_total is null then raise exception 'FISCAL_SALE_NOT_ELIGIBLE'; end if;
+
+  select count(*) filter (where p.payment_method = 'cash'),
+         coalesce(sum(p.amount) filter (where p.payment_method = 'cash'), 0),
+         count(*) filter (where p.payment_method is distinct from 'cash'),
+         coalesce(sum(p.amount) filter (where p.payment_method is distinct from 'cash'), 0)
+    into v_cash_n, v_cash_sum, v_other_n, v_other_sum
+    from public.crm_payments p
+   where p.business_id = p_business_id and p.invoice_id = p_sale_id
+     and p.payment_status = 'received' and p.voided_at is null;
+
+  select count(*),
+         count(*) filter (where o.mp_status = 'processed' and o.finalized_at is not null
+                            and o.mp_order_id is not null and o.mp_payment_id is not null
+                            and o.currency = 'CLP' and o.amount = v_total)
+    into v_point_n, v_point_ok
+    from public.crm_pos_point_operations o
+   where o.business_id = p_business_id and o.crm_invoice_id = p_sale_id;
+
+  if v_cash_n > 0 and (v_other_n > 0 or v_point_n > 0) then
+    raise exception 'FISCAL_MIXED_PAYMENTS';
+  end if;
+  if v_cash_n > 0 then
+    if v_cash_sum <> v_total then raise exception 'FISCAL_PAYMENT_AMOUNT_MISMATCH'; end if;
+    return 'EF';
+  end if;
+  if v_point_n > 0 then
+    if v_point_n <> 1 or v_point_ok <> 1 then raise exception 'FISCAL_POINT_NOT_CONFIRMED'; end if;
+    if v_other_n > 0 and v_other_sum <> v_total then raise exception 'FISCAL_PAYMENT_AMOUNT_MISMATCH'; end if;
+    return 'PE';
+  end if;
+  raise exception 'FISCAL_NO_CONFIRMED_PAYMENT';
+end;
+$$;
+
+revoke all on function fiscal.sale_payment_medio(uuid, uuid) from public, anon, authenticated;
+grant execute on function fiscal.sale_payment_medio(uuid, uuid) to service_role;
+
+-- ---------------------------------------------------------------------------
+-- 3c-bis. Guardas cruzadas en el lado de P1, P3 y P4.
+--     Antes, solo P2 consultaba a los demás pipelines. Ahora cualquier escritura activa en
+--     P1/P3/P4 comprueba si ya existe una fila P2 para la venta, bajo el mismo lock por venta
+--     que usa crm_claim_fiscal_issuance. Así no hay carrera entre pipelines.
+-- ---------------------------------------------------------------------------
+create or replace function fiscal.guard_cross_pipeline_write()
+returns trigger
+language plpgsql
+security definer
+set search_path = pg_catalog, public, fiscal
+as $$
+declare
+  v_business uuid;
+  v_sale uuid;
+  v_active boolean;
+begin
+  if tg_table_schema = 'fiscal' and tg_table_name = 'pos_dte39_outbox' then
+    v_business := new.business_id; v_sale := new.invoice_id; v_active := new.state <> 'skipped';
+  elsif tg_table_schema = 'fiscal' and tg_table_name = 'operations' then
+    v_business := new.business_id; v_sale := new.sale_id; v_active := new.status <> 'cancelled';
+  elsif tg_table_name = 'crm_point_fiscal_outbox' then
+    v_business := new.business_id; v_sale := new.sale_id; v_active := true;
+  else
+    raise exception 'unexpected guard table %.%', tg_table_schema, tg_table_name;
+  end if;
+
+  if not v_active then return new; end if;
+
+  perform pg_advisory_xact_lock(hashtextextended('fiscal_sale:' || v_sale::text, 0));
+  if exists (select 1 from public.crm_fiscal_issuances f
+              where f.business_id = v_business and f.sale_id = v_sale and f.dte_type = 39) then
+    raise exception 'FISCAL_CROSS_PIPELINE_CONFLICT: P2_CRM_FISCAL_ISSUANCES';
+  end if;
+  return new;
+end;
+$$;
+
+revoke all on function fiscal.guard_cross_pipeline_write() from public, anon, authenticated;
+
+drop trigger if exists fiscal_p3_cross_pipeline_guard on fiscal.pos_dte39_outbox;
+create trigger fiscal_p3_cross_pipeline_guard
+  before insert or update of state, business_id, invoice_id on fiscal.pos_dte39_outbox
+  for each row execute function fiscal.guard_cross_pipeline_write();
+
+drop trigger if exists fiscal_p1_cross_pipeline_guard on fiscal.operations;
+create trigger fiscal_p1_cross_pipeline_guard
+  before insert or update of status, business_id, sale_id on fiscal.operations
+  for each row execute function fiscal.guard_cross_pipeline_write();
+
+drop trigger if exists fiscal_p4_cross_pipeline_guard on public.crm_point_fiscal_outbox;
+create trigger fiscal_p4_cross_pipeline_guard
+  before insert or update of status, business_id, sale_id on public.crm_point_fiscal_outbox
+  for each row execute function fiscal.guard_cross_pipeline_write();
+
+-- ---------------------------------------------------------------------------
+-- 3d. Lecturas para el emisor (solo service_role). Una sola RPC devuelve todo el contexto fiscal
+--     de la venta, para que el almacén de Postgres y el de supabase-js lean exactamente lo mismo.
+--     Nunca devuelve credenciales.
+-- ---------------------------------------------------------------------------
+create or replace function public.crm_fiscal_emission_context(p_business_id uuid, p_sale_id uuid)
+returns jsonb
+language sql
+stable
+security invoker
+set search_path = public, fiscal
+as $$
+  select jsonb_build_object(
+    'issuer', (select jsonb_build_object('issuer_rut', s.issuer_rut, 'enabled', s.enabled, 'verified', s.verified)
+                 from fiscal.issuers s where s.business_id = p_business_id),
+    'emission_enabled', exists (select 1 from fiscal.dte39_emission_control c where c.singleton and c.enabled),
+    'tax_lines_verified', fiscal.sale_tax_lines_verified(p_business_id, p_sale_id),
+    'lines', coalesce((
+      select jsonb_agg(jsonb_build_object('id', x.id, 'name', x.name, 'unit_price', x.unit_price,
+                                          'quantity', x.quantity, 'discount_pct', x.discount_pct,
+                                          'category', x.category) order by x.sort_order nulls last, x.id)
+        from (select i.id, i.name, i.unit_price, i.quantity, i.discount_pct, i.sort_order,
+                     (select v.category from fiscal.line_tax_verifications v
+                       where v.invoice_item_id = i.id and v.verified is true
+                       order by v.created_at desc limit 1) as category
+                from public.crm_invoice_items i
+               where i.invoice_id = p_sale_id) x), '[]'::jsonb),
+    'payments', coalesce((
+      select jsonb_agg(jsonb_build_object('method', p.payment_method, 'amount', p.amount,
+                                          'status', p.payment_status, 'voided', p.voided_at is not null))
+        from public.crm_payments p
+       where p.business_id = p_business_id and p.invoice_id = p_sale_id), '[]'::jsonb),
+    'point_ops', coalesce((
+      select jsonb_agg(jsonb_build_object('mp_status', o.mp_status, 'mp_order_id', o.mp_order_id,
+                                          'mp_payment_id', o.mp_payment_id, 'finalized_at', o.finalized_at,
+                                          'currency', o.currency, 'amount', o.amount))
+        from public.crm_pos_point_operations o
+       where o.business_id = p_business_id and o.crm_invoice_id = p_sale_id), '[]'::jsonb)
+  );
+$$;
+
+revoke all on function public.crm_fiscal_emission_context(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.crm_fiscal_emission_context(uuid, uuid) to service_role;
+
+-- Credenciales: se devuelven en base64 para que cualquier cliente las decodifique igual.
+-- Solo service_role. El frontend nunca llama a esta función.
+create or replace function public.crm_fiscal_get_credentials(p_business_id uuid)
+returns jsonb
+language sql
+stable
+security invoker
+set search_path = public, fiscal
+as $$
+  select jsonb_build_object(
+    'provider', c.provider, 'key_version', c.key_version,
+    'ciphertext', encode(c.ciphertext, 'base64'),
+    'iv', encode(c.iv, 'base64'), 'auth_tag', encode(c.auth_tag, 'base64'))
+  from fiscal.business_credentials c where c.business_id = p_business_id;
+$$;
+
+revoke all on function public.crm_fiscal_get_credentials(uuid) from public, anon, authenticated;
+grant execute on function public.crm_fiscal_get_credentials(uuid) to service_role;
+
+-- Lectura de la fila de ledger de una venta (para estado y reimpresión).
+create or replace function public.crm_fiscal_get_issuance(p_business_id uuid, p_sale_id uuid)
+returns jsonb
+language sql
+stable
+security invoker
+set search_path = public
+as $$
+  select jsonb_build_object('id', f.id, 'status', f.status, 'folio', f.folio, 'pdf_base64', f.pdf_base64)
+    from public.crm_fiscal_issuances f
+   where f.business_id = p_business_id and f.sale_id = p_sale_id and f.dte_type = 39;
+$$;
+
+revoke all on function public.crm_fiscal_get_issuance(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.crm_fiscal_get_issuance(uuid, uuid) to service_role;
 
 commit;

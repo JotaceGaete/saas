@@ -60,15 +60,17 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
       const r = issuances.get(key(b, s));
       return r ? { ...r } : null;
     },
-    async loadIssuer(b) { return issuers.get(b) ?? null; },
-    async loadEmissionEnabled() { return control.enabled; },
-    async taxLinesVerified() { return taxOk; },
-    async loadLines(s) { return (lines.get(s) ?? []).map((l) => ({ ...l })); },
-    async loadPayments(s) { return (payments.get(s) ?? []).map((p) => ({ ...p })); },
-    async loadPointOps(b, s) {
+    async loadEmissionContext(b, s) {
       const sale = sales.get(s);
-      if (!sale || sale.businessId !== b) return [];
-      return (pointOps.get(s) ?? []).map((p) => ({ ...p }));
+      const sameTenant = sale && sale.businessId === b;
+      return {
+        issuer: issuers.get(b) ?? null,
+        emissionEnabled: control.enabled,
+        taxLinesVerified: taxOk,
+        lines: (lines.get(s) ?? []).map((l) => ({ ...l })),
+        payments: sameTenant ? (payments.get(s) ?? []).map((p) => ({ ...p })) : [],
+        pointOps: sameTenant ? (pointOps.get(s) ?? []).map((p) => ({ ...p })) : [],
+      };
     },
     async loadCredentialRecord(b) { return creds.get(b) ?? null; },
 

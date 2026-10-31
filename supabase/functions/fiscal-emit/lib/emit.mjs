@@ -81,24 +81,17 @@ export function createFiscalEmitter({
       throw new FiscalError('PROVIDER_NOT_READY');
     }
 
-    const [issuer, emissionEnabled, taxLinesVerified, lines, payments, pointOps] = await Promise.all([
-      store.loadIssuer(businessId),
-      store.loadEmissionEnabled(),
-      store.taxLinesVerified(businessId, sale.id),
-      store.loadLines(sale.id),
-      store.loadPayments(sale.id),
-      store.loadPointOps(businessId, sale.id),
-    ]);
+    const ctx = await store.loadEmissionContext(businessId, sale.id);
 
     const { medioPago, montoPago, payload } = evaluateEligibility({
       sale,
       business,
-      issuer,
-      emissionEnabled,
-      taxLinesVerified,
-      lines,
-      payments,
-      pointOps,
+      issuer: ctx.issuer,
+      emissionEnabled: ctx.emissionEnabled,
+      taxLinesVerified: ctx.taxLinesVerified,
+      lines: ctx.lines,
+      payments: ctx.payments,
+      pointOps: ctx.pointOps,
       operationId,
     });
 
