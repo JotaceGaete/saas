@@ -11,5 +11,5 @@ dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=
 if ($LASTEXITCODE -ne 0) { throw 'La compilación falló. Revisa los errores de arriba.' }
 
 Write-Host ''
-Write-Host 'Listo: .\publish\WalinkaPrintProbe.exe'
-Write-Host 'Prueba sin impresora: .\publish\WalinkaPrintProbe.exe selftest'
+Write-Host 'Listo: .\publish\WalinkaPrintConnector.exe'
+Write-Host 'Prueba sin impresora: .\publish\WalinkaPrintConnector.exe selftest'

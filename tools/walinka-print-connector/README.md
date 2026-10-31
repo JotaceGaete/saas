@@ -17,7 +17,7 @@ Fuera de alcance (no implementado a propósito): API HTTP local, emparejamiento,
    ```powershell
    .\build.ps1
    ```
-   Genera `publish\WalinkaPrintProbe.exe` (autocontenido, sin runtime aparte).
+   Genera `publish\WalinkaPrintConnector.exe` (autocontenido, sin runtime aparte).
 
 Si PowerShell bloquea el script: `Set-ExecutionPolicy -Scope Process Bypass` y vuelve a ejecutar.
 
@@ -27,50 +27,50 @@ Todos los comandos se ejecutan desde `publish\`.
 
 1. Verifica las secuencias de bytes (no usa impresora):
    ```powershell
-   .\WalinkaPrintProbe.exe selftest
+   .\WalinkaPrintConnector.exe selftest
    ```
    Debe terminar con `Todo OK.`
 
 2. Revisa las impresoras instaladas:
    ```powershell
-   .\WalinkaPrintProbe.exe list
+   .\WalinkaPrintConnector.exe list
    ```
    Anota el nombre exacto de la Star TSP143 (incluye espacios y mayúsculas tal como aparece).
 
 3. Genera el ticket sin imprimir, para revisar los bytes:
    ```powershell
-   .\WalinkaPrintProbe.exe bytes --out ticket-e1.bin --cut modern
+   .\WalinkaPrintConnector.exe bytes --out ticket-e1.bin --cut modern
    ```
 
 4. Imprime el ticket de prueba con corte:
    ```powershell
-   .\WalinkaPrintProbe.exe test-print --printer "Star TSP143" --cut modern
+   .\WalinkaPrintConnector.exe test-print --printer "Star TSP143" --cut modern
    ```
    - Si Windows reporta problemas (sin conexión, sin papel, atascada), el programa no envía nada. Revisa la impresora y vuelve a intentar.
    - `--force` envía igual. Úsalo solo para diagnóstico.
 
 5. Prueba de corte alternativa, si el modern no corta:
    ```powershell
-   .\WalinkaPrintProbe.exe test-print --printer "Star TSP143" --cut legacy
+   .\WalinkaPrintConnector.exe test-print --printer "Star TSP143" --cut legacy
    ```
 
 6. Diagnóstico de corte (v0.2). Cada variante es un job mínimo, sin ticket completo ni cajón:
    ```powershell
-   .\WalinkaPrintProbe.exe info --printer "NOMBRE"
-   .\WalinkaPrintProbe.exe cut-probe --list-variants
-   .\WalinkaPrintProbe.exe cut-probe --printer "NOMBRE" --variant T
-   .\WalinkaPrintProbe.exe cut-probe --printer "NOMBRE" --variant A
-   .\WalinkaPrintProbe.exe cut-probe --printer "NOMBRE" --variant C
-   .\WalinkaPrintProbe.exe cut-probe --printer "NOMBRE" --variant D
-   .\WalinkaPrintProbe.exe cut-probe --printer "NOMBRE" --variant B
-   .\WalinkaPrintProbe.exe cut-probe --printer "NOMBRE" --variant E
+   .\WalinkaPrintConnector.exe info --printer "NOMBRE"
+   .\WalinkaPrintConnector.exe cut-probe --list-variants
+   .\WalinkaPrintConnector.exe cut-probe --printer "NOMBRE" --variant T
+   .\WalinkaPrintConnector.exe cut-probe --printer "NOMBRE" --variant A
+   .\WalinkaPrintConnector.exe cut-probe --printer "NOMBRE" --variant C
+   .\WalinkaPrintConnector.exe cut-probe --printer "NOMBRE" --variant D
+   .\WalinkaPrintConnector.exe cut-probe --printer "NOMBRE" --variant B
+   .\WalinkaPrintConnector.exe cut-probe --printer "NOMBRE" --variant E
    ```
    Anotá por variante: texto completo (sí/no), "V" al inicio (sí/no), corte (sí/no).
    Ejecutá también `info` en el computador donde QZ sí corta y compará los bloques.
 
 7. Cajón (opcional, solo con confirmación explícita):
    ```powershell
-   .\WalinkaPrintProbe.exe drawer --printer "Star TSP143" --confirm
+   .\WalinkaPrintConnector.exe drawer --printer "Star TSP143" --confirm
    ```
    Sin `--confirm` no envía nada.
 

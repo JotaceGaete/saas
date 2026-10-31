@@ -1,4 +1,4 @@
-namespace WalinkaPrintProbe;
+namespace WalinkaPrintConnector;
 
 public enum CutStyle { Modern, Legacy, FullModern, None }
 

@@ -1,4 +1,4 @@
-namespace WalinkaPrintProbe;
+namespace WalinkaPrintConnector;
 
 /// <summary>
 /// Trabajos mínimos para aislar el corte. Cada variante es un job de pocas líneas,
