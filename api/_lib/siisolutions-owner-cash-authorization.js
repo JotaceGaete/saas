@@ -16,7 +16,7 @@ export function createOwnerCashFiscalAuthorization(admin) {
     if (!verifyReceipt) return true;
     if (!payment || payment.business_id !== businessId ||
         payment.invoice_id !== invoiceId || payment.created_by !== actorId ||
-        payment.payment_method !== 'cash' || payment.payment_status !== 'received' ||
+        !['cash', 'bank_transfer', 'debit_card', 'credit_card'].includes(payment.payment_method) || payment.payment_status !== 'received' ||
         payment.voided_at != null) return false;
     return true;
   };
