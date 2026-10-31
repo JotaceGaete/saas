@@ -3,7 +3,7 @@
 // un error temprano y explícito antes de tocar el ledger.
 
 import { FiscalError } from './errors.mjs';
-import { MEDIO_PAGO, buildBoletaPayload } from './payload.mjs';
+import { MEDIO_PAGO, buildBoletaPayload, santiagoDate } from './payload.mjs';
 
 const MP_METHOD = 'mercado_pago';
 
@@ -80,6 +80,7 @@ export function evaluateEligibility({
     lines,
     montoPago: total,
     medioPago,
+    fechaEmision: santiagoDate(sale.paidAt),
   });
   return { medioPago, montoPago: total, payload };
 }

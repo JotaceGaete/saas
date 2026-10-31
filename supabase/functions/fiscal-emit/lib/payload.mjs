@@ -1,13 +1,57 @@
-// Construcción del cuerpo para DTECore POST /dte/boletas/emitir.
-// Campos y nombres según el informe de integración (reportado, NO verificado contra la
-// documentación oficial). Ver F2 §5. No se envía folio ni fechaEmision: los asigna el proveedor.
+// Cuerpo de POST /dte/boletas/emitir según el ejemplo oficial de la colección Postman
+// (SII Solutions API). Nombres y tipos siguen ese ejemplo: montoPago y vuelto son texto,
+// total y descuentoGlobal son números, folio va null (lo asigna el proveedor).
+//
+// SUPUESTOS PENDIENTES DE CONFIRMAR (no verificados contra un entorno real):
+//  - Los precios del TPV son BRUTOS (IVA incluido). El ejemplo oficial muestra precio neto
+//    10000 con total 11900 (IVA 19%), así que para líneas IVA_AFECTO_19 se envía precio = neto.
+//  - Sucursal y cliente por defecto (BOLETA_DEFAULTS) son los del ejemplo; el negocio real
+//    debe tener sus propios valores.
 
 import { FiscalError } from './errors.mjs';
 
 export const MAX_DESCRIPCION = 80;
 export const MEDIO_PAGO = Object.freeze({ CASH: 'EF', POINT: 'PE' });
+export const IVA_RATE = 0.19;
 
-export function buildBoletaPayload({ operationId, rutOperador, lines, montoPago, medioPago }) {
+export const BOLETA_DEFAULTS = Object.freeze({
+  sucursalEmision: 'CASA MATRIZ',
+  sucursalCodigo: '0',
+  cliente: Object.freeze({
+    idCliente: 0,
+    rut: '66666666',
+    digito: '6',
+    razonSocial: 'Consumidor final',
+    giro: 'SIN GIRO',
+    direccion: '',
+    ciudad: '',
+    comuna: '',
+    contacto: '',
+    fono: '',
+    email: '',
+    cargo: '',
+    nombreSucursal: '',
+  }),
+});
+
+// Fecha de emisión YYYY-MM-DD en hora de Santiago (la boleta se emite el día de la venta).
+export function santiagoDate(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) throw new FiscalError('PAYLOAD_INVALID', 'invalid paidAt');
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit' })
+    .format(d);
+}
+
+export function buildBoletaPayload({
+  operationId,
+  rutOperador,
+  lines,
+  montoPago,
+  medioPago,
+  fechaEmision,
+  sucursal = { nombre: BOLETA_DEFAULTS.sucursalEmision, codigo: BOLETA_DEFAULTS.sucursalCodigo },
+  cliente = BOLETA_DEFAULTS.cliente,
+}) {
   if (!operationId || typeof operationId !== 'string') {
     throw new FiscalError('PAYLOAD_INVALID', 'operationId required');
   }
@@ -18,16 +62,18 @@ export function buildBoletaPayload({ operationId, rutOperador, lines, montoPago,
   if (!Number.isSafeInteger(montoPago) || montoPago <= 0) {
     throw new FiscalError('PAYLOAD_INVALID', 'montoPago must be a positive integer');
   }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fechaEmision ?? ''))) {
+    throw new FiscalError('PAYLOAD_INVALID', 'fechaEmision must be YYYY-MM-DD');
+  }
   if (!Array.isArray(lines) || lines.length === 0) {
     throw new FiscalError('PAYLOAD_INVALID', 'at least one line required');
   }
 
-  let sum = 0;
+  let grossSum = 0;
   const detalles = lines.map((l, idx) => {
     const descripcion = String(l.name ?? '').trim();
     if (!descripcion) throw new FiscalError('PAYLOAD_INVALID', `line ${idx + 1} without description`);
     if (descripcion.length > MAX_DESCRIPCION) {
-      // Decisión pendiente del owner: rechazar (aquí) vs truncar. Por defecto se rechaza.
       throw new FiscalError('DESCRIPTION_TOO_LONG', `line ${idx + 1} description exceeds ${MAX_DESCRIPCION}`);
     }
     if (!Number.isSafeInteger(l.unitPrice) || l.unitPrice <= 0) {
@@ -39,30 +85,46 @@ export function buildBoletaPayload({ operationId, rutOperador, lines, montoPago,
     if (Number(l.discountPct ?? 0) !== 0) {
       throw new FiscalError('DISCOUNT_NOT_SUPPORTED', `line ${idx + 1} has discount`);
     }
-    sum += l.unitPrice * l.quantity;
+    const esExento = l.category === 'EXENTO';
+    const subtotal = l.unitPrice * l.quantity; // bruto: lo que paga el cliente
+    grossSum += subtotal;
     return {
       linea: idx + 1,
       descripcion,
-      precio: l.unitPrice,
+      DscItem: '',
+      precio: esExento ? l.unitPrice : Math.round(l.unitPrice / (1 + IVA_RATE)),
       cantidad: l.quantity,
-      esExento: l.category === 'EXENTO',
+      precioPorcentajeDescuento: 0,
+      precioDescuento: 0,
+      precioSubtotal: subtotal,
+      esExento,
     };
   });
 
-  if (sum !== montoPago) {
-    throw new FiscalError('PRICE_MISMATCH', `sum of lines ${sum} != montoPago ${montoPago}`);
+  if (grossSum !== montoPago) {
+    throw new FiscalError('PRICE_MISMATCH', `sum of lines ${grossSum} != montoPago ${montoPago}`);
   }
 
   return {
     rutOperador,
     idBoletaOperacion: operationId,
-    detalles,
+    folio: null,
+    fechaEmision,
+    total: montoPago,
+    descuentoGlobal: 0,
+    montoPago: String(montoPago),
+    vuelto: '0',
     medioPago,
-    montoPago,
-    retornarPdf: true,
     formatoPdf: '80mm',
-    modoPdfSalida: 'base64',
+    retornarPdf: true,
     retornarXml: true,
+    modoPdfSalida: 'base64',
+    modoEntrada: 'json',
     enviarCorreo: false,
+    sucursalEmision: sucursal.nombre,
+    sucursalCodigo: sucursal.codigo,
+    cliente,
+    detalles,
+    referencias: [],
   };
 }

@@ -13,12 +13,14 @@ let server;
 let baseUrl;
 let next = null; // { status, body } que devuelve el siguiente request
 let lastReq = null;
+let requests = 0;
 
 before(async () => {
   server = http.createServer((req, res) => {
     let raw = '';
     req.on('data', (c) => { raw += c; });
     req.on('end', () => {
+      requests += 1;
       lastReq = { method: req.method, url: req.url, headers: req.headers, body: raw ? JSON.parse(raw) : null };
       if (next?.hang) return; // nunca responde: prueba de plazo
       res.writeHead(next.status, { 'content-type': 'application/json' });
@@ -131,4 +133,57 @@ test('integración con el emisor: el reclamo guarda el documento solo con result
   assert.equal(r.status, 'issued');
   assert.equal(r.folio, 7);
   assert.equal(lastReq.body.idBoletaOperacion, operationIdFor(IDS.bizA, IDS.saleA));
+});
+
+// Flujo completo TPV -> emisor -> adaptador -> servidor simulado -> almacén.
+async function runSale(status, body) {
+  const MASTER = randomBytes(32);
+  const store = createMemoryStore({ masterKey: MASTER });
+  store.seed({ businessId: IDS.bizA, userId: IDS.userA, saleId: IDS.saleA });
+  const provider = { ...createSiisolutionsHttpProvider({ baseUrl }), ready: true };
+  const emitter = createFiscalEmitter({ store, provider, masterKey: MASTER, timeoutMs: 1000 });
+  next = { status, body };
+  requests = 0;
+  const result = await emitter.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA }).catch((e) => ({ error: e }));
+  return { store, result, emitter, row: store.issuances.get(`${IDS.bizA}|${IDS.saleA}`) };
+}
+
+test('flujo completo 200: guarda folio, XML y PDF; el payload enviado sigue el contrato', async () => {
+  const { result, row } = await runSale(200, { folio: 7, esSimulacion: false, xmlBase64: 'PD94', pdfBase64: 'JVBE' });
+  assert.equal(result.status, 'issued');
+  assert.equal(result.folio, 7);
+  assert.equal(row.status, 'issued');
+  assert.equal(row.folio, 7);
+  assert.equal(row.xmlBase64, 'PD94');
+  assert.equal(row.pdfBase64, 'JVBE');
+  assert.equal(requests, 1);
+  assert.equal(lastReq.body.folio, null);
+  assert.equal(typeof lastReq.body.montoPago, 'string');
+  assert.equal(typeof lastReq.body.total, 'number');
+  assert.equal(lastReq.body.idBoletaOperacion, operationIdFor(IDS.bizA, IDS.saleA));
+});
+
+test('flujo completo: una segunda emisión de la misma venta no vuelve a llamar al servidor', async () => {
+  const { emitter } = await runSale(200, { folio: 8, esSimulacion: false, xmlBase64: 'PD94', pdfBase64: 'JVBE' });
+  requests = 0;
+  const again = await emitter.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA });
+  assert.equal(again.status, 'issued');
+  assert.equal(again.alreadyIssued, true);
+  assert.equal(requests, 0);
+});
+
+test('flujo completo 400 de validación: la venta queda failed, sin folio, sin reintento', async () => {
+  const { result, row } = await runSale(400, { success: false, error: 'El campo Cliente.RutReceptor es requerido.' });
+  assert.equal(result.status, 'failed');
+  assert.equal(row.status, 'failed');
+  assert.equal(row.folio, null);
+  assert.equal(requests, 1);
+});
+
+test('flujo completo 500: resultado incierto (unknown), sin reintento automático', async () => {
+  const { result, row } = await runSale(500, 'boom');
+  assert.equal(result.status, 'unknown');
+  assert.equal(row.status, 'unknown');
+  assert.equal(row.folio, null);
+  assert.equal(requests, 1);
 });
