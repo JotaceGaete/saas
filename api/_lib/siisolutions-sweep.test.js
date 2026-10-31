@@ -173,3 +173,20 @@ test('candidate ledger lookup is scoped to business and sale', async () => {
   const candidates = await createPointSweepCandidateLister(admin)({ limit: 10 });
   assert.deepEqual(candidates, [{ businessId: otherBusiness, invoiceId: S1 }]);
 });
+
+
+test('candidate query honors explicit activation cutoff', async () => {
+  let actualSince = null;
+  const admin = { from(table) {
+    const q = {
+      select() { return q; }, not() { return q; },
+      gte(column, value) { if (column === 'created_at') actualSince = value; return q; },
+      order() { return q; }, limit() { return q; },
+      then(resolve) { return resolve({ data: [], error: null }); },
+    };
+    return q;
+  } };
+  const cutoff = '2026-10-30T12:00:00.000Z';
+  await createPointSweepCandidateLister(admin, { sinceDays: 365, notBefore: cutoff })({ limit: 10 });
+  assert.equal(actualSince, cutoff);
+});
