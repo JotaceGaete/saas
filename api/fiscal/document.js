@@ -41,18 +41,17 @@ export function createFiscalDocumentHandler({ admin, assertOwner }) {
 }
 
 export default async function handler(req, res) {
-  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anon = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_PUBLISHABLE_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  // Match the Supabase project used by the browser session, not a possibly stale server URL.
+  const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !anon || !secret) {
+  if (!url || !secret) {
     res.setHeader('Cache-Control', 'no-store');
     return res.status(503).json({ error: 'SERVER_NOT_CONFIGURED' });
   }
   const options = { auth: { persistSession: false, autoRefreshToken: false } };
-  const authClient = createClient(url, anon, options);
   const admin = createClient(url, secret, options);
   const authenticate = async token => {
-    const { data, error } = await authClient.auth.getUser(token);
+    const { data, error } = await admin.auth.getUser(token);
     if (error || !data?.user?.id) throw new Error('Invalid session');
     return data.user.id;
   };
