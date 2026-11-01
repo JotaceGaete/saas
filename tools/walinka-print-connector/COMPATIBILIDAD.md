@@ -190,3 +190,45 @@ Todas empiezan con `ESC @`, no contienen pulso de cajón (`ESC p`) y pasan el va
   con un compilado de prueba para Linux (93 pruebas OK). La compilación oficial la hace `build.ps1` en Windows.
 - Las pruebas no tocan la cola de ventas ni el registro de trabajos de impresión.
 - El logo queda fuera; se aborda después de confirmar el corte.
+
+## 11. Configuración que funcionó — Star TSP100IIU (prueba física 2026-11-01 13:02:41)
+
+Confirmado físicamente: E1 (`test-print --cut modern`) imprimió el ticket completo y la impresora cortó sola.
+Ticket `minimal-cut --cut modern` también cortó (una línea, un LF).
+
+### 11.1 Comandos que se enviaron (E1, `TicketBuilder.Build(CutStyle.Modern)`)
+
+- `1B 40` (ESC @, init)
+- `1B 61 00` (ESC a 0, alineación izquierda)
+- 17 líneas de texto ASCII, cada una con `0A`
+- `0A 0A 0A 0A` (4 LF de avance)
+- `1D 56 42 00` (GS V 66 0, corte parcial)
+
+Mismo corte que `minimal-cut` (1 LF antes de `GS V 66 0`). La diferencia entre ambos es solo el número de LF y la cantidad de texto.
+
+### 11.2 Transporte
+
+- `Spooler.SendRaw`: `OpenPrinter` → `StartDocPrinterW` con `pDatatype = "RAW"` → `StartPagePrinter` → **un** `WritePrinter` con el buffer completo (verifica bytes escritos) → `EndPagePrinter` → `EndDocPrinter`.
+- Sin render GDI ni XPS: el firmware de la impresora interpreta los bytes.
+
+### 11.3 Configuración de la impresora y de la cola (pendiente de completar)
+
+Estos datos definen el perfil de la TSP100IIU. Pégalos desde la salida de `info --printer "Star TSP100IIU"` y de la autoprueba:
+
+- Modelo: Star TSP100IIU Ver3.0 (autoprueba)
+- Cutter: Enable (autoprueba)
+- USB Class: Printer (autoprueba)
+- Área imprimible: 72 mm (autoprueba)
+- Modo de emulación: **[PENDIENTE: ESC/POS o Star Line, según la autoprueba]**
+- Nombre de la cola: **[PENDIENTE]**
+- Driver: **[PENDIENTE]**
+- Puerto: **[PENDIENTE]**
+- Datatype por defecto de la cola: **[PENDIENTE]**
+- Print processor: **[PENDIENTE]**
+
+### 11.4 Qué no se ha validado
+
+- Logo (raster) con corte automático: pendiente.
+- Ticket de venta completo con productos y totales: pendiente.
+- Avance: el ticket funcionó con 4 LF; reducir a 2 LF queda como prueba aparte.
+- XP-80C: sin cambios; sigue con sus perfiles actuales.
