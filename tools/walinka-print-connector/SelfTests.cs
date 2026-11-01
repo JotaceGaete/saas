@@ -188,6 +188,11 @@ public static class SelfTests
             var starBytes = StarProbe.Build(StarProbe.Find("S3")!, "Prueba");
             var allStar = StarProbe.Variants.All(v => Err(StarProbe.Build(v, "Prueba")) is null);
             Check(allStar, "todas las variantes star-probe pasan la validación ESC/POS");
+            var minimal = MinimalCut.Build(CutStyle.Modern, "P");
+            Check(Err(minimal) is null, "corte mínimo pasa la validación ESC/POS");
+            Check(ContainsSequence(minimal, EscPos.CutPartialModern), "corte mínimo envía GS V 66 0");
+            Check(minimal.Length >= 5 && minimal.Skip(minimal.Length - 5).SequenceEqual(new byte[] { 0x0A, 0x1D, 0x56, 0x42, 0x00 }),
+                "corte mínimo: un solo LF justo antes de GS V 66 0 al final");
             Check(StarProbe.Variants.Select(v => v.Code).Distinct().Count() == StarProbe.Variants.Count, "códigos star-probe únicos");
             Check(starBytes.Take(2).SequenceEqual(EscPos.Init), "star-probe empieza con ESC @");
             Check(ContainsSequence(starBytes, EscPos.Feed(4)) && ContainsSequence(starBytes, EscPos.CutFullModern),

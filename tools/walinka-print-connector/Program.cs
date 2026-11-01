@@ -46,6 +46,8 @@ internal static class Program
                     return CutProbeCommand(args);
                 case "star-probe":
                     return StarProbeCommand(args);
+                case "minimal-cut":
+                    return MinimalCutCommand(args);
                 case "bytes":
                     return WriteTicketBytes(args);
                 case "selftest":
@@ -121,6 +123,7 @@ internal static class Program
           cut-probe --list-variants
           star-probe --printer "NOMBRE" --variant S0|S1|S2|S3 [--force]
           star-probe --list-variants
+          minimal-cut --printer "NOMBRE" [--cut modern|legacy|full|none] [--force]
           bytes --out ARCHIVO [--cut modern|legacy|full|none]
 
         Pruebas:
@@ -444,6 +447,26 @@ internal static class Program
 
         Spooler.SendRaw(printer.Name, StarProbe.Build(variant, printer.Name), $"Walinka - star-probe {variant.Code}");
         Console.WriteLine($"Variante {variant.Code} enviada. Windows aceptó el trabajo. Anota: texto legible, 'V' al inicio, basura, y si corta.");
+        return 0;
+    }
+
+    private static int MinimalCutCommand(string[] args)
+    {
+        var printerName = RequireOption(args, "--printer");
+        var cut = ParseCut(GetOption(args, "--cut") ?? "modern");
+        var force = args.Contains("--force");
+
+        var printer = Spooler.FindPrinter(printerName)
+            ?? throw new ArgumentException($"No existe una impresora llamada \"{printerName}\".");
+        var problems = Spooler.DescribeStatus(printer.Status);
+        if (problems.Count > 0 && !force)
+        {
+            foreach (var problem in problems) Console.WriteLine($"  - {problem}");
+            return Fail("No se envió nada. Revisa la impresora o usa --force.");
+        }
+
+        Spooler.SendRaw(printer.Name, MinimalCut.Build(cut, printer.Name), "Walinka - corte minimo (sin venta)");
+        Console.WriteLine("Windows aceptó el trabajo. Confirma visualmente si cortó.");
         return 0;
     }
 
