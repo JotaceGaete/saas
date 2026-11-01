@@ -1,6 +1,7 @@
 import { qzTrayProvider } from './providers/qzTrayProvider';
 import { assertPrinterProvider } from './providers/printerProvider';
 import { renderEscPosReceipt } from './receipts/renderEscPosReceipt';
+import { explainPrinterSetupError, getPrinterSetupSteps } from './printerOnboarding';
 
 // PRINT-1 — única fachada de impresión que el resto de Walinka debe
 // conocer. Ninguna página ni servicio de negocio debe importar
@@ -18,14 +19,34 @@ export const printService = {
   disconnect: () => provider.disconnect(),
   listPrinters: () => provider.listPrinters(),
 
+  // Non-destructive setup API for a future guided CRM screen.
+  // Never creates a sale, prints a receipt, or changes the printer configuration.
+  getSetupSteps: getPrinterSetupSteps,
+  explainSetupError: explainPrinterSetupError,
+  checkConnection: async () => {
+    try {
+      const printers = await provider.listPrinters();
+      return { ok: true, printers };
+    } catch (error) {
+      return { ok: false, printers: [], error: explainPrinterSetupError(error) };
+    }
+  },
+
   /**
+   * E3 — `connector` es opcional: una instancia de localConnectorProvider
+   * (Walinka Print Connector). Sin ella se usa QZ Tray, como hasta ahora.
+   * Nunca hay fallback automático entre ambos: el que llama decide.
+   *
    * @param {import('./receipts/renderEscPosReceipt').Receipt} receipt
-   * @param {{ printerName: string, copies?: number }} target
+   * @param {{ printerName: string, copies?: number, idempotencyKey?: string, connector?: object }} target
    */
-  printReceipt: async (receipt, { printerName, copies } = {}) => {
+  printReceipt: async (receipt, { printerName, copies, idempotencyKey, connector } = {}) => {
     // PRINT-4: renderEscPosReceipt es async (el logo requiere cargar y
     // rasterizar una imagen) -- ver receipts/renderEscPosReceipt.js.
     const bytes = await renderEscPosReceipt(receipt);
+    if (connector) {
+      return connector.print(printerName, bytes, { copies, idempotencyKey });
+    }
     return provider.print(printerName, bytes, { copies });
   },
 };
