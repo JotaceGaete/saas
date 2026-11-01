@@ -110,6 +110,20 @@ export default function CrmPrintSettings() {
   // aplica su perfil. Elegir una impresora SIN preset nunca cambia el perfil
   // de otra: solo deshace el perfil exclusivo de preset (starTsp100) y vuelve
   // al Recomendado, para que la XP-80C u otra impresora no quede con ese perfil.
+  // PRINT-6 — con el conector activo la impresora la guarda el conector
+  // (connector.selectPrinter), NO el printerName de la configuración de QZ.
+  // Aquí solo se aplica el perfil del preset a la config local de este
+  // navegador, que es la que lee la venta. Otras impresoras no cambian nada.
+  const handleSelectConnectorPrinter = (printerName) => {
+    connector.selectPrinter(printerName);
+    setPrintResult(null);
+    const presetProfileId = getPresetProfileIdForPrinter(printerName || null);
+    if (!presetProfileId) return;
+    const next = applyProfileFields(config, presetProfileId);
+    setConfig(next);
+    if (configKey) writePrinterConfig(configKey, next);
+  };
+
   const handleSelectPrinter = (printerName) => {
     const presetProfileId = getPresetProfileIdForPrinter(printerName || null);
     let next = { ...config, printerName: printerName || null };
@@ -398,7 +412,7 @@ export default function CrmPrintSettings() {
             <select
               id="print-printer-select"
               value={activePrinterName || ''}
-              onChange={(e) => (connectorActive ? connector.selectPrinter(e.target.value) : handleSelectPrinter(e.target.value))}
+              onChange={(e) => (connectorActive ? handleSelectConnectorPrinter(e.target.value) : handleSelectPrinter(e.target.value))}
               disabled={connectorActive
                 ? connector.health !== 'ok' || activePrinters.length === 0
                 : qzStatus !== 'connected' || printers.length === 0}
