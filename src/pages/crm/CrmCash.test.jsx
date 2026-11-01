@@ -1350,6 +1350,54 @@ describe('CASH-OPEN-SESSION-REPRINT — Reimprimir en caja abierta', () => {
     expect(voidCashMovement).not.toHaveBeenCalled();
   });
 
+  describe('ruta de impresión: Walinka Print Connector o QZ, nunca cambio silencioso', () => {
+    const CONNECTOR_KEY = 'walinka:print-connector:biz1';
+    const connectorConfig = (over = {}) => JSON.stringify({
+      enabled: true, token: 'x'.repeat(40), baseUrl: 'http://127.0.0.1:47801',
+      printerName: 'Star TSP100 Cutter (TSP143)', ...over,
+    });
+    beforeEach(() => { localStorage.clear(); });
+    afterEach(() => { localStorage.clear(); });
+
+    it('con conector activo, reimprimir usa el conector con la impresora del conector', async () => {
+      localStorage.setItem(CONNECTOR_KEY, connectorConfig());
+      const row = await renderOpenWith(POS_VALID);
+      fireEvent.click(within(row).getByRole('button', { name: 'Reimprimir' }));
+      await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
+      const opts = printReceiptMock.mock.calls[0][1];
+      expect(opts.printerName).toBe('Star TSP100 Cutter (TSP143)');
+      expect(opts.connector).toBeDefined();
+      expect(typeof opts.connector.print).toBe('function');
+    });
+
+    it('si el conector falla, muestra el error y NO reintenta por QZ', async () => {
+      localStorage.setItem(CONNECTOR_KEY, connectorConfig());
+      printReceiptMock.mockRejectedValueOnce(new Error('Conector no responde'));
+      const row = await renderOpenWith(POS_VALID);
+      fireEvent.click(within(row).getByRole('button', { name: 'Reimprimir' }));
+      expect(await screen.findByText('Conector no responde')).toBeInTheDocument();
+      expect(printReceiptMock).toHaveBeenCalledTimes(1);
+      expect(printReceiptMock.mock.calls[0][1].connector).toBeDefined();
+    });
+
+    it('sin conector configurado, reimprimir usa QZ (sin connector)', async () => {
+      const row = await renderOpenWith(POS_VALID);
+      fireEvent.click(within(row).getByRole('button', { name: 'Reimprimir' }));
+      await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
+      const opts = printReceiptMock.mock.calls[0][1];
+      expect(opts.printerName).toBe('EPSON-TM-T20');
+      expect(opts.connector).toBeUndefined();
+    });
+
+    it('conector activo sin impresora elegida: bloquea y NO cae a QZ', async () => {
+      localStorage.setItem(CONNECTOR_KEY, connectorConfig({ printerName: null }));
+      const row = await renderOpenWith(POS_VALID);
+      fireEvent.click(within(row).getByRole('button', { name: 'Reimprimir' }));
+      await screen.findByText(/impresora/i);
+      expect(printReceiptMock).not.toHaveBeenCalled();
+    });
+  });
+
   it('si la venta llega anulada desde la base, no imprime y muestra el error', async () => {
     getCrmInvoiceMock.mockResolvedValue({ data: { id: 'inv-pos-open', source: 'pos', status: 'anulada', crm_invoice_items: [] }, error: null });
     const row = await renderOpenWith(POS_VALID);
