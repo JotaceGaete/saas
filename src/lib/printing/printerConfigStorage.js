@@ -33,7 +33,7 @@ const KNOWN_IMAGE_MODES = new Set(['bitImageEscStar', 'rasterGsV0', 'none']);
 const DEFAULT_CUT_STRATEGY_ID = 'gs-v-modern';
 const KNOWN_CUT_STRATEGY_IDS = new Set(['gs-v-modern', 'gs-v-legacy', 'none']);
 const DEFAULT_PROFILE_ID = 'generic80';
-const KNOWN_PROFILE_IDS = new Set(['generic80', 'compatibility80', 'textOnly80']);
+const KNOWN_PROFILE_IDS = new Set(['generic80', 'compatibility80', 'textOnly80', 'starTsp100']);
 
 export function buildPrinterConfigKey(businessId) {
   const business = String(businessId || '').trim();

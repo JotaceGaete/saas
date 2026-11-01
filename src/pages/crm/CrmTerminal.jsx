@@ -24,6 +24,8 @@ import {
 import { printService } from 'lib/printing/printService';
 import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
+import { buildConnectorConfigKey, readConnectorConfig } from 'lib/printing/connectorConfigStorage';
+import { buildPrintTarget, resolvePrintRoute, ROUTE } from 'lib/printing/printRouting';
 
 // CAJA-CIERRE-CONCILIACION-1 -- 'card' genérico se reemplaza por
 // debit_card/credit_card para ventas NUEVAS (permite conciliar cada
@@ -312,6 +314,12 @@ function CrmTerminalUI() {
 
   const searchRef = useRef(null);
   const printedTicketRef = useRef(null);
+  // E3 — claves de idempotencia del conector. `reprintRequestedRef` lo marca
+  // "Reimprimir" (clave nueva, la venta ya se imprimió); `printAttemptRef`
+  // recuerda el último intento: tras un error el reintento reutiliza la misma
+  // clave (el conector solo reenvía una clave en estado `failed`).
+  const reprintRequestedRef = useRef(false);
+  const printAttemptRef = useRef({ saleKey: null, key: null, failed: false });
 
   // PRINT-2 — impresión real del ticket vía PrintService/QZ Tray, sin el
   // diálogo de impresión del navegador. La venta ya está guardada
@@ -326,7 +334,26 @@ function CrmTerminalUI() {
   const printCurrentTicket = useCallback(async () => {
     if (!ticketData) return;
     const printerConfig = readPrinterConfig(buildPrinterConfigKey(business?.id));
+    const connectorConfig = readConnectorConfig(buildConnectorConfigKey(business?.id));
+    // Con el Walinka Print Connector activo no depende de la impresora QZ.
     if (!printerConfig.printerName) {
+      if (resolvePrintRoute(connectorConfig) !== ROUTE.CONNECTOR) {
+        setPrintStatus('missing_printer');
+        setPrintErrorMessage(null);
+        return;
+      }
+    }
+    const saleKey = String(ticketData.sale?.id ?? ticketData.sale?.invoice_number);
+    const prevAttempt = printAttemptRef.current;
+    const sameSale = prevAttempt.saleKey === saleKey;
+    const reprintRequested = reprintRequestedRef.current;
+    reprintRequestedRef.current = false;
+    let idempotencyKey;
+    if (sameSale && prevAttempt.failed) idempotencyKey = prevAttempt.key;
+    else if (sameSale && reprintRequested) idempotencyKey = `sale:${saleKey}:reprint:${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
+    else idempotencyKey = `sale:${saleKey}:ticket`;
+    const target = buildPrintTarget({ connectorConfig, qzPrinterName: printerConfig.printerName, idempotencyKey });
+    if (target.error) {
       setPrintStatus('missing_printer');
       setPrintErrorMessage(null);
       return;
@@ -348,9 +375,17 @@ function CrmTerminalUI() {
         cutStrategyId: printerConfig.cutStrategyId,
         effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,
       });
-      await printService.printReceipt(receipt, { printerName: printerConfig.printerName });
+      await printService.printReceipt(receipt, {
+        printerName: target.printerName,
+        idempotencyKey,
+        connector: target.connector,
+      });
+      // Un duplicado significa que el conector ya lo había enviado: para el
+      // cajero es éxito, y no se vuelve a imprimir.
+      printAttemptRef.current = { saleKey, key: idempotencyKey, failed: false };
       setPrintStatus('success');
     } catch (err) {
+      printAttemptRef.current = { saleKey, key: idempotencyKey, failed: true };
       // PRINT-3A-BUG1: QZ Tray reemplaza cualquier rechazo de la firma por
       // el genérico "Failed to sign request" (ver qzTrayProvider.js, que
       // ya logueó la causa real con logSigningFailure antes de llegar
@@ -1388,6 +1423,7 @@ function CrmTerminalUI() {
   // ambas reenvían el mismo ticket ya construido, nunca vuelven a crear
   // la venta ni a tocar pagos/stock.
   const handleReprint = useCallback(() => {
+    reprintRequestedRef.current = true;
     printCurrentTicket();
   }, [printCurrentTicket]);
 
