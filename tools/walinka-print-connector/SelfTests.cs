@@ -185,6 +185,17 @@ public static class SelfTests
             var allProbes = CutProbe.Variants.All(v => Err(CutProbe.Build(v, "Prueba")) is null);
             var allTickets = Enum.GetValues<CutStyle>().All(c => Err(TicketBuilder.Build(c, "Prueba")) is null);
             Check(allProbes, "todas las variantes de prueba de corte del conector pasan la validación");
+            var starBytes = StarProbe.Build(StarProbe.Find("S3")!, "Prueba");
+            var allStar = StarProbe.Variants.All(v => Err(StarProbe.Build(v, "Prueba")) is null);
+            Check(allStar, "todas las variantes star-probe pasan la validación ESC/POS");
+            Check(StarProbe.Variants.Select(v => v.Code).Distinct().Count() == StarProbe.Variants.Count, "códigos star-probe únicos");
+            Check(starBytes.Take(2).SequenceEqual(EscPos.Init), "star-probe empieza con ESC @");
+            Check(ContainsSequence(starBytes, EscPos.Feed(4)) && ContainsSequence(starBytes, EscPos.CutFullModern),
+                "star-probe S3 usa ESC d 4 y GS V 65 0");
+            Check(StarProbe.Variants.All(v => !ContainsSequence(StarProbe.Build(v, "P"), new byte[] { 0x1B, 0x70 })),
+                "star-probe no contiene pulso de cajón (ESC p)");
+            Check(StarProbe.Variants.Where(v => v.Cut is null).All(v => !ContainsSequence(StarProbe.Build(v, "P"), new byte[] { 0x1D, 0x56 })),
+                "star-probe S0 (control) no envía ningún comando GS V");
             Check(allTickets, "todos los estilos de ticket del conector pasan la validación");
 
             // --- E4.1: configuración y códigos de salida ---

@@ -44,6 +44,8 @@ internal static class Program
                     return TestPrint(args);
                 case "cut-probe":
                     return CutProbeCommand(args);
+                case "star-probe":
+                    return StarProbeCommand(args);
                 case "bytes":
                     return WriteTicketBytes(args);
                 case "selftest":
@@ -117,6 +119,8 @@ internal static class Program
           test-print --printer "NOMBRE" [--cut modern|legacy|full|none] [--force]
           cut-probe --printer "NOMBRE" --variant T|A|B|C|D|E [--force]
           cut-probe --list-variants
+          star-probe --printer "NOMBRE" --variant S0|S1|S2|S3 [--force]
+          star-probe --list-variants
           bytes --out ARCHIVO [--cut modern|legacy|full|none]
 
         Pruebas:
@@ -413,6 +417,33 @@ internal static class Program
 
         Spooler.SendRaw(printer.Name, CutProbe.Build(variant, printer.Name), $"Walinka - cut-probe {variant.Code}");
         Console.WriteLine($"Variante {variant.Code} enviada. Windows aceptó el trabajo; confirma visualmente el corte.");
+        return 0;
+    }
+
+    private static int StarProbeCommand(string[] args)
+    {
+        if (args.Contains("--list-variants"))
+        {
+            foreach (var v in StarProbe.Variants) Console.WriteLine($"{v.Code}: {v.Label}\n    {v.Note}");
+            return 0;
+        }
+
+        var code = RequireOption(args, "--variant");
+        var variant = StarProbe.Find(code) ?? throw new ArgumentException($"Variante desconocida: {code}. Usa --list-variants.");
+        var printerName = RequireOption(args, "--printer");
+        var force = args.Contains("--force");
+
+        var printer = Spooler.FindPrinter(printerName)
+            ?? throw new ArgumentException($"No existe una impresora llamada \"{printerName}\".");
+        var problems = Spooler.DescribeStatus(printer.Status);
+        if (problems.Count > 0 && !force)
+        {
+            foreach (var problem in problems) Console.WriteLine($"  - {problem}");
+            return Fail("No se envió nada. Revisa la impresora o usa --force.");
+        }
+
+        Spooler.SendRaw(printer.Name, StarProbe.Build(variant, printer.Name), $"Walinka - star-probe {variant.Code}");
+        Console.WriteLine($"Variante {variant.Code} enviada. Windows aceptó el trabajo. Anota: texto legible, 'V' al inicio, basura, y si corta.");
         return 0;
     }
 
