@@ -4,6 +4,7 @@ import {
 } from 'lib/printing/connectorConfigStorage';
 import { createLocalConnectorProvider } from 'lib/printing/providers/localConnectorProvider';
 import { resolvePrintRoute, ROUTE, connectorStatusView } from 'lib/printing/printRouting';
+import { checkConnector, describeVerify } from 'lib/printing/connectorHealth';
 
 // Estado único del Walinka Print Connector para la pantalla de impresión.
 // La pantalla no decide la ruta: solo la muestra. La ruta real la decide
@@ -22,6 +23,8 @@ export function usePrintConnector(businessId) {
   const [health, setHealth] = useState('checking'); // checking | ok | unreachable
   const [healthError, setHealthError] = useState(null);
   const [printers, setPrinters] = useState([]);
+  const [printersError, setPrintersError] = useState(null);
+  const [version, setVersion] = useState(null);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null); // { ok, message } | null
 
@@ -44,17 +47,26 @@ export function usePrintConnector(businessId) {
   const paired = Boolean(config.token);
 
   const refresh = useCallback(async () => {
-    setHealthError(null);
-    try {
-      await provider.connect();
-      setHealth('ok');
-      setPrinters(config.token ? await provider.listPrinters() : []);
-    } catch (err) {
-      setHealth('unreachable');
-      setPrinters([]);
-      setHealthError(messageFor(err));
-    }
+    const state = await checkConnector({ provider, hasToken: Boolean(config.token) });
+    setHealth(state.health);
+    setHealthError(state.healthError);
+    setPrinters(state.printers);
+    setPrintersError(state.printersError);
+    setVersion(state.version);
+    return state;
   }, [provider, config.token]);
+
+  // Acción del botón «Verificar conector»: muestra siempre un resultado visible.
+  const verify = useCallback(async () => {
+    setBusy(true);
+    setResult(null);
+    try {
+      const state = await refresh();
+      setResult(describeVerify(state, Boolean(config.token)));
+    } finally {
+      setBusy(false);
+    }
+  }, [refresh, config.token]);
 
   useEffect(() => { refresh(); }, [refresh]);
 
@@ -96,6 +108,7 @@ export function usePrintConnector(businessId) {
     paired,
     health,
     printerName: config.printerName,
+    printersError,
   });
 
   return {
@@ -106,6 +119,7 @@ export function usePrintConnector(businessId) {
     health,
     healthError,
     printers,
+    printersError,
     printerName: config.printerName,
     busy,
     setBusy,
@@ -113,6 +127,8 @@ export function usePrintConnector(businessId) {
     setResult,
     status,
     refresh,
+    verify,
+    version,
     pair,
     selectPrinter,
     setEnabled,

@@ -10,7 +10,7 @@ const CONNECTOR_DOWNLOAD_URL = 'https://github.com/JotaceGaete/saas/releases/dow
 
 export default function PrintConnectorSection({ connector }) {
   const [code, setCode] = useState('');
-  const { status, health, healthError, paired, active, config, busy, result } = connector;
+  const { status, health, healthError, printersError, paired, active, config, busy, result } = connector;
 
   const handlePair = async () => {
     const ok = await connector.pair(code);
@@ -55,6 +55,9 @@ export default function PrintConnectorSection({ connector }) {
 
       {health === 'unreachable' && healthError && (
         <p className="mt-2 text-xs text-amber-700">{healthError}</p>
+      )}
+      {health === 'ok' && printersError && (
+        <p className="mt-2 text-xs text-amber-700">{printersError}</p>
       )}
 
       {!paired && (
@@ -112,8 +115,8 @@ export default function PrintConnectorSection({ connector }) {
       )}
 
       <div className="mt-3">
-        <button type="button" onClick={connector.refresh} disabled={busy} className="text-xs font-semibold text-slate-600 underline underline-offset-2 disabled:opacity-40">
-          Verificar conector
+        <button type="button" onClick={connector.verify} disabled={busy} className="text-xs font-semibold text-slate-600 underline underline-offset-2 disabled:opacity-40">
+          {busy ? 'Verificando…' : 'Verificar conector'}
         </button>
       </div>
 
