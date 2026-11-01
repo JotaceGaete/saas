@@ -1,4 +1,4 @@
-// node --test src/lib/printing/connectorHealth.test.js
+// node --test src/lib/printing/connectorHealth-test.mjs (nombre -test.mjs: lo recoge node, no Vitest)
 // Regresión: con /v1/health en 200 la UI no debe decir "conector no encontrado"
 // por un fallo al listar impresoras.
 import { test } from 'node:test';
