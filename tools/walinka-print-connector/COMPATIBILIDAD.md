@@ -211,20 +211,20 @@ Mismo corte que `minimal-cut` (1 LF antes de `GS V 66 0`). La diferencia entre a
 - `Spooler.SendRaw`: `OpenPrinter` → `StartDocPrinterW` con `pDatatype = "RAW"` → `StartPagePrinter` → **un** `WritePrinter` con el buffer completo (verifica bytes escritos) → `EndPagePrinter` → `EndDocPrinter`.
 - Sin render GDI ni XPS: el firmware de la impresora interpreta los bytes.
 
-### 11.3 Configuración de la impresora y de la cola (pendiente de completar)
+### 11.3 Configuración de la impresora y de la cola
 
-Estos datos definen el perfil de la TSP100IIU. Pégalos desde la salida de `info --printer "Star TSP100IIU"` y de la autoprueba:
+Fuente: `Get-Printer` (Windows) y autoprueba física de la impresora.
 
 - Modelo: Star TSP100IIU Ver3.0 (autoprueba)
 - Cutter: Enable (autoprueba)
 - USB Class: Printer (autoprueba)
 - Área imprimible: 72 mm (autoprueba)
-- Modo de emulación: **[PENDIENTE: ESC/POS o Star Line, según la autoprueba]**
-- Nombre de la cola: **[PENDIENTE]**
-- Driver: **[PENDIENTE]**
-- Puerto: **[PENDIENTE]**
-- Datatype por defecto de la cola: **[PENDIENTE]**
-- Print processor: **[PENDIENTE]**
+- Nombre de la cola: `Star TSP100 Cutter (TSP143)` (Get-Printer)
+- Driver: `Star TSP100 Cutter (TSP143)` (Get-Printer)
+- Puerto: `USB008` (Get-Printer)
+- Print processor: `winprint` (Get-Printer)
+- Datatype por defecto de la cola: `RAW` (Get-Printer)
+- Modo de emulación: **PENDIENTE DE CONFIRMAR** (no supuesto; se leerá de la autoprueba)
 
 ### 11.4 Qué no se ha validado
 

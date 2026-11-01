@@ -14,7 +14,7 @@ import {
 } from 'lib/printing/receipts/renderEscPosReceipt';
 import { buildFinalValidationReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig, writePrinterConfig } from 'lib/printing/printerConfigStorage';
-import { listCompatibilityProfiles, getCompatibilityProfile, matchCompatibilityProfileId } from 'lib/printing/receipts/printerCompatibilityProfiles';
+import { listCompatibilityProfiles, getCompatibilityProfile, matchCompatibilityProfileId, getPresetProfileIdForPrinter, DEFAULT_COMPATIBILITY_PROFILE_ID } from 'lib/printing/receipts/printerCompatibilityProfiles';
 import PrintConnectorSection from './components/PrintConnectorSection';
 import { usePrintConnector } from './components/usePrintConnector';
 import { buildPrintKey, CONNECTOR_TONE_CLASSES } from 'lib/printing/printRouting';
@@ -92,8 +92,32 @@ export default function CrmPrintSettings() {
 
   const handleRefreshPrinters = () => (connectorActive ? connector.refresh() : refreshPrinters());
 
+  // PRINT-6 — materializa los campos de un perfil en una config (sin guardar).
+  function applyProfileFields(base, profileId) {
+    const profile = getCompatibilityProfile(profileId);
+    return {
+      ...base,
+      profileId: profile.id,
+      imageMode: profile.imageMode,
+      cutStrategyId: profile.cutStrategyId,
+      printLogo: profile.printLogo,
+      autoCut: profile.autoCut,
+      effectivePrintableWidthDots: profile.effectivePrintableWidthDots ?? null,
+    };
+  }
+
+  // PRINT-6 — elegir una impresora con preset (ver PRINTER_PROFILE_PRESETS)
+  // aplica su perfil. Elegir una impresora SIN preset nunca cambia el perfil
+  // de otra: solo deshace el perfil exclusivo de preset (starTsp100) y vuelve
+  // al Recomendado, para que la XP-80C u otra impresora no quede con ese perfil.
   const handleSelectPrinter = (printerName) => {
-    const next = { ...config, printerName: printerName || null };
+    const presetProfileId = getPresetProfileIdForPrinter(printerName || null);
+    let next = { ...config, printerName: printerName || null };
+    if (presetProfileId) {
+      next = applyProfileFields(next, presetProfileId);
+    } else if (config.profileId === 'starTsp100') {
+      next = applyProfileFields(next, DEFAULT_COMPATIBILITY_PROFILE_ID);
+    }
     setConfig(next);
     setPrintResult(null);
     if (configKey) writePrinterConfig(configKey, next);
@@ -105,16 +129,7 @@ export default function CrmPrintSettings() {
   // la pantalla/el flujo de venta real (CrmTerminal.jsx) nunca vuelve a
   // mirar `profileId` para decidir qué imprimir, solo estos campos.
   const handleSelectMode = (profileId) => {
-    const profile = getCompatibilityProfile(profileId);
-    const next = {
-      ...config,
-      profileId: profile.id,
-      imageMode: profile.imageMode,
-      cutStrategyId: profile.cutStrategyId,
-      printLogo: profile.printLogo,
-      autoCut: profile.autoCut,
-      effectivePrintableWidthDots: profile.effectivePrintableWidthDots ?? null,
-    };
+    const next = applyProfileFields(config, profileId);
     setConfig(next);
     setPrintResult(null);
     if (configKey) writePrinterConfig(configKey, next);
