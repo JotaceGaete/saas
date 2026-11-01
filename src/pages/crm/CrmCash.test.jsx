@@ -125,6 +125,7 @@ vi.mock('lib/printing/printerConfigStorage', () => ({
 }));
 
 import CrmCash from './CrmCash';
+import { updateCrmPayment, voidCrmPayment, voidCashMovement } from 'services/crmService';
 
 const openSession = {
   id: 'sess1', status: 'open', initial_amount: 0,
@@ -1277,5 +1278,131 @@ describe('CAJA-CIERRE-CONCILIACION-1 — detalle histórico usa el snapshot de c
     const { modal } = await openClosedDetail();
     expect(await within(modal).findByText('Sin arqueo registrado')).toBeInTheDocument();
     expect(within(modal).getByText('Resumen')).toBeInTheDocument();
+  });
+});
+
+/**
+ * CASH-OPEN-SESSION-REPRINT — "Reimprimir" en la pestaña Movimientos de una
+ * caja abierta. Solo ventas TPV válidas (invoice.source === 'pos', no anuladas,
+ * sin voided_at). Reimprimir solo lee la venta y envía a imprimir: no crea,
+ * anula ni modifica cobros, movimientos, sesiones ni facturas.
+ */
+describe('CASH-OPEN-SESSION-REPRINT — Reimprimir en caja abierta', () => {
+  const basePayment = {
+    amount: 4000, payment_method: 'cash', reference: null,
+    notes: 'Venta TPV abierta', created_at: '2026-09-13T09:00:00Z', currency: 'CLP',
+    voided_at: null,
+  };
+  const POS_VALID = { ...basePayment, id: 'pay-pos-open', invoice_id: 'inv-pos-open', invoice: { source: 'pos', status: 'paid' } };
+
+  const renderOpenWith = (payment) => {
+    getCashSessionPaymentsMock.mockImplementation((_bizId, session) => {
+      if (session.id === 'sess1') return Promise.resolve({ data: [payment], error: null });
+      return Promise.resolve({ data: [], error: null });
+    });
+    render(<CrmCash />);
+    return screen.findByText('Venta TPV abierta').then((cell) => cell.closest('tr'));
+  };
+
+  beforeEach(() => {
+    readPrinterConfigMock.mockReturnValue({ printerName: 'EPSON-TM-T20', paperWidthMm: 80, autoCut: true, printLogo: false, imageMode: 'text', cutStrategyId: 'default', effectivePrintableWidthDots: 576 });
+    getCrmInvoiceMock.mockResolvedValue({ data: { id: 'inv-pos-open', source: 'pos', status: 'paid', total: 4000, subtotal: 4000, discount_amount: 0, crm_invoice_items: [], wa_customers: null, notes: null, issue_date: '2026-09-13' }, error: null });
+    getInvoicePaymentSummaryMock.mockResolvedValue({ data: { payments: [] }, error: null });
+  });
+
+  it('una venta TPV válida en caja abierta muestra "Reimprimir" junto a Editar y Anular', async () => {
+    const row = await renderOpenWith(POS_VALID);
+    expect(within(row).getByRole('button', { name: 'Reimprimir' })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Editar' })).toBeInTheDocument();
+    expect(within(row).getByRole('button', { name: 'Anular' })).toBeInTheDocument();
+  });
+
+  it('un abono de cuenta corriente (invoice.source === "crm") NO muestra "Reimprimir"', async () => {
+    const row = await renderOpenWith({ ...POS_VALID, invoice: { source: 'crm', status: 'paid' } });
+    expect(within(row).queryByRole('button', { name: 'Reimprimir' })).not.toBeInTheDocument();
+  });
+
+  it('una venta TPV anulada (invoice.status === "anulada") NO muestra "Reimprimir"', async () => {
+    const row = await renderOpenWith({ ...POS_VALID, invoice: { source: 'pos', status: 'anulada' } });
+    expect(within(row).queryByRole('button', { name: 'Reimprimir' })).not.toBeInTheDocument();
+  });
+
+  it('un cobro ya anulado (voided_at) NO muestra "Reimprimir"', async () => {
+    const row = await renderOpenWith({ ...POS_VALID, voided_at: '2026-09-13T11:00:00Z' });
+    expect(within(row).queryByRole('button', { name: 'Reimprimir' })).not.toBeInTheDocument();
+  });
+
+  it('reimprimir en caja abierta solo lee la venta, imprime y no escribe nada', async () => {
+    const row = await renderOpenWith(POS_VALID);
+    fireEvent.click(within(row).getByRole('button', { name: 'Reimprimir' }));
+    await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
+
+    expect(getCrmInvoiceMock).toHaveBeenCalledWith('inv-pos-open');
+    expect(getInvoicePaymentSummaryMock).toHaveBeenCalledWith('inv-pos-open');
+    expect(printReceiptMock.mock.calls[0][1]).toEqual(expect.objectContaining({ printerName: 'EPSON-TM-T20' }));
+
+    expect(createCashMovementMock).not.toHaveBeenCalled();
+    expect(updateCashSessionMock).not.toHaveBeenCalled();
+    expect(reopenCashSessionMock).not.toHaveBeenCalled();
+    expect(closeCashSessionReconciledMock).not.toHaveBeenCalled();
+    expect(updateCrmPayment).not.toHaveBeenCalled();
+    expect(voidCrmPayment).not.toHaveBeenCalled();
+    expect(voidCashMovement).not.toHaveBeenCalled();
+  });
+
+  describe('ruta de impresión: Walinka Print Connector o QZ, nunca cambio silencioso', () => {
+    const CONNECTOR_KEY = 'walinka:print-connector:biz1';
+    const connectorConfig = (over = {}) => JSON.stringify({
+      enabled: true, token: 'x'.repeat(40), baseUrl: 'http://127.0.0.1:47801',
+      printerName: 'Star TSP100 Cutter (TSP143)', ...over,
+    });
+    beforeEach(() => { localStorage.clear(); });
+    afterEach(() => { localStorage.clear(); });
+
+    it('con conector activo, reimprimir usa el conector con la impresora del conector', async () => {
+      localStorage.setItem(CONNECTOR_KEY, connectorConfig());
+      const row = await renderOpenWith(POS_VALID);
+      fireEvent.click(within(row).getByRole('button', { name: 'Reimprimir' }));
+      await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
+      const opts = printReceiptMock.mock.calls[0][1];
+      expect(opts.printerName).toBe('Star TSP100 Cutter (TSP143)');
+      expect(opts.connector).toBeDefined();
+      expect(typeof opts.connector.print).toBe('function');
+    });
+
+    it('si el conector falla, muestra el error y NO reintenta por QZ', async () => {
+      localStorage.setItem(CONNECTOR_KEY, connectorConfig());
+      printReceiptMock.mockRejectedValueOnce(new Error('Conector no responde'));
+      const row = await renderOpenWith(POS_VALID);
+      fireEvent.click(within(row).getByRole('button', { name: 'Reimprimir' }));
+      expect(await screen.findByText('Conector no responde')).toBeInTheDocument();
+      expect(printReceiptMock).toHaveBeenCalledTimes(1);
+      expect(printReceiptMock.mock.calls[0][1].connector).toBeDefined();
+    });
+
+    it('sin conector configurado, reimprimir usa QZ (sin connector)', async () => {
+      const row = await renderOpenWith(POS_VALID);
+      fireEvent.click(within(row).getByRole('button', { name: 'Reimprimir' }));
+      await waitFor(() => expect(printReceiptMock).toHaveBeenCalledTimes(1));
+      const opts = printReceiptMock.mock.calls[0][1];
+      expect(opts.printerName).toBe('EPSON-TM-T20');
+      expect(opts.connector).toBeUndefined();
+    });
+
+    it('conector activo sin impresora elegida: bloquea y NO cae a QZ', async () => {
+      localStorage.setItem(CONNECTOR_KEY, connectorConfig({ printerName: null }));
+      const row = await renderOpenWith(POS_VALID);
+      fireEvent.click(within(row).getByRole('button', { name: 'Reimprimir' }));
+      await screen.findByText(/impresora/i);
+      expect(printReceiptMock).not.toHaveBeenCalled();
+    });
+  });
+
+  it('si la venta llega anulada desde la base, no imprime y muestra el error', async () => {
+    getCrmInvoiceMock.mockResolvedValue({ data: { id: 'inv-pos-open', source: 'pos', status: 'anulada', crm_invoice_items: [] }, error: null });
+    const row = await renderOpenWith(POS_VALID);
+    fireEvent.click(within(row).getByRole('button', { name: 'Reimprimir' }));
+    expect(await screen.findByText(/anulada; no se puede reimprimir/)).toBeInTheDocument();
+    expect(printReceiptMock).not.toHaveBeenCalled();
   });
 });

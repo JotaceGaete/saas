@@ -40,6 +40,9 @@ import {
 import { printService } from 'lib/printing/printService';
 import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
+import { buildConnectorConfigKey, readConnectorConfig } from 'lib/printing/connectorConfigStorage';
+import { buildPrintTarget } from 'lib/printing/printRouting';
+import { canReprintMovement, buildReprintKey, reprintBlockedMessage, REPRINT_LABEL } from 'lib/cash/cashMovementActions';
 
 const METHOD_ORDER = ['cash', 'card', 'bank_transfer', 'check', 'other'];
 
@@ -468,23 +471,15 @@ function MovementsTable({
                           >
                             Ver venta
                           </button>
-                          {entry.invoice?.source === 'pos' && (
-                            <button
-                              type="button"
-                              onClick={() => onReprintReceipt?.(entry)}
-                              disabled={reprintingId === entry.id}
-                              className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                            >
-                              {reprintingId === entry.id && <Icon name="Loader2" size={12} className="animate-spin" />}
-                              Reimprimir
-                            </button>
-                          )}
+                          <ReprintButton entry={entry} reprintingId={reprintingId} onReprintReceipt={onReprintReceipt} />
                         </div>
                       ) : (
                         <span className="text-xs text-gray-400">—</span>
                       )
                     ) : isPayment ? (
                       <div className="flex items-center justify-end gap-1.5">
+                        {/* Misma regla que caja cerrada: la reimpresión no depende del estado de la caja. */}
+                        <ReprintButton entry={entry} reprintingId={reprintingId} onReprintReceipt={onReprintReceipt} />
                         <button
                           type="button"
                           onClick={() => onEditPayment?.(entry)}
@@ -594,10 +589,52 @@ function ReconciliationSummaryTable({ reconciliation, session, currency }) {
   );
 }
 
+// Sin respuesta del conector/QZ en este tiempo, la reimpresión falla con mensaje.
+const REPRINT_TIMEOUT_MS = 20000;
+const REPRINT_TIMEOUT_MESSAGE =
+  'La impresora no respondió a tiempo. Revisa el conector y la impresora. Si el ticket salió igual, no vuelvas a reimprimir.';
+
+// Botón "Reimprimir". Única implementación para caja abierta y cerrada.
+// La visibilidad la decide canReprintMovement (lib/cash/cashMovementActions.js).
+function ReprintButton({ entry, reprintingId, onReprintReceipt }) {
+  if (!canReprintMovement(entry)) return null;
+  const busy = reprintingId === entry.id;
+  return (
+    <button
+      type="button"
+      onClick={() => onReprintReceipt?.(entry)}
+      disabled={busy}
+      aria-busy={busy || undefined}
+      className="flex items-center gap-1 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-bold text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+    >
+      {busy && <Icon name="Loader2" size={12} className="animate-spin" />}
+      {busy ? 'Reimprimiendo…' : REPRINT_LABEL}
+    </button>
+  );
+}
+
+// Retroalimentación de la reimpresión: visible en la vista principal y en el detalle.
+function ReprintFeedbackBanner({ feedback }) {
+  if (!feedback) return null;
+  if (feedback.tone === 'error') {
+    return (
+      <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <p className="font-semibold">No se pudo reimprimir el comprobante</p>
+        <p className="mt-1">{feedback.text}</p>
+      </div>
+    );
+  }
+  return (
+    <div role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+      <p>{feedback.text}</p>
+    </div>
+  );
+}
+
 function CashSessionDetailModal({
   session, sessions, payments, movements, currency, user, loadError, reconciliation,
   onClose, onEditPayment, onVoidPayment, onVoidMovement,
-  onViewSale, onReprintReceipt, reprintingId, reprintError,
+  onViewSale, onReprintReceipt, reprintingId, reprintFeedback,
 }) {
   if (!session) return null;
 
@@ -643,12 +680,7 @@ function CashSessionDetailModal({
             </div>
           )}
 
-          {reprintError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              <p className="font-semibold">No se pudo reimprimir el comprobante</p>
-              <p className="mt-1">{reprintError}</p>
-            </div>
-          )}
+          <ReprintFeedbackBanner feedback={reprintFeedback} />
 
           <div className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm sm:grid-cols-3">
             <div>
@@ -1925,17 +1957,35 @@ export default function CrmCash() {
   // nuevo, no toca stock ni la caja: printService.printReceipt solo envía
   // bytes a la impresora.
   const [reprintingId, setReprintingId] = useState(null);
-  const [reprintError, setReprintError] = useState('');
+  // Un único estado de retroalimentación para TODA la pantalla de Caja.
+  const [reprintFeedback, setReprintFeedback] = useState(null);
 
+  // Reimpresión de un comprobante ya emitido. Solo LEE la venta (getCrmInvoice,
+  // getInvoicePaymentSummary) y envía bytes a la impresora: no crea venta, pago,
+  // movimiento ni toca stock/caja. Usa la misma ruta que el TPV (buildPrintTarget):
+  // con el conector activo nunca cae a QZ en silencio.
   const handleReprintReceipt = async (payment) => {
-    if (!payment?.invoice_id || reprintingId) return;
-    setReprintError('');
+    if (reprintingId) {
+      setReprintFeedback({ tone: 'error', text: 'Espera a que termine la reimpresión en curso.' });
+      return;
+    }
+    if (!canReprintMovement(payment)) {
+      setReprintFeedback({ tone: 'error', text: 'Este cobro no tiene un comprobante de venta TPV que reimprimir.' });
+      return;
+    }
+    setReprintFeedback(null);
     const printerConfig = readPrinterConfig(buildPrinterConfigKey(business?.id));
-    if (!printerConfig.printerName) {
-      setReprintError('No hay una impresora configurada en este equipo. Configúrala en Configuración de impresión.');
+    const target = buildPrintTarget({
+      connectorConfig: readConnectorConfig(buildConnectorConfigKey(business?.id)),
+      qzPrinterName: printerConfig.printerName,
+      idempotencyKey: buildReprintKey(payment.invoice_id),
+    });
+    if (target.error) {
+      setReprintFeedback({ tone: 'error', text: reprintBlockedMessage({ route: target.route }) });
       return;
     }
     setReprintingId(payment.id);
+    let timer;
     try {
       const [{ data: invoice, error: invErr }, { data: summary, error: sumErr }] = await Promise.all([
         getCrmInvoice(payment.invoice_id),
@@ -1943,13 +1993,12 @@ export default function CrmCash() {
       ]);
       if (invErr || !invoice) throw new Error(invErr?.message || 'No se pudo cargar la venta original.');
       if (sumErr) throw new Error(sumErr.message);
-      // Defensa en profundidad: el botón ya solo se muestra para
-      // invoice.source === 'pos' (ver MovementsTable) -- único origen que
-      // efectivamente imprimió un comprobante alguna vez (CrmTerminal.jsx).
-      // Un abono a cuenta corriente o un pago de pedido de catálogo nunca
-      // tuvo un ticket real que reimprimir.
+      // Defensa en profundidad: solo ventas TPV (source 'pos') y no anuladas.
       if (invoice.source !== 'pos') {
         throw new Error('Este pago no tiene un comprobante original para reimprimir.');
+      }
+      if (invoice.status === 'anulada') {
+        throw new Error('Esta venta está anulada; no se puede reimprimir.');
       }
 
       const receipt = buildSaleReceipt({
@@ -1970,10 +2019,28 @@ export default function CrmCash() {
         cutStrategyId: printerConfig.cutStrategyId,
         effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,
       });
-      await printService.printReceipt(receipt, { printerName: printerConfig.printerName });
+      // Sin respuesta en 20 s el usuario ve un error, no un botón colgado. Un trabajo
+      // ya enviado podría salir igual: el mensaje advierte no reimprimir sin revisar.
+      const timeout = new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(REPRINT_TIMEOUT_MESSAGE)), REPRINT_TIMEOUT_MS);
+      });
+      await Promise.race([
+        printService.printReceipt(receipt, {
+          printerName: target.printerName,
+          idempotencyKey: target.idempotencyKey,
+          connector: target.connector,
+        }),
+        timeout,
+      ]);
+      // No podemos confirmar que el papel salió: el texto no lo afirma.
+      setReprintFeedback({
+        tone: 'ok',
+        text: `Reimpresión enviada a «${target.printerName}». Si no sale papel, revisa la impresora.`,
+      });
     } catch (err) {
-      setReprintError(err?.message || 'No se pudo reimprimir el comprobante.');
+      setReprintFeedback({ tone: 'error', text: err?.message || 'No se pudo reimprimir el comprobante.' });
     } finally {
+      clearTimeout(timer);
       setReprintingId(null);
     }
   };
@@ -2232,14 +2299,14 @@ export default function CrmCash() {
                   user={user}
                   loadError={sessionLoadErrors[detailSession.id]}
                   reconciliation={detailReconciliation}
-                  onClose={() => { setDetailSessionId(null); setReprintError(''); }}
+                  onClose={() => { setDetailSessionId(null); setReprintFeedback(null); }}
                   onEditPayment={setEditingPayment}
                   onVoidPayment={setVoidingPayment}
                   onVoidMovement={setVoidingMovement}
                   onViewSale={handleEditSale}
                   onReprintReceipt={handleReprintReceipt}
                   reprintingId={reprintingId}
-                  reprintError={reprintError}
+                  reprintFeedback={reprintFeedback}
                 />
               )}
 
@@ -2266,6 +2333,7 @@ export default function CrmCash() {
                         {turnTimeRange(currentSession)} · Saldo: {formatMoney(currentBalance, business?.currency)}
                       </p>
                     </div>
+                    {!detailSession && <ReprintFeedbackBanner feedback={reprintFeedback} />}
                     <MovementsTable
                       payments={currentPayments}
                       movements={currentMvts}
@@ -2274,6 +2342,8 @@ export default function CrmCash() {
                       onVoidPayment={setVoidingPayment}
                       onVoidMovement={setVoidingMovement}
                       sessionOpen={currentSession?.status === 'open'}
+                      onReprintReceipt={handleReprintReceipt}
+                      reprintingId={reprintingId}
                     />
                   </div>
                 ) : (

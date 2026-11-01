@@ -1814,7 +1814,7 @@ export async function getCashSessionPayments(businessId, session) {
   // alguna vez un comprobante real impreso por CrmTerminal. Un embed de
   // PostgREST sobre invoice_id (FK ya existente), no una relación/columna
   // nueva.
-  const paymentSelect = 'id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at, voided_at, voided_by, void_reason, cash_session_id, invoice:crm_invoices(source)';
+  const paymentSelect = 'id, business_id, invoice_id, amount, currency, payment_method, payment_status, payment_date, reference, notes, created_at, voided_at, voided_by, void_reason, cash_session_id, invoice:crm_invoices(source, status)';
   const sessionEnd = session.closed_at || new Date().toISOString();
 
   const linkedQuery = supabase
