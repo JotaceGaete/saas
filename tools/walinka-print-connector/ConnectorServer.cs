@@ -14,7 +14,7 @@ namespace WalinkaPrintConnector;
 public static class ConnectorServer
 {
     public const string ApiVersion = "1";
-    public const string AppVersion = "0.2.0";
+    public const string AppVersion = "0.3.0";
 
     public sealed record PairRequest(string Code, string? DeviceName);
     public sealed record PrintRequest(string IdempotencyKey, string PrinterName, int Copies, string DataBase64);

@@ -3,10 +3,9 @@ using System.Text.RegularExpressions;
 namespace WalinkaPrintConnector;
 
 /// <summary>
-/// Validación de lo que llega desde el navegador. No interpreta el contenido ESC/POS:
-/// solo verifica tamaño, inicialización y formato de las claves.
-/// Nota: no se escanea ESC p porque los datos de imagen (ESC *) pueden contener esos bytes.
-/// El cajón no está expuesto por ningún endpoint ni comando de esta versión.
+/// Validación de lo que llega desde el navegador: tamaño, inicialización, formato de claves
+/// y estructura ESC/POS (EscPosStreamValidator), que rechaza cualquier comando fuera del
+/// subconjunto que usa Walinka, incluido el pulso de cajón ESC p.
 /// </summary>
 public static class PayloadPolicy
 {
@@ -19,7 +18,9 @@ public static class PayloadPolicy
         if (data.Length == 0) return "payload_empty";
         if (data.Length > MaxDecodedBytes) return "payload_too_large";
         if (data.Length < 2 || data[0] != 0x1B || data[1] != 0x40) return "payload_must_start_with_init";
-        return null;
+        // Estructura ESC/POS completa: comandos conocidos, longitudes exactas, sin cajón.
+        var (error, _) = EscPosStreamValidator.Validate(data);
+        return error;
     }
 
     public static string? ValidateIdempotencyKey(string? key)

@@ -45,7 +45,7 @@ public static class SelfTests
         Check(cfg.Validate() is null, "configuración por defecto válida");
         Check(new ConnectorConfig { AllowedOrigins = new() { "*" } }.Validate() is not null, "comodín en orígenes rechazado");
         Check(new ConnectorConfig { AllowedOrigins = new() { "http://ejemplo.com" } }.Validate() is not null, "http remoto rechazado");
-        Check(new ConnectorConfig { AllowedOrigins = new() { "http://localhost:5173" } }.Validate() is null, "http://localhost aceptado para desarrollo");
+        Check(new ConnectorConfig { AllowedOrigins = new() { "http://localhost:5173" } }.Validate() is not null, "http://localhost rechazado en producción (sin flag de desarrollo)");
         Check(new ConnectorConfig { AllowedOrigins = new() { "https://go.ventalink.app/ruta" } }.Validate() is not null, "origen con ruta rechazado");
 
         // --- Payload ---
@@ -120,9 +120,121 @@ public static class SelfTests
             Check(!limiter.TryAcquire(now), "cuarta petición en la ventana rechazada");
             Check(limiter.TryAcquire(now.AddMinutes(2)), "tras la ventana se vuelve a permitir");
 
+            // --- Tope de reinicios del vigilante (anti ciclo infinito) ---
+            var budget = new SlidingWindowLimiter(2, TimeSpan.FromHours(1));
+            Check(!Supervisor.ExhaustedRestartBudget(budget, now) && !Supervisor.ExhaustedRestartBudget(budget, now),
+                "dos caídas dentro de la hora todavía se reinician");
+            Check(Supervisor.ExhaustedRestartBudget(budget, now), "tercera caída dentro de la hora: el vigilante se rinde");
+            Check(!Supervisor.ExhaustedRestartBudget(budget, now.AddHours(2)), "pasada la ventana vuelve a permitir reinicios");
+            Check(Supervisor.MaxRestartsPerHour == 10 && Supervisor.NewRestartBudget() is not null, "tope por defecto: 10 reinicios por hora");
+
             // --- Secretos ---
             Check(Secrets.Sha256Hex("a") == Secrets.Sha256Hex("a") && Secrets.Sha256Hex("a") != Secrets.Sha256Hex("b"), "hash SHA-256 determinista");
             Check(Secrets.ConstantTimeEquals("abc", "abc") && !Secrets.ConstantTimeEquals("abc", "abd"), "comparación en tiempo constante");
+
+            // --- E4.1: validación estructural ESC/POS ---
+            byte[] Cat(params object[] items)
+            {
+                var ms = new MemoryStream();
+                foreach (var item in items)
+                {
+                    switch (item)
+                    {
+                        case byte b: ms.WriteByte(b); break;
+                        case int n: ms.WriteByte((byte)n); break;
+                        case string text: ms.Write(System.Text.Encoding.ASCII.GetBytes(text)); break;
+                        case byte[] raw: ms.Write(raw); break;
+                    }
+                }
+                return ms.ToArray();
+            }
+            string? Err(byte[] data) => EscPosStreamValidator.Validate(data).Error;
+
+            var walinkaLike = Cat(0x1B, 0x40, 0x1B, 0x61, 0x01, 0x1B, 0x45, 0x01, 0x1D, 0x21, 0x11, "HOLA", 0x0A,
+                0x1D, 0x21, 0x00, 0x1B, 0x45, 0x00, 0x1B, 0x61, 0x00, "Total $1.000", 0x0A, 0x0A, 0x1D, 0x56, 0x42, 0x00);
+            Check(Err(walinkaLike) is null, "ticket tipo Walinka (texto, negrita, tamaño, corte) se acepta");
+            Check(Err(Cat(0x1B, 0x40, 0x1D, 0x56, 0x42, 0x00)) is null && Err(Cat(0x1B, 0x40, 0x1D, 0x56, 0x41, 0x00)) is null,
+                "corte GS V 66 0 y 65 0 se aceptan");
+            Check(Err(Cat(0x1B, 0x40, 0x1D, 0x56, 0x00)) is null && Err(Cat(0x1B, 0x40, 0x1D, 0x56, 0x01)) is null,
+                "corte legacy GS V 0 y GS V 1 se aceptan");
+
+            var rasterWithDrawerBytes = Cat(0x1B, 0x40, 0x1D, 0x76, 0x30, 0x00, 0x02, 0x00, 0x02, 0x00, 0x1B, 0x70, 0x00, 0xFF);
+            Check(Err(rasterWithDrawerBytes) is null, "raster con bytes 1B 70 dentro de los datos se preserva (no es comando)");
+            var bitImageWithDrawerBytes = Cat(0x1B, 0x40, 0x1B, 0x2A, 0x00, 0x02, 0x00, 0x1B, 0x70);
+            Check(Err(bitImageWithDrawerBytes) is null, "imagen ESC * con 1B 70 en sus columnas se preserva");
+
+            Check(Err(Cat(0x1B, 0x40, 0x1B, 0x70, 0x00, 0x19, 0xFA)) == EscPosStreamValidator.DrawerBlocked,
+                "ESC p (cajón) al inicio se rechaza");
+            Check(Err(Cat(0x1B, 0x40, "Hola", 0x0A, 0x1B, 0x70, 0x00, 0x19, 0xFA)) == EscPosStreamValidator.DrawerBlocked,
+                "ESC p tras texto se rechaza");
+            Check(Err(Cat(0x1B, 0x40, 0x1B, 0x61)) == EscPosStreamValidator.Truncated, "ESC a truncado se rechaza");
+            Check(Err(Cat(0x1B, 0x40, 0x1D, 0x76, 0x30, 0x00, 0x02, 0x00, 0x04, 0x00, 0x00, 0x00, 0x00)) == EscPosStreamValidator.Truncated,
+                "raster con longitud declarada mayor que los datos se rechaza");
+            Check(Err(Cat(0x1B, 0x40, 0x1B, 0x2A, 0x00, 0x05, 0x00, 0x01, 0x02)) == EscPosStreamValidator.Truncated,
+                "imagen ESC * con columnas declaradas de más se rechaza");
+            Check(Err(Cat(0x1B, 0x40, 0x1B, 0x99, 0x00)) == EscPosStreamValidator.UnknownCommand, "ESC desconocido se rechaza");
+            Check(Err(Cat(0x1B, 0x40, 0x1B, 0x61, 0x09)) == EscPosStreamValidator.BadParameter, "alineación fuera de rango se rechaza");
+            Check(Err(Cat(0x1B, 0x40, 0x10, 0x14, 0x01, 0x00)) == EscPosStreamValidator.ControlNotAllowed, "DLE DC4 (cajón alternativo) se rechaza");
+            Check(Err(Cat(0x1B, 0x40, 0x1D, 0x76, 0x31, 0x00, 0x01, 0x00, 0x01, 0x00, 0xFF)) == EscPosStreamValidator.UnknownCommand,
+                "subcomando raster distinto de GS v 0 se rechaza");
+            Check(PayloadPolicy.ValidatePayload(Cat(0x1B, 0x40, 0x1B, 0x70, 0x00, 0x19, 0xFA)) is not null,
+                "payload con ESC p se rechaza en la política de entrada");
+            Check(PayloadPolicy.ValidatePayload(Cat(0x1B, 0x40, 0x1B, 0x61, 0x01, "PRUEBA", 0x0A, 0x1D, 0x56, 0x42, 0x00)) is null,
+                "payload válido pasa la política de entrada");
+
+            var allProbes = CutProbe.Variants.All(v => Err(CutProbe.Build(v, "Prueba")) is null);
+            var allTickets = Enum.GetValues<CutStyle>().All(c => Err(TicketBuilder.Build(c, "Prueba")) is null);
+            Check(allProbes, "todas las variantes de prueba de corte del conector pasan la validación");
+            var starBytes = StarProbe.Build(StarProbe.Find("S3")!, "Prueba");
+            var allStar = StarProbe.Variants.All(v => Err(StarProbe.Build(v, "Prueba")) is null);
+            Check(allStar, "todas las variantes star-probe pasan la validación ESC/POS");
+            var minimal = MinimalCut.Build(CutStyle.Modern, "P");
+            Check(Err(minimal) is null, "corte mínimo pasa la validación ESC/POS");
+            Check(ContainsSequence(minimal, EscPos.CutPartialModern), "corte mínimo envía GS V 66 0");
+            Check(minimal.Length >= 5 && minimal.Skip(minimal.Length - 5).SequenceEqual(new byte[] { 0x0A, 0x1D, 0x56, 0x42, 0x00 }),
+                "corte mínimo: un solo LF justo antes de GS V 66 0 al final");
+            Check(StarProbe.Variants.Select(v => v.Code).Distinct().Count() == StarProbe.Variants.Count, "códigos star-probe únicos");
+            Check(starBytes.Take(2).SequenceEqual(EscPos.Init), "star-probe empieza con ESC @");
+            Check(ContainsSequence(starBytes, EscPos.Feed(4)) && ContainsSequence(starBytes, EscPos.CutFullModern),
+                "star-probe S3 usa ESC d 4 y GS V 65 0");
+            Check(StarProbe.Variants.All(v => !ContainsSequence(StarProbe.Build(v, "P"), new byte[] { 0x1B, 0x70 })),
+                "star-probe no contiene pulso de cajón (ESC p)");
+            Check(StarProbe.Variants.Where(v => v.Cut is null).All(v => !ContainsSequence(StarProbe.Build(v, "P"), new byte[] { 0x1D, 0x56 })),
+                "star-probe S0 (control) no envía ningún comando GS V");
+            Check(allTickets, "todos los estilos de ticket del conector pasan la validación");
+
+            // --- E4.1: configuración y códigos de salida ---
+            var cfgDir = Path.Combine(dir, "cfg-check");
+            Directory.CreateDirectory(cfgDir);
+            Check(ConnectorConfig.CheckFile(cfgDir) is null && !File.Exists(Path.Combine(cfgDir, "config.json")),
+                "config inexistente no es error y no se crea al comprobarla");
+            File.WriteAllText(Path.Combine(cfgDir, "config.json"), "{ esto no es json");
+            var brokenErr = ConnectorConfig.CheckFile(cfgDir);
+            Check(brokenErr is not null && brokenErr.Contains("formato"), "JSON roto: error de formato accionable");
+            File.WriteAllText(Path.Combine(cfgDir, "config.json"), "{\"AllowedOrigins\":[\"http://localhost:5173\"]}");
+            var devErr = ConnectorConfig.CheckFile(cfgDir);
+            Check(devErr is not null && devErr.Contains("AllowLocalDevOrigin"), "localhost sin flag: error que indica el flag");
+            Check(File.ReadAllText(Path.Combine(cfgDir, "config.json")).Contains("localhost:5173"),
+                "la comprobación no sobrescribe la configuración existente");
+            var distinct = new[] { ExitCodes.Ok, ExitCodes.Failure, ExitCodes.ConfigInvalid, ExitCodes.PortBusy, ExitCodes.AlreadyRunning }.Distinct().Count();
+            Check(distinct == 5, "códigos de salida distintos para cada caso");
+
+            // --- E4: orígenes de producción ---
+            var prodCfg = new ConnectorConfig();
+            Check(prodCfg.Validate() is null && !prodCfg.AllowedOrigins.Any(o => o.Contains("localhost")),
+                "configuración por defecto solo tiene orígenes de producción");
+            var devWithoutFlag = new ConnectorConfig { AllowedOrigins = new() { "http://localhost:5173" } };
+            Check(devWithoutFlag.Validate() is not null, "localhost rechazado sin AllowLocalDevOrigin");
+            var devWithFlag = new ConnectorConfig { AllowLocalDevOrigin = true, AllowedOrigins = new() { "http://localhost:5173" } };
+            Check(devWithFlag.Validate() is null, "localhost aceptado solo con AllowLocalDevOrigin");
+
+            // --- E4: vigilante y reinicios ---
+            Check(Supervisor.DelayFor(0) == TimeSpan.FromSeconds(1) && Supervisor.DelayFor(99) == TimeSpan.FromSeconds(30),
+                "espera de reinicio crece y se limita a 30 s");
+            Check(Supervisor.NextAttempt(3, TimeSpan.FromSeconds(5)) == 4, "reinicio rápido incrementa el contador");
+            Check(Supervisor.NextAttempt(3, TimeSpan.FromMinutes(5)) == 0, "un proceso estable reinicia el contador");
+            Check(Instances.ServeMutexName != Instances.WatchMutexName && Instances.StopEventName.StartsWith("Local\\", StringComparison.Ordinal),
+                "nombres de instancia y parada en el espacio Local (sin administrador)");
         }
         finally
         {

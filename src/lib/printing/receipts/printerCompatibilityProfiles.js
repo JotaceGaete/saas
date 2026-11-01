@@ -82,11 +82,50 @@ export const COMPATIBILITY_PROFILES = {
   },
 };
 
+/**
+ * PRINT-6 — perfiles de PRESET: no son parte de los tres modos genéricos
+ * (no aparecen en listCompatibilityProfiles ni en el selector). Solo los
+ * aplica PRINTER_PROFILE_PRESETS, y solo a la cola exacta de su impresora.
+ * Validado físicamente: texto + corte automático, sin logo.
+ * @type {Record<string, CompatibilityProfile>}
+ */
+export const PRESET_PROFILES = {
+  starTsp100: {
+    id: 'starTsp100',
+    label: 'Texto y corte automático',
+    description: 'Sin logo, con corte automático. Se aplica solo a impresoras con preset de compatibilidad.',
+    paperWidthMm: PAPER_WIDTH_MM,
+    imageMode: 'none',
+    cutStrategyId: 'gs-v-modern',
+    printLogo: false,
+    autoCut: true,
+    effectivePrintableWidthDots: null,
+  },
+};
+
+/**
+ * PRINT-6 — presets POR NOMBRE EXACTO de cola de Windows. Solo estas
+ * impresoras reciben un perfil sugerido al elegirlas; cualquier otra
+ * impresora conserva el comportamiento actual (sin cambios automáticos).
+ * @type {Readonly<Record<string, string>>}
+ */
+export const PRINTER_PROFILE_PRESETS = Object.freeze({
+  'Star TSP100 Cutter (TSP143)': 'starTsp100',
+});
+
+/** Id de perfil sugerido para una cola exacta, o null si no hay preset. */
+export function getPresetProfileIdForPrinter(printerName) {
+  if (!printerName) return null;
+  return Object.prototype.hasOwnProperty.call(PRINTER_PROFILE_PRESETS, printerName)
+    ? PRINTER_PROFILE_PRESETS[printerName]
+    : null;
+}
+
 export const DEFAULT_COMPATIBILITY_PROFILE_ID = 'generic80';
 
 /** Perfil por id; cae al recomendado si el id no es uno conocido -- nunca lanza. */
 export function getCompatibilityProfile(id) {
-  return COMPATIBILITY_PROFILES[id] || COMPATIBILITY_PROFILES[DEFAULT_COMPATIBILITY_PROFILE_ID];
+  return COMPATIBILITY_PROFILES[id] || PRESET_PROFILES[id] || COMPATIBILITY_PROFILES[DEFAULT_COMPATIBILITY_PROFILE_ID];
 }
 
 /** Lista de perfiles en el orden en que deben mostrarse en la UI. */

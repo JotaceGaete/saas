@@ -1,6 +1,7 @@
+using System.Net.Http;
 namespace WalinkaPrintConnector;
 
-// Walinka Print Connector — versión 0.2 (E2/E3).
+// Walinka Print Connector — versión 0.3 (E4: instalador, vigilante, instancia única).
 // Servicio local en 127.0.0.1 con emparejamiento por código y token.
 // Sin apertura de cajón: ningún endpoint ni comando lo ejecuta en esta versión.
 internal static class Program
@@ -21,6 +22,12 @@ internal static class Program
             {
                 case "serve":
                     return await Serve(dataDir);
+                case "watch":
+                    return Supervisor.Run(dataDir);
+                case "stop":
+                    return Stop();
+                case "restart":
+                    return Restart(dataDir);
                 case "pair":
                     return Pair(dataDir);
                 case "unpair":
@@ -37,10 +44,16 @@ internal static class Program
                     return TestPrint(args);
                 case "cut-probe":
                     return CutProbeCommand(args);
+                case "star-probe":
+                    return StarProbeCommand(args);
+                case "minimal-cut":
+                    return MinimalCutCommand(args);
                 case "bytes":
                     return WriteTicketBytes(args);
                 case "selftest":
                     return SelfTests.Run();
+                case "validate":
+                    return ValidateFile(args);
                 case "version":
                     Console.WriteLine(Version);
                     return 0;
@@ -52,7 +65,14 @@ internal static class Program
         {
             return Fail(ex.Message);
         }
-        catch (Exception ex) when (ex is InvalidDataException or ArgumentException)
+        catch (InvalidDataException ex)
+        {
+            // Configuración inválida: fallo permanente (ver ExitCodes).
+            Console.Error.WriteLine($"Configuración inválida: {ex.Message}");
+            Console.Error.WriteLine("Corrige config.json y ejecuta: WalinkaPrintConnector.exe restart");
+            return ExitCodes.ConfigInvalid;
+        }
+        catch (ArgumentException ex)
         {
             return Fail(ex.Message);
         }
@@ -63,10 +83,24 @@ internal static class Program
         Console.WriteLine($"""
         Walinka Print Connector {Version}
 
+        Validación:
+          validate --file RUTA.bin
+              Revisa que un trabajo ESC/POS tenga solo comandos permitidos y longitudes válidas.
+
         Servicio:
           serve [--data-dir RUTA]
               Inicia el servicio en 127.0.0.1:{ConnectorConfig.DefaultPort} (puerto en config.json).
               Déjalo corriendo mientras uses Walinka.
+
+          watch [--data-dir RUTA]
+              Vigilante en segundo plano: ejecuta serve y lo reinicia si se cae.
+              Es lo que se inicia con Windows. Una sola instancia por sesión.
+
+          stop
+              Detiene el vigilante y el servicio.
+
+          restart
+              Detiene y vuelve a iniciar el vigilante.
 
           pair [--data-dir RUTA]
               Genera un código de 6 dígitos válido 5 minutos. Escríbelo en Walinka > Configuración de impresión.
@@ -87,6 +121,9 @@ internal static class Program
           test-print --printer "NOMBRE" [--cut modern|legacy|full|none] [--force]
           cut-probe --printer "NOMBRE" --variant T|A|B|C|D|E [--force]
           cut-probe --list-variants
+          star-probe --printer "NOMBRE" --variant S0|S1|S2|S3 [--force]
+          star-probe --list-variants
+          minimal-cut --printer "NOMBRE" [--cut modern|legacy|full|none] [--force]
           bytes --out ARCHIVO [--cut modern|legacy|full|none]
 
         Pruebas:
@@ -98,13 +135,48 @@ internal static class Program
 
     private static async Task<int> Serve(string dataDir)
     {
+        var configError = ConnectorConfig.CheckFile(dataDir);
+        if (configError is not null)
+        {
+            Console.Error.WriteLine($"Configuración inválida: {configError}");
+            Console.Error.WriteLine("Corrige config.json. El vigilante reintentará solo cuando sea válido.");
+            return ExitCodes.ConfigInvalid;
+        }
         var config = ConnectorConfig.LoadOrCreate(dataDir);
+
+        using var serveMutex = Instances.TryAcquire(Instances.ServeMutexName);
+        if (serveMutex is null)
+        {
+            Console.WriteLine("El conector ya está en ejecución en esta sesión.");
+            return ExitCodes.AlreadyRunning;
+        }
+
+        if (!PortIsFree(config.Port))
+        {
+            if (await IsOurServiceAsync(config.Port))
+            {
+                Console.WriteLine($"Walinka Print Connector ya responde en 127.0.0.1:{config.Port}.");
+                return 0;
+            }
+            Console.WriteLine($"El puerto {config.Port} está ocupado por otra aplicación.");
+            Console.WriteLine("Cierra esa aplicación o cambia el puerto en config.json y reinicia el conector.");
+            return ExitCodes.PortBusy;
+        }
+
+        // Un `serve` manual limpia una parada pendiente; si lo arrancó el
+        // vigilante, el vigilante es quien reinicia la señal.
+        using var stopEvent = Instances.OpenStopEvent(resetFirst: !Instances.IsHeld(Instances.WatchMutexName));
         using var cts = new CancellationTokenSource();
         Console.CancelKeyPress += (_, e) =>
         {
             e.Cancel = true;
             cts.Cancel();
         };
+        _ = Task.Run(() =>
+        {
+            stopEvent.WaitOne();
+            cts.Cancel();
+        });
 
         Console.WriteLine($"Walinka Print Connector {Version} escuchando en 127.0.0.1:{config.Port}.");
         Console.WriteLine($"Orígenes permitidos: {string.Join(", ", config.AllowedOrigins)}");
@@ -116,8 +188,103 @@ internal static class Program
         }
         catch (OperationCanceledException)
         {
-            // Salida normal con Ctrl+C.
+            // Salida normal: Ctrl+C o señal de parada.
         }
+        catch (IOException ex) when (ex.InnerException is System.Net.Sockets.SocketException { SocketErrorCode: System.Net.Sockets.SocketError.AddressAlreadyInUse })
+        {
+            Console.WriteLine($"El puerto {config.Port} se ocupó justo al iniciar. Reinicia el conector.");
+            return ExitCodes.PortBusy;
+        }
+        return 0;
+    }
+
+    private static bool PortIsFree(int port)
+    {
+        try
+        {
+            var listener = new System.Net.Sockets.TcpListener(System.Net.IPAddress.Loopback, port);
+            listener.Start();
+            listener.Stop();
+            return true;
+        }
+        catch (System.Net.Sockets.SocketException)
+        {
+            return false;
+        }
+    }
+
+    private static async Task<bool> IsOurServiceAsync(int port)
+    {
+        try
+        {
+            using var http = new HttpClient { Timeout = TimeSpan.FromSeconds(2) };
+            var json = await http.GetStringAsync($"http://127.0.0.1:{port}/v1/health");
+            return json.Contains("walinka-print-connector", StringComparison.Ordinal);
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+    }
+
+    private static int ValidateFile(string[] args)
+    {
+        var path = GetOption(args, "--file");
+        if (path is null || !File.Exists(path)) return Fail("Indica un archivo existente: validate --file RUTA.bin");
+        var bytes = File.ReadAllBytes(path);
+        var error = PayloadPolicy.ValidatePayload(bytes);
+        if (error is null)
+        {
+            Console.WriteLine($"OK: {bytes.Length} bytes, estructura ESC/POS válida.");
+            return 0;
+        }
+        var (_, offset) = EscPosStreamValidator.Validate(bytes);
+        Console.WriteLine($"RECHAZADO: {error} (posición {offset}).");
+        return 2;
+    }
+
+    private static int Stop()
+    {
+        if (!Instances.RequestStop())
+        {
+            Console.WriteLine("El conector no está en ejecución.");
+            return 0;
+        }
+        Console.WriteLine("Solicitud de parada enviada.");
+        var deadline = DateTime.UtcNow.AddSeconds(15);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (!Instances.IsHeld(Instances.WatchMutexName) && !Instances.IsHeld(Instances.ServeMutexName))
+            {
+                Console.WriteLine("Conector detenido.");
+                return 0;
+            }
+            Thread.Sleep(300);
+        }
+        Console.WriteLine("El conector no terminó a tiempo. Revisa el log en %LOCALAPPDATA%\\WalinkaPrintConnector\\logs.");
+        return 1;
+    }
+
+    private static int Restart(string dataDir)
+    {
+        // Si el anterior no terminó, no se lanza otro: el vigilante nuevo fallaría
+        // con "ya está en ejecución" y el usuario no vería por qué.
+        if (Stop() != 0)
+        {
+            Console.WriteLine("No se pudo detener el conector anterior. No se inició una copia nueva; revisa el log.");
+            return 1;
+        }
+        var exe = Environment.ProcessPath ?? throw new InvalidOperationException("No se pudo determinar la ruta del ejecutable.");
+        // Mismo arranque que el registro de inicio: sin ventana de consola.
+        var info = new System.Diagnostics.ProcessStartInfo(
+            Path.Combine(Environment.SystemDirectory, "conhost.exe"),
+            $"--headless \"{exe}\" watch --data-dir \"{dataDir}\"")
+        {
+            UseShellExecute = false,
+            CreateNoWindow = true,
+        };
+        System.Diagnostics.Process.Start(info);
+        Console.WriteLine("Conector iniciado de nuevo.");
         return 0;
     }
 
@@ -147,6 +314,10 @@ internal static class Program
     {
         var config = ConnectorConfig.LoadOrCreate(dataDir);
         var store = new PairingStore(dataDir);
+        var watching = Instances.IsHeld(Instances.WatchMutexName);
+        var serving = Instances.IsHeld(Instances.ServeMutexName);
+        Console.WriteLine($"Vigilante (inicio automático): {(watching ? "en ejecución" : "detenido")}");
+        Console.WriteLine($"Servicio local:                {(serving ? "en ejecución" : "detenido")}");
         Console.WriteLine($"Puerto:               {config.Port}");
         Console.WriteLine($"Equipos emparejados:  {store.PairedDeviceCount()}");
         Console.WriteLine($"Carpeta de datos:     {dataDir}");
@@ -249,6 +420,53 @@ internal static class Program
 
         Spooler.SendRaw(printer.Name, CutProbe.Build(variant, printer.Name), $"Walinka - cut-probe {variant.Code}");
         Console.WriteLine($"Variante {variant.Code} enviada. Windows aceptó el trabajo; confirma visualmente el corte.");
+        return 0;
+    }
+
+    private static int StarProbeCommand(string[] args)
+    {
+        if (args.Contains("--list-variants"))
+        {
+            foreach (var v in StarProbe.Variants) Console.WriteLine($"{v.Code}: {v.Label}\n    {v.Note}");
+            return 0;
+        }
+
+        var code = RequireOption(args, "--variant");
+        var variant = StarProbe.Find(code) ?? throw new ArgumentException($"Variante desconocida: {code}. Usa --list-variants.");
+        var printerName = RequireOption(args, "--printer");
+        var force = args.Contains("--force");
+
+        var printer = Spooler.FindPrinter(printerName)
+            ?? throw new ArgumentException($"No existe una impresora llamada \"{printerName}\".");
+        var problems = Spooler.DescribeStatus(printer.Status);
+        if (problems.Count > 0 && !force)
+        {
+            foreach (var problem in problems) Console.WriteLine($"  - {problem}");
+            return Fail("No se envió nada. Revisa la impresora o usa --force.");
+        }
+
+        Spooler.SendRaw(printer.Name, StarProbe.Build(variant, printer.Name), $"Walinka - star-probe {variant.Code}");
+        Console.WriteLine($"Variante {variant.Code} enviada. Windows aceptó el trabajo. Anota: texto legible, 'V' al inicio, basura, y si corta.");
+        return 0;
+    }
+
+    private static int MinimalCutCommand(string[] args)
+    {
+        var printerName = RequireOption(args, "--printer");
+        var cut = ParseCut(GetOption(args, "--cut") ?? "modern");
+        var force = args.Contains("--force");
+
+        var printer = Spooler.FindPrinter(printerName)
+            ?? throw new ArgumentException($"No existe una impresora llamada \"{printerName}\".");
+        var problems = Spooler.DescribeStatus(printer.Status);
+        if (problems.Count > 0 && !force)
+        {
+            foreach (var problem in problems) Console.WriteLine($"  - {problem}");
+            return Fail("No se envió nada. Revisa la impresora o usa --force.");
+        }
+
+        Spooler.SendRaw(printer.Name, MinimalCut.Build(cut, printer.Name), "Walinka - corte minimo (sin venta)");
+        Console.WriteLine("Windows aceptó el trabajo. Confirma visualmente si cortó.");
         return 0;
     }
 

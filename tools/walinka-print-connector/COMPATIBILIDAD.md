@@ -136,3 +136,99 @@ Orden recomendado: T, A, C, D, B, E. Anotar por cada una: texto completo (sí/no
 2. Salida de `info --printer "..."` en el computador donde QZ corta (si podés correr el prototipo allí, o al menos el nombre del driver y el tipo de datos desde Impresoras y escáneres > Propiedades de la impresora > Avanzadas).
 3. Resultado de las variantes T, A, C, D, B, E con la anotación de texto, "V" y corte.
 4. Si el panel o la página de configuración de la TSP100 indica el modo de emulación.
+
+## 10. Prueba Star TSP100 Cutter / TSP143 — star-probe (v0.3, solo texto y corte)
+
+Objetivo: saber qué combinación de avance + corte corta en la Star TSP100 con emulación ESC/POS,
+sin logo ni gráficos. No cambia ventas, TPV, Supabase ni facturación.
+
+Cambio respecto de v0.2: nuevo comando `star-probe` (archivo `StarProbe.cs`). Las variantes solo
+cambian el avance antes del corte (LF repetidos frente a `ESC d 4`) y la forma del corte:
+
+| Código | Bytes tras el texto | Qué responde |
+|---|---|---|
+| S0 | LF x4, sin corte | Control: ¿aparece 'V' o basura sin corte? |
+| S1 | LF x4 + `GS V 66 0` | ¿Corta con avance LF, como Walinka 'Solo texto'? |
+| S2 | `ESC d 4` + `GS V 66 0` | ¿Corta con avance ESC/POS explícito? |
+| S3 | `ESC d 4` + `GS V 65 0` | ¿Corta solo con corte total? |
+
+Todas empiezan con `ESC @`, no contienen pulso de cajón (`ESC p`) y pasan el validador de payload.
+
+### 10.1 Cómo probar en Windows
+
+1. Desde la carpeta del conector en PowerShell, compila (requiere .NET 8 SDK):
+   `.\build.ps1`
+2. Comprueba que el equipo ve la impresora y su estado (en ambos PCs si hay dos):
+   `.\publish\WalinkaPrintConnector.exe info --printer "Star TSP100 Cutter (TSP143)"`
+   Copia la salida completa (nombre de cola, puerto, driver, datatype, estado).
+3. Lista las variantes:
+   `.\publish\WalinkaPrintConnector.exe star-probe --list-variants`
+4. Ejecuta una variante por vez, en este orden: S0, S1, S2, S3. Espera a que termine la impresión
+   antes de la siguiente:
+   `.\publish\WalinkaPrintConnector.exe star-probe --printer "Star TSP100 Cutter (TSP143)" --variant S0`
+   Si la impresora reporta un estado (sin papel, tapa abierta), el comando no envía nada salvo que
+   añadas `--force`; no lo uses sin revisar la impresora.
+5. Anota en una tabla por variante:
+   - ¿Texto legible? (sí / caracteres extraños / no imprime)
+   - ¿'V' al inicio? (sí / no)
+   - ¿Corta? (sí / no / parcial / corta y deja tira)
+   - ¿Cuántos mm quedan tras el corte?
+6. Envía la tabla y la salida de `info` para decidir el perfil de la Star.
+
+### 10.2 Qué significa cada resultado
+
+- S0 con 'V' o basura: el problema está en la cola o el driver, antes del corte. No es un problema de corte.
+- S0 limpio y S1 sin corte: el cortador no responde a `GS V 66 0` con avance LF. Probar S2/S3.
+- S2 corta y S1 no: el avance `ESC d` es necesario. Entonces el perfil Star debe usar `ESC d` antes del corte.
+- Solo S3 corta: la cuchilla de la Star responde a corte total; el perfil Star usará `GS V 65 0`.
+- Ninguna corta pero todas imprimen limpio: cambiar la emulación en el driver de Star (ESC/POS en lugar de Star Line)
+  y repetir S0 antes de seguir.
+
+### 10.3 Límites de esta versión
+
+- No se ha compilado con .NET en Windows dentro de este entorno: el build y `selftest` se verificaron
+  con un compilado de prueba para Linux (93 pruebas OK). La compilación oficial la hace `build.ps1` en Windows.
+- Las pruebas no tocan la cola de ventas ni el registro de trabajos de impresión.
+- El logo queda fuera; se aborda después de confirmar el corte.
+
+## 11. Configuración que funcionó — Star TSP100IIU (prueba física 2026-11-01 13:02:41)
+
+Confirmado físicamente: E1 (`test-print --cut modern`) imprimió el ticket completo y la impresora cortó sola.
+Ticket `minimal-cut --cut modern` también cortó (una línea, un LF).
+
+### 11.1 Comandos que se enviaron (E1, `TicketBuilder.Build(CutStyle.Modern)`)
+
+- `1B 40` (ESC @, init)
+- `1B 61 00` (ESC a 0, alineación izquierda)
+- 17 líneas de texto ASCII, cada una con `0A`
+- `0A 0A 0A 0A` (4 LF de avance)
+- `1D 56 42 00` (GS V 66 0, corte parcial)
+
+Mismo corte que `minimal-cut` (1 LF antes de `GS V 66 0`). La diferencia entre ambos es solo el número de LF y la cantidad de texto.
+
+### 11.2 Transporte
+
+- `Spooler.SendRaw`: `OpenPrinter` → `StartDocPrinterW` con `pDatatype = "RAW"` → `StartPagePrinter` → **un** `WritePrinter` con el buffer completo (verifica bytes escritos) → `EndPagePrinter` → `EndDocPrinter`.
+- Sin render GDI ni XPS: el firmware de la impresora interpreta los bytes.
+
+### 11.3 Configuración de la impresora y de la cola
+
+Fuente: `Get-Printer` (Windows) y autoprueba física de la impresora.
+
+- Modelo: Star TSP100IIU Ver3.0 (autoprueba)
+- Cutter: Enable (autoprueba)
+- USB Class: Printer (autoprueba)
+- Área imprimible: 72 mm (autoprueba)
+- Nombre de la cola: `Star TSP100 Cutter (TSP143)` (Get-Printer)
+- Driver: `Star TSP100 Cutter (TSP143)` (Get-Printer)
+- Puerto: `USB008` (Get-Printer)
+- Print processor: `winprint` (Get-Printer)
+- Datatype por defecto de la cola: `RAW` (Get-Printer)
+- Modo de emulación: **PENDIENTE DE CONFIRMAR** (no supuesto; se leerá de la autoprueba)
+
+### 11.4 Qué no se ha validado
+
+- Logo (raster) con corte automático: pendiente.
+- Ticket de venta completo con productos y totales: pendiente.
+- Avance: el ticket funcionó con 4 LF; reducir a 2 LF queda como prueba aparte.
+- XP-80C: sin cambios; sigue con sus perfiles actuales.
