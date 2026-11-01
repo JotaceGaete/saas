@@ -22,8 +22,8 @@ describe('perfil Star TSP100IIU (PRINT-6)', () => {
   });
 
   it('solo la cola exacta de la Star tiene preset', () => {
-    expect(PRINTER_PROFILE_PRESETS[STAR_QUEUE]).toBe('starTsp100');
-    expect(getPresetProfileIdForPrinter(STAR_QUEUE)).toBe('starTsp100');
+    expect(PRINTER_PROFILE_PRESETS[STAR_QUEUE]).toBe('generic80');
+    expect(getPresetProfileIdForPrinter(STAR_QUEUE)).toBe('generic80');
     expect(getPresetProfileIdForPrinter('Star TSP100 Cutter (TSP143) copia')).toBeNull();
     expect(getPresetProfileIdForPrinter('XP-80C')).toBeNull();
     expect(getPresetProfileIdForPrinter('')).toBeNull();
@@ -66,6 +66,17 @@ describe('perfil Star TSP100IIU (PRINT-6)', () => {
     } finally {
       delete globalThis.window;
     }
+  });
+
+  it('la Star recibe el perfil Recomendado: el logo no se pierde', () => {
+    const profile = getCompatibilityProfile(getPresetProfileIdForPrinter(STAR_QUEUE));
+    expect(profile.id).toBe('generic80');
+    expect(profile.printLogo).toBe(true);
+    expect(profile.cutStrategyId).toBe('gs-v-modern');
+  });
+
+  it('(perfil sin logo, solo texto y corte, queda disponible como preset interno)', () => {
+    expect(PRESET_PROFILES.starTsp100.printLogo).toBe(false);
   });
 
   it('un ticket de venta con el perfil Star no incluye logo y pide corte GS V 66 0 con 4 LF', () => {

@@ -110,7 +110,9 @@ export const PRESET_PROFILES = {
  * @type {Readonly<Record<string, string>>}
  */
 export const PRINTER_PROFILE_PRESETS = Object.freeze({
-  'Star TSP100 Cutter (TSP143)': 'starTsp100',
+  // Mismo perfil Recomendado (logo + texto + corte GS V 66 0) que ya se
+  // validó físicamente en esta Star: el logo no se pierde al elegirla.
+  'Star TSP100 Cutter (TSP143)': 'generic80',
 });
 
 /** Id de perfil sugerido para una cola exacta, o null si no hay preset. */
