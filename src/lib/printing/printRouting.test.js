@@ -61,7 +61,7 @@ test('acciones explícitas: clave única por intento, válida para el conector',
 
 test('estado: sin conector activo no muestra "conectado" del conector', () => {
   const view = connectorStatusView({ active: false, paired: false, health: 'ok', printerName: null });
-  assert.equal(view.label, 'Sin emparejar');
+  assert.equal(view.label, 'Conector detectado · sin emparejar');
   assert.equal(view.canPrint, false);
 });
 
@@ -77,4 +77,12 @@ test('estado: activo sin impresora pide elegir una; conector caído no imprime',
   const down = connectorStatusView({ active: true, paired: true, health: 'unreachable', printerName: 'XP-80C' });
   assert.equal(down.label, 'Conector no encontrado');
   assert.equal(down.canPrint, false);
+});
+
+test('REGRESIÓN: health 200 con listado fallido no muestra "Conector no encontrado"', () => {
+  const view = connectorStatusView({ active: true, paired: true, health: 'ok', printerName: 'XP-80C', printersError: 'El conector respondió, pero no pudo listar las impresoras.' });
+  assert.equal(view.label, 'Conector sin lista de impresoras');
+  assert.equal(view.canPrint, false);
+  const ok = connectorStatusView({ active: true, paired: true, health: 'ok', printerName: 'XP-80C', printersError: null });
+  assert.equal(ok.label, 'Conectado');
 });

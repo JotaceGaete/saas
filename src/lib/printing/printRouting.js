@@ -75,12 +75,18 @@ function randomNonce() {
  * decide por QZ.
  * @returns {{ tone: 'ok'|'warn'|'error'|'idle', label: string, canPrint: boolean }}
  */
-export function connectorStatusView({ active, paired = false, health, printerName }) {
+export function connectorStatusView({ active, paired = false, health, printerName, printersError = null }) {
+  // Sin conector activo, la etiqueta debe reflejar también lo que responde el servicio.
+  // Antes solo miraba el token: con /v1/health en 200 decía «Sin emparejar» sin más.
   if (!active) {
-    return { tone: 'idle', label: paired ? 'Pausado' : 'Sin emparejar', canPrint: false };
+    if (health === 'checking') return { tone: 'idle', label: 'Verificando conector…', canPrint: false };
+    if (health === 'unreachable') return { tone: 'error', label: 'Conector no encontrado', canPrint: false };
+    if (paired) return { tone: 'idle', label: 'Pausado', canPrint: false };
+    return { tone: 'warn', label: 'Conector detectado · sin emparejar', canPrint: false };
   }
   if (health === 'checking') return { tone: 'idle', label: 'Verificando conector…', canPrint: false };
   if (health !== 'ok') return { tone: 'error', label: 'Conector no encontrado', canPrint: false };
+  if (printersError) return { tone: 'error', label: 'Conector sin lista de impresoras', canPrint: false };
   if (!printerName) return { tone: 'warn', label: 'Conectado · elige una impresora', canPrint: false };
   return { tone: 'ok', label: 'Conectado', canPrint: true };
 }
