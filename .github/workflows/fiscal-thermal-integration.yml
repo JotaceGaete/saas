@@ -94,3 +94,20 @@ jobs:
       - name: Run real PostgreSQL fiscal RPC and security tests
         working-directory: supabase/functions/fiscal-emit
         run: npm run test:db
+      - name: Run real PostgREST contract against isolated PostgreSQL
+        env:
+          PGRST_DB_URI: postgres://postgres:fiscal_test_only@127.0.0.1:5432/walinka_test
+        run: |
+          mkdir -p /tmp/walinka-fiscal-ci
+          cat > /tmp/walinka-fiscal-ci/postgrest <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          config="$1"
+          exec docker run --rm --network host \
+            -e PGRST_DB_URI -e PGRST_JWT_SECRET \
+            -v "$(dirname "$config"):/fiscal-config:ro" \
+            postgrest/postgrest:v12.2.3 /fiscal-config/$(basename "$config")
+          EOF
+          chmod +x /tmp/walinka-fiscal-ci/postgrest
+          POSTGREST_BIN=/tmp/walinka-fiscal-ci/postgrest \
+            bash supabase/functions/fiscal-emit/scripts/postgrest-contract/run.sh
