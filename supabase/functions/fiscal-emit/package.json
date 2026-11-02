@@ -5,7 +5,7 @@
   "description": "Emisor fiscal server-side (DTE 39). Núcleo JS probado con node --test; index.ts es el envoltorio Deno.",
   "type": "module",
   "scripts": {
-    "test": "node --test test/unit/*.test.mjs test/contract/accepted-boletas.contract.test.mjs",
+    "test": "node --test --test-concurrency=1 test/unit/*.test.mjs test/contract/accepted-boletas.contract.test.mjs",
     "test:unit": "node --test test/unit/*.test.mjs",
     "test:db": "node --test --test-concurrency=1 test/db/*.test.mjs",
     "test:contract": "bash scripts/postgrest-contract/run.sh",
