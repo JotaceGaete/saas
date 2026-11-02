@@ -28,10 +28,20 @@ fails=()
 for f in supabase/migrations/*.sql; do
   "${PSQL[@]}" -d "$DB" -1 -f "$f" >/dev/null 2>&1 || fails+=("$f")
 done
-echo "migraciones del repo que no aplican en local (cron/realtime/email, esperado): ${#fails[@]}"
+printf "migraciones del repo no aplicadas en local: %s\\n" "${#fails[@]}"
+if (( ${#fails[@]} > 0 )); then
+  printf "  OMITIDA: %s\\n" "${fails[@]}"
+fi
+pilot_skipped=()
 for f in supabase/fiscal-recovery/migrations/*.sql; do
-  "${PSQL[@]}" -d "$DB" -1 -f "$f" >/dev/null 2>&1 || echo "recuperada sin aplicar (datos del piloto): $f"
+  if ! "${PSQL[@]}" -d "$DB" -1 -f "$f" >/dev/null 2>&1; then
+    pilot_skipped+=("$f")
+  fi
 done
+printf "migraciones de recuperación omitidas: %s\\n" "${#pilot_skipped[@]}"
+if (( ${#pilot_skipped[@]} > 0 )); then
+  printf "  OMITIDA: %s\\n" "${pilot_skipped[@]}"
+fi
 for f in 20261031_p0_fiscal_admin_tables 20261031_fiscal_single_ledger_guard 20261101_fiscal_connection \
          20261102_fiscal_provider_claim_guard 20261031_issuer_sucursal_config 20261102_fiscal_sii_status; do
   echo "aplicando propuesta $f"
