@@ -31,3 +31,17 @@ describe('PDF80 raster → ESC/POS (sin emisión)', () => {
     expect(() => encodeFiscalRaster({ rgba: image(576, 4000), width: 576, height: 4000 })).toThrow('RASTER_PAYLOAD_TOO_LARGE');
   });
 });
+
+
+describe('Star TSP100 fiscal raster', () => {
+  it('uses ESC * 33 rather than GS v 0', () => {
+    const rgba = new Uint8ClampedArray(32 * 24 * 4).fill(255);
+    const bytes = encodeFiscalRaster({ rgba, width: 32, height: 24, cut: false, profile: 'star-tsp100' });
+    expect(Array.from(bytes).join(',')).toContain('27,42,33,32,0');
+    expect(Array.from(bytes).join(',')).not.toContain('29,118,48,0');
+  });
+  it('rejects unknown printer profiles', () => {
+    const rgba = new Uint8ClampedArray(8 * 8 * 4).fill(255);
+    expect(() => encodeFiscalRaster({ rgba, width: 8, height: 8, profile: 'unknown' })).toThrow('RASTER_PROFILE_INVALID');
+  });
+});
