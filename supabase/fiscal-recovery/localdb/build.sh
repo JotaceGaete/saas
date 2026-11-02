@@ -49,4 +49,13 @@ for f in 20261031_p0_fiscal_admin_tables 20261031_fiscal_single_ledger_guard 202
   "${PSQL[@]}" -d "$DB" -1 -f "supabase/fiscal-recovery/proposed/$f.sql"
 done
 "${PSQL[@]}" -d "$DB" -f supabase/fiscal-recovery/localdb/90_service_role_grants.sql
-echo "listo: $DB"
+if (( ${#fails[@]} > 0 || ${#pilot_skipped[@]} > 0 )); then
+  echo "ATENCIÓN: base $DB construida con migraciones omitidas; NO es una réplica completa." >&2
+  if [[ "${FISCAL_ALLOW_PARTIAL_MIGRATIONS:-}" != "1" ]]; then
+    echo "Validación estricta fallida. Para pruebas parciales, definir FISCAL_ALLOW_PARTIAL_MIGRATIONS=1 explícitamente." >&2
+    exit 5
+  fi
+  echo "MODO PARCIAL ACEPTADO: resultados no demuestran paridad con producción."
+else
+  echo "listo: $DB (sin migraciones omitidas)"
+fi
