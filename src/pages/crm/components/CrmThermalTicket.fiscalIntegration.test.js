@@ -1,10 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 
 // Integration contract: fiscal controls are opt-in and never replace the
 // existing commercial ticket or its reprint handler.
-const source = readFileSync(new URL('./CrmThermalTicket.jsx', import.meta.url), 'utf8');
-const terminal = readFileSync(new URL('../CrmTerminal.jsx', import.meta.url), 'utf8');
+const source = readFileSync(resolve(process.cwd(), 'src/pages/crm/components/CrmThermalTicket.jsx'), 'utf8');
+const terminal = readFileSync(resolve(process.cwd(), 'src/pages/crm/CrmTerminal.jsx'), 'utf8');
 
 describe('TPV: fiscal issuance remains separate from commercial printing', () => {
   it('only mounts the fiscal emission panel behind the explicit feature flag', () => {
