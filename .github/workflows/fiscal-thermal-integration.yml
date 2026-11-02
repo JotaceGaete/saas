@@ -107,7 +107,7 @@ jobs:
           #!/usr/bin/env bash
           set -euo pipefail
           config="$1"
-          exec docker run --rm --network host \
+          exec docker run --rm --network host --entrypoint postgrest \
             -e PGRST_DB_URI -e PGRST_JWT_SECRET \
             -v "$(dirname "$config"):/fiscal-config:ro" \
             postgrest/postgrest:v12.2.3 /fiscal-config/$(basename "$config")
