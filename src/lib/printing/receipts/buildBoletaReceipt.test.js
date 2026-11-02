@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   buildBoletaReceipt, buildTimbreDiagnosticReceipt, buildTimbreImage, formatRut, formatFechaEmision,
-  BoletaReceiptError, TIMBRE_STRATEGIES,
+  BoletaReceiptError, TIMBRE_STRATEGIES, SELECTABLE_TIMBRE_STRATEGY_IDS,
 } from './buildBoletaReceipt';
 import { renderEscPosReceipt } from './renderEscPosReceipt';
 import { buildDoubleDensity24BitImageCommand } from './escPosImage';
@@ -56,6 +56,15 @@ describe('buildBoletaReceipt', () => {
     expect(bytes.length).toBeLessThan(256 * 1024); // límite del Print Connector
   });
 
+  it('la reimpresión se rotula arriba y abajo como copia de un documento existente', async () => {
+    const { receipt } = await buildBoletaReceipt({ ...base, reprint: true });
+    const texts = receipt.lines.filter((l) => l.type === 'text').map((l) => l.text);
+    expect(texts.slice(0, 3)).toEqual(['REIMPRESION', 'Documento emitido el 01-11-2026', 'No corresponde a una nueva emision']);
+    expect(texts.at(-1)).toBe('REIMPRESION BOLETA 1201 - NO ES NUEVA EMISION');
+    const { receipt: plain } = await buildBoletaReceipt(base);
+    expect(plain.lines.some((l) => /REIMPRESION/.test(l.text || ''))).toBe(false);
+  });
+
   it('no imprime sin timbre verificado, sin resolución o con otro tipo de documento', async () => {
     await expect(buildBoletaReceipt({ ...base, tedVerified: false })).rejects.toMatchObject({ code: 'TED_NOT_VERIFIED' });
     await expect(buildBoletaReceipt({ ...base, resolucion: null })).rejects.toMatchObject({ code: 'RESOLUCION_REQUIRED' });
@@ -83,6 +92,20 @@ describe('buildTimbreImage', () => {
   });
 });
 
+describe('variante angosta', () => {
+  it('con 10 columnas cabe en un cabezal de 512 dots y sigue dentro de los límites del SII', async () => {
+    const t = await buildTimbreImage(dte.ted.xml, 'rasterGsV0Narrow');
+    expect(t.widthDots).toBeLessThanOrEqual(512 - 32);
+    expect(t.widthMm).toBeGreaterThanOrEqual(45);
+    expect(t.withinSiiSize).toBe(true);
+    expect(t.meetsSiiResolution).toBe(true);
+  });
+
+  it('las variantes ofrecidas al usuario cumplen todas > 200 dpi', () => {
+    expect(SELECTABLE_TIMBRE_STRATEGY_IDS.every((id) => TIMBRE_STRATEGIES[id].meetsSiiResolution)).toBe(true);
+  });
+});
+
 describe('buildDoubleDensity24BitImageCommand', () => {
   it('emite ESC 3 24, una franja ESC * 33 con ancho de 2 bytes y 3 bytes por columna', () => {
     const width = 300;
@@ -105,7 +128,8 @@ describe('buildDoubleDensity24BitImageCommand', () => {
 describe('buildTimbreDiagnosticReceipt', () => {
   it('imprime el mismo timbre en las tres estrategias, rotuladas y sin valor tributario', async () => {
     const { receipt, timbres } = await buildTimbreDiagnosticReceipt({ dte, tedVerified: true });
-    expect(timbres.map((t) => t.strategyId)).toEqual(['rasterGsV0', 'escStar24', 'escStar8']);
+    expect(timbres.map((t) => t.strategyId)).toEqual(['rasterGsV0', 'escStar24', 'rasterGsV0Narrow']);
+    expect(receipt.lines[2].text).toBe('Reimpresion del timbre de la boleta 1201');
     expect(receipt.lines.filter((l) => l.type === 'rasterBytes')).toHaveLength(3);
     expect(receipt.lines[1].text).toBe('SIN VALOR TRIBUTARIO');
     const bytes = await renderEscPosReceipt(receipt);

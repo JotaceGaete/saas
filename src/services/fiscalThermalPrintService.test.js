@@ -15,7 +15,7 @@ vi.mock('../lib/printing/connectorConfigStorage', () => ({
   readConnectorConfig: () => ({ enabled: false }),
 }));
 
-const { printBoletaThermal, printTimbreDiagnostic, loadVerifiedDte, TEST_COPY_LABEL } = await import('./fiscalThermalPrintService');
+const { printBoletaThermal, printTimbreDiagnostic, loadVerifiedDte, MAX_XML_FILE_BYTES } = await import('./fiscalThermalPrintService');
 
 const BIZ = '11111111-1111-4111-8111-111111111111';
 const INV = '22222222-2222-4222-8222-222222222222';
@@ -39,12 +39,12 @@ describe('fiscalThermalPrintService', () => {
     expect(f.mock.calls[0][1].headers.Authorization).toBe('Bearer tok');
   });
 
-  it('imprime el ticket rotulado como prueba, sin llamar a nada más', async () => {
+  it('imprime la reimpresión rotulada, sin llamar a nada más', async () => {
     const r = await printBoletaThermal({ businessId: BIZ, invoiceId: INV, resolucion: { numero: '80', anio: '2014' } });
     expect(r).toMatchObject({ ok: true, folio: 1201 });
     expect(printReceipt).toHaveBeenCalledTimes(1);
     const [receipt, target] = printReceipt.mock.calls[0];
-    expect(receipt.lines[0]).toMatchObject({ text: TEST_COPY_LABEL, bold: true });
+    expect(receipt.lines[0]).toMatchObject({ text: 'REIMPRESION', bold: true });
     expect(target.printerName).toBe('Star TSP100 Cutter (TSP143)');
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
   });
@@ -67,7 +67,24 @@ describe('fiscalThermalPrintService', () => {
   it('imprime el diagnóstico con las tres variantes', async () => {
     const r = await printTimbreDiagnostic({ businessId: BIZ, invoiceId: INV });
     expect(r.ok).toBe(true);
-    expect(r.timbres.map((t) => t.strategyId)).toEqual(['rasterGsV0', 'escStar24', 'escStar8']);
+    expect(r.timbres.map((t) => t.strategyId)).toEqual(['rasterGsV0', 'escStar24', 'rasterGsV0Narrow']);
     expect(printReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  it('reimprime desde un archivo XML local sin descargar nada', async () => {
+    const xml = buildSyntheticDteXml();
+    const file = { size: xml.length, arrayBuffer: async () => latin1Bytes(xml).buffer };
+    const r = await printBoletaThermal({ businessId: BIZ, file, resolucion: { numero: '80', anio: '2014' }, timbreStrategyId: 'rasterGsV0Narrow' });
+    expect(r).toMatchObject({ ok: true, folio: 1201, timbre: { strategyId: 'rasterGsV0Narrow' } });
+    expect(globalThis.fetch).not.toHaveBeenCalled();
+    expect(printReceipt).toHaveBeenCalledTimes(1);
+  });
+
+  it('rechaza archivos que no son un XML de boleta válido', async () => {
+    const big = { size: MAX_XML_FILE_BYTES + 1, arrayBuffer: async () => new ArrayBuffer(0) };
+    expect(await printTimbreDiagnostic({ businessId: BIZ, file: big })).toMatchObject({ ok: false, code: 'XML_FILE_TOO_LARGE' });
+    const junk = { size: 10, arrayBuffer: async () => latin1Bytes('<hola>').buffer };
+    expect(await printTimbreDiagnostic({ businessId: BIZ, file: junk })).toMatchObject({ ok: false });
+    expect(printReceipt).not.toHaveBeenCalled();
   });
 });

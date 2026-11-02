@@ -31,13 +31,17 @@ export class BoletaReceiptError extends Error {
   }
 }
 
-// Cómo se imprime el timbre. `dpi` es la resolución física esperada;
-// solo las estrategias con `meetsSiiResolution` cumplen el mínimo del SII
-// (> 200 dpi). Ninguna está validada todavía en la Star TSP100.
+// Cómo se imprime el timbre. Solo las estrategias con `meetsSiiResolution`
+// cumplen el mínimo del SII (> 200 dpi). `columns` son las columnas de datos
+// del PDF417: con 12 el símbolo mide 546 dots (68 mm) y necesita un cabezal
+// de 576 dots (72 mm imprimibles, lo habitual en 80 mm, p. ej. Xprinter
+// XP-80); con 10 mide 478 dots (60 mm) y cabe también en cabezales de 512.
+// Ninguna está validada todavía en papel.
 export const TIMBRE_STRATEGIES = Object.freeze({
   rasterGsV0: Object.freeze({
     id: 'rasterGsV0',
-    label: 'GS v 0 (raster, 203 dpi)',
+    label: 'GS v 0 raster, 203 dpi, 12 columnas',
+    columns: 12,
     moduleWidthDots: 2,
     rowHeightDots: 5,
     dotsPerMmX: DOTS_PER_MM_203DPI,
@@ -47,7 +51,8 @@ export const TIMBRE_STRATEGIES = Object.freeze({
   }),
   escStar24: Object.freeze({
     id: 'escStar24',
-    label: 'ESC * 33 (24 dots, 203 dpi)',
+    label: 'ESC * 33 en franjas de 24 dots, 203 dpi, 12 columnas',
+    columns: 12,
     moduleWidthDots: 2,
     rowHeightDots: 5,
     dotsPerMmX: DOTS_PER_MM_203DPI,
@@ -55,12 +60,26 @@ export const TIMBRE_STRATEGIES = Object.freeze({
     meetsSiiResolution: true,
     build: (bits, width, height) => buildDoubleDensity24BitImageCommand(bits, width, height),
   }),
+  // Igual que rasterGsV0 pero más angosto (y más alto): para impresoras cuyo
+  // ancho imprimible sea de 512 dots (64 mm) en vez de 576.
+  rasterGsV0Narrow: Object.freeze({
+    id: 'rasterGsV0Narrow',
+    label: 'GS v 0 raster, 203 dpi, 10 columnas (angosto)',
+    columns: 10,
+    moduleWidthDots: 2,
+    rowHeightDots: 5,
+    dotsPerMmX: DOTS_PER_MM_203DPI,
+    dotsPerMmY: DOTS_PER_MM_203DPI,
+    meetsSiiResolution: true,
+    build: (bits, width, height) => buildRasterCommand(bits, width, height),
+  }),
   // Misma ruta ESC * m=0 validada para el logo en la TSP100: ~101 dpi en
   // horizontal y ~69 dpi en vertical (100 x 100 dots midieron 25 x 37 mm).
   // NO cumple la resolución del SII; queda solo como referencia de lectura.
   escStar8: Object.freeze({
     id: 'escStar8',
     label: 'ESC * 0 (8 dots, ~101 dpi, no cumple SII)',
+    columns: 12,
     moduleWidthDots: 1,
     rowHeightDots: 2,
     dotsPerMmX: 4,
@@ -71,6 +90,27 @@ export const TIMBRE_STRATEGIES = Object.freeze({
 });
 
 export const DEFAULT_TIMBRE_STRATEGY_ID = 'rasterGsV0';
+
+/** Estrategias que se ofrecen al usuario y que salen en el diagnóstico (todas cumplen > 200 dpi). */
+export const SELECTABLE_TIMBRE_STRATEGY_IDS = Object.freeze(['rasterGsV0', 'escStar24', 'rasterGsV0Narrow']);
+
+/**
+ * Leyendas de reimpresión: dejan claro que el papel es una copia de un
+ * documento ya emitido y aceptado en su momento, no una emisión nueva.
+ */
+export function buildReprintNotice(dte) {
+  return {
+    header: [
+      { type: 'text', text: 'REIMPRESION', align: 'center', bold: true, double: true },
+      { type: 'text', text: `Documento emitido el ${formatFechaEmision(dte.fechaEmision)}`, align: 'center' },
+      { type: 'text', text: 'No corresponde a una nueva emision', align: 'center' },
+    ],
+    footer: [
+      { type: 'text', text: '' },
+      { type: 'text', text: `REIMPRESION BOLETA ${dte.folio} - NO ES NUEVA EMISION`, align: 'center', bold: true },
+    ],
+  };
+}
 
 /** "77804207-K" -> "77.804.207-K" */
 export function formatRut(rut) {
@@ -98,7 +138,7 @@ function clean(value) {
 export async function buildTimbreImage(tedXml, strategyId = DEFAULT_TIMBRE_STRATEGY_ID, { bwip } = {}) {
   const strategy = TIMBRE_STRATEGIES[strategyId];
   if (!strategy) throw new BoletaReceiptError('TIMBRE_STRATEGY_INVALID', String(strategyId));
-  const symbol = await encodeTedPdf417(tedXml, { bwip });
+  const symbol = await encodeTedPdf417(tedXml, { bwip, columns: strategy.columns });
   const { bits, width, height } = scalePdf417(symbol, {
     moduleWidthDots: strategy.moduleWidthDots,
     rowHeightDots: strategy.rowHeightDots,
@@ -129,6 +169,7 @@ export async function buildTimbreImage(tedXml, strategyId = DEFAULT_TIMBRE_STRAT
  * @param {string} [params.unidadSii] - unidad regional del SII (p. ej. "CONCEPCION"), si corresponde
  * @param {string} [params.nombreFantasia]
  * @param {string} [params.copyLabel] - leyenda superior opcional (p. ej. "PRUEBA DE IMPRESION")
+ * @param {boolean} [params.reprint] - agrega las leyendas de reimpresión arriba y abajo (buildReprintNotice)
  * @param {string} [params.timbreStrategyId]
  * @param {number} [params.paperWidthMm]
  * @param {boolean} [params.autoCut]
@@ -143,6 +184,7 @@ export async function buildBoletaReceipt({
   unidadSii,
   nombreFantasia,
   copyLabel,
+  reprint = false,
   timbreStrategyId = DEFAULT_TIMBRE_STRATEGY_ID,
   paperWidthMm = 80,
   autoCut = true,
@@ -161,7 +203,9 @@ export async function buildBoletaReceipt({
   const timbre = await buildTimbreImage(dte.ted.xml, timbreStrategyId, { bwip });
 
   const { emisor, totales } = dte;
+  const notice = reprint ? buildReprintNotice(dte) : null;
   const lines = [];
+  if (notice) lines.push(...notice.header, { type: 'divider' });
   if (copyLabel) lines.push({ type: 'text', text: clean(copyLabel), align: 'center', bold: true });
   if (nombreFantasia) lines.push({ type: 'text', text: clean(nombreFantasia), align: 'center', bold: true, double: true });
   lines.push({ type: 'text', text: clean(emisor.razonSocial), align: 'center', bold: true });
@@ -200,6 +244,7 @@ export async function buildBoletaReceipt({
   lines.push({ type: 'text', text: 'Timbre Electronico SII', align: 'center' });
   lines.push({ type: 'text', text: `Res. ${resNumero} de ${resAnio}`, align: 'center' });
   lines.push({ type: 'text', text: 'Verifique documento: www.sii.cl', align: 'center' });
+  if (notice) lines.push(...notice.footer);
 
   return {
     receipt: {
@@ -212,6 +257,8 @@ export async function buildBoletaReceipt({
     },
     timbre: {
       strategyId: timbre.strategyId,
+      widthDots: timbre.widthDots,
+      heightDots: timbre.heightDots,
       widthMm: timbre.widthMm,
       heightMm: timbre.heightMm,
       columns: timbre.columns,
@@ -233,21 +280,23 @@ export async function buildTimbreDiagnosticReceipt({ dte, tedVerified, paperWidt
   const lines = [
     { type: 'text', text: 'DIAGNOSTICO TIMBRE PDF417', align: 'center', bold: true },
     { type: 'text', text: 'SIN VALOR TRIBUTARIO', align: 'center', bold: true },
-    { type: 'text', text: `Boleta ${dte.folio} - ${formatFechaEmision(dte.fechaEmision)}`, align: 'center' },
+    { type: 'text', text: `Reimpresion del timbre de la boleta ${dte.folio}`, align: 'center' },
+    { type: 'text', text: `emitida el ${formatFechaEmision(dte.fechaEmision)}. No es nueva emision.`, align: 'center' },
     { type: 'divider' },
   ];
   const results = [];
-  for (const [index, id] of ['rasterGsV0', 'escStar24', 'escStar8'].entries()) {
+  for (const [index, id] of SELECTABLE_TIMBRE_STRATEGY_IDS.entries()) {
     // eslint-disable-next-line no-await-in-loop -- orden de impresión
     const timbre = await buildTimbreImage(dte.ted.xml, id, { bwip });
     results.push({ ...timbre, command: undefined });
     const label = String.fromCharCode(65 + index);
     lines.push({ type: 'text', text: `${label}) ${TIMBRE_STRATEGIES[id].label}`, bold: true });
-    lines.push({ type: 'text', text: `Esperado: ${timbre.widthMm} x ${timbre.heightMm} mm` });
+    lines.push({ type: 'text', text: `Esperado: ${timbre.widthMm} x ${timbre.heightMm} mm (${timbre.widthDots} dots de ancho)` });
     lines.push({ type: 'rasterBytes', command: timbre.command });
     lines.push({ type: 'text', text: `Fin ${label}`, align: 'center' });
     lines.push({ type: 'divider' });
   }
+  lines.push({ type: 'text', text: 'Si un timbre sale cortado a la derecha, use el C.', align: 'center' });
   return {
     receipt: { lines, paperWidthMm, currency: 'CLP', feedLines: 4, cut: true, cutStrategyId },
     timbres: results,

@@ -8,6 +8,7 @@ vi.mock('components/ui/PanelHeader', () => ({ default: ({ title, subtitle }) => 
 
 let business = { id: 'biz1', name: 'Mi Negocio', currency: 'CLP' };
 vi.mock('contexts/AuthContext', () => ({ useAuth: () => ({ business }) }));
+vi.mock('lib/supabase', () => ({ supabase: { auth: { getSession: async () => ({ data: { session: null } }) } } }));
 
 const connectMock = vi.fn();
 const listPrintersMock = vi.fn();
