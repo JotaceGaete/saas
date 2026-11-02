@@ -24,8 +24,8 @@ if grep -q 'listo: walinka_test' "$TMP/output"; then
   echo "ERROR: base parcial declarada completa" >&2
   exit 1
 fi
-if ! grep -q 'Validación estricta fallida' "$TMP/output"; then
-  echo "ERROR: falta diagnóstico de validación incompleta" >&2
+if ! grep -q 'ERROR: migración fallida: supabase/migrations/' "$TMP/output"; then
+  echo "ERROR: falta el archivo de la primera migración fallida" >&2
   exit 1
 fi
-echo 'Local DB: omisiones impiden certificar reconstrucción completa'
+echo 'Local DB: primera migración histórica fallida detiene reconstrucción'
