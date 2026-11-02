@@ -80,7 +80,7 @@ function resolveTarget(businessId, kind, folio) {
     qzPrinterName: printerConfig.printerName,
     // Cada pulsación es una nueva reimpresión voluntaria. Evitar una clave fija
     // que el conector pueda interpretar como duplicado y omitir silenciosamente.
-    idempotencyKey: buildPrintKey(kind, `${businessId}:${folio}:${crypto.randomUUID()}`),
+    idempotencyKey: buildPrintKey(kind, `${businessId}:${folio}:${globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`}`),
   });
   if (target.error) throw Object.assign(new Error(MESSAGES.MISSING_PRINTER), { code: 'MISSING_PRINTER' });
   return { printerConfig, target };
