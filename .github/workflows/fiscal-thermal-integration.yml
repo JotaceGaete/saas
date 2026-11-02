@@ -1,0 +1,31 @@
+name: Fiscal thermal integration checks
+on:
+  pull_request:
+    paths:
+      - 'src/lib/fiscal/dte/**'
+      - 'src/lib/printing/receipts/**'
+      - 'src/services/fiscalThermalPrintService*'
+      - 'src/pages/crm/components/TpvFiscalEmitPanel*'
+      - 'src/pages/crm/CrmFiscalThermalPrint.jsx'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/fiscal-thermal-integration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  thermal-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      # Temporary validation only. Replace with npm ci after package-lock is regenerated.
+      - name: Resolve test dependencies without modifying repository
+        run: npm install --no-audit --no-fund --ignore-scripts
+      - name: Verify thermal and TPV components
+        run: npx vitest run src/lib/fiscal/dte/parseDteXml.test.js src/lib/fiscal/dte/tedPdf417.test.js src/lib/printing/receipts/buildBoletaReceipt.test.js src/services/fiscalThermalPrintService.test.js src/pages/crm/components/TpvFiscalEmitPanel.test.jsx
+      - name: Build frontend
+        run: npm run build
