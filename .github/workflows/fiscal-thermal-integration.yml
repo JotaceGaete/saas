@@ -47,5 +47,7 @@ jobs:
         run: bash supabase/fiscal-recovery/localdb/migration-failure.test.sh
       - name: Verify skipped migrations cannot certify a complete local DB
         run: bash supabase/fiscal-recovery/localdb/partial-migrations.test.sh
+      - name: Verify PostgREST refuses preoccupied local port
+        run: node --test supabase/functions/fiscal-emit/scripts/postgrest-contract/occupied-port.test.mjs
       - name: Build frontend
         run: npm run build
