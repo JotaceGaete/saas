@@ -12,18 +12,20 @@ on:
       - '.github/workflows/fiscal-thermal-integration.yml'
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 jobs:
   thermal-integration:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          persist-credentials: true
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      # Rebuild the lock in the runner for validation; this does not modify the PR.
-      # The generated lockfile must be committed before the PR can be merged.
+      # Regenerate the dependency lock for a reproducible clean install.
       - name: Generate lockfile and verify clean install
         run: |
           npm install --package-lock-only --ignore-scripts --no-audit --no-fund
@@ -32,3 +34,15 @@ jobs:
         run: npx vitest run src/lib/fiscal/dte/parseDteXml.test.js src/lib/fiscal/dte/tedPdf417.test.js src/lib/printing/receipts/buildBoletaReceipt.test.js src/services/fiscalThermalPrintService.test.js src/pages/crm/components/TpvFiscalEmitPanel.test.jsx
       - name: Build frontend
         run: npm run build
+      - name: Commit verified lockfile to the PR branch
+        if: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository }}
+        run: |
+          if git diff --quiet -- package-lock.json; then
+            echo "Lockfile already up to date"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          git commit -m "fix(fiscal): synchronize npm lockfile for thermal dependencies"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
