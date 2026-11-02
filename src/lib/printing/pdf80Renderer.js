@@ -21,11 +21,12 @@ const MAX_PAGES = 1;
  *   pdfjsLib: {getDocument: Function},
  *   createCanvas: (width: number, height: number) => {canvas: object, context: object},
  *   printableWidthDots?: number,
+ *   profile?: 'generic' | 'star-tsp100',
  *   cut?: boolean,
  * }} args
  */
 export async function renderFiscalPdf80ToEscPos({
-  pdfBytes, pdfjsLib, createCanvas, printableWidthDots = MAX_PRINT_WIDTH_DOTS, cut = true,
+  pdfBytes, pdfjsLib, createCanvas, printableWidthDots = MAX_PRINT_WIDTH_DOTS, cut = true, profile = 'generic',
 } = {}) {
   const bytes = preflightFiscalPdf(pdfBytes);
   if (!pdfjsLib || typeof pdfjsLib.getDocument !== 'function' || typeof createCanvas !== 'function') {
@@ -63,7 +64,7 @@ export async function renderFiscalPdf80ToEscPos({
     }
     await page.render({ canvasContext: context, viewport, background: 'rgb(255,255,255)' }).promise;
     const pixels = context.getImageData(0, 0, width, height);
-    return encodeFiscalRaster({ rgba: pixels.data, width, height, cut });
+    return encodeFiscalRaster({ rgba: pixels.data, width, height, cut, profile });
   } catch (error) {
     if (error instanceof FiscalPdfRenderError || error instanceof FiscalRasterError) throw error;
     throw new FiscalPdfRenderError('PDF_RENDER_FAILED');
