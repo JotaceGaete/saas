@@ -259,3 +259,18 @@ test('status: antes de emitir canEmit true; después ALREADY_ISSUED con estado S
   assert.equal(after.siiStatus, 'unverified'); // emitido != aceptado por el SII
   assert.equal(after.hasPdf, true);
 });
+
+test('cancelación externa interrumpe el POST y no lo reintenta', async () => {
+  const controller = new AbortController();
+  let requests = 0;
+  const p = createSiisolutionsHttpProvider({ baseUrl, fetchImpl: (_url, options) => {
+    requests += 1;
+    return new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
+    });
+  } });
+  const pending = p.emit({ payload: PAYLOAD, credentials: CREDS, signal: controller.signal });
+  controller.abort();
+  await assert.rejects(pending, { code: 'PROVIDER_NETWORK' });
+  assert.equal(requests, 1);
+});
