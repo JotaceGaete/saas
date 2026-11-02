@@ -50,16 +50,23 @@ export POSTGREST_JWT_SECRET="$PGRST_JWT_SECRET"
 PID=$!
 trap 'kill "$PID" 2>/dev/null || true' EXIT
 
+READY=false
 for _ in $(seq 1 40); do
-  if curl -s -o /dev/null "http://127.0.0.1:${PORT}/"; then
-    break
-  fi
+  # Un proceso ajeno podría estar escuchando en el puerto: no basta con que curl conecte.
   if ! kill -0 "$PID" 2>/dev/null; then
     echo "PostgREST terminó al arrancar; revisa $HERE/.postgrest.log (sin secretos)." >&2
     exit 4
   fi
+  if curl --fail --silent --max-time 2 -o /dev/null "http://127.0.0.1:${PORT}/"; then
+    READY=true
+    break
+  fi
   sleep 0.5
 done
+if [[ "$READY" != true ]]; then
+  echo "PostgREST no estuvo listo dentro del plazo; pruebas de contrato NO ejecutadas." >&2
+  exit 4
+fi
 
 cd "$ROOT"
 node --test test/contract/postgrest.contract.test.mjs
