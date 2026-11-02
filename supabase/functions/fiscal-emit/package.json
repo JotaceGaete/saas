@@ -7,7 +7,7 @@
   "scripts": {
     "test": "node --test test/unit/*.test.mjs test/contract/accepted-boletas.contract.test.mjs",
     "test:unit": "node --test test/unit/*.test.mjs",
-    "test:db": "node --test test/db/*.test.mjs",
+    "test:db": "node --test --test-concurrency=1 test/db/*.test.mjs",
     "test:contract": "bash scripts/postgrest-contract/run.sh",
     "test:deno": "deno test --node-modules-dir=none -A test/deno/",
     "test:contract:dte": "node --test test/contract/accepted-boletas.contract.test.mjs"
