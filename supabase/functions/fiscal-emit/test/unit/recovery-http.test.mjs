@@ -43,3 +43,36 @@ test('errores internos no filtran detalles', async () => {
   assert.equal(r.status, 503);
   assert.deepEqual(await r.json(), { error: 'RECOVERY_UNAVAILABLE' });
 });
+
+test('dos solicitudes simultáneas al mismo worker: segunda rechazada', async () => {
+  let release;
+  let calls = 0;
+  const pending = new Promise((resolve) => { release = resolve; });
+  const handle = createRecoveryHttpHandler({
+    recovery: { recoverStaleSending: async () => { calls++; await pending; return { examined: 0 }; } },
+    secret, enabled: true,
+  });
+  const first = handle(request('POST', secret));
+  const second = await handle(request('POST', secret));
+  assert.equal(second.status, 409);
+  assert.deepEqual(await second.json(), { error: 'RECOVERY_ALREADY_RUNNING' });
+  assert.equal(calls, 1);
+  release();
+  assert.equal((await first).status, 200);
+  assert.equal((await handle(request('POST', secret))).status, 200);
+  assert.equal(calls, 2);
+});
+
+test('un fallo libera el bloqueo para la siguiente ejecución', async () => {
+  let calls = 0;
+  const handle = createRecoveryHttpHandler({
+    recovery: { recoverStaleSending: async () => {
+      calls++;
+      if (calls === 1) throw new Error('transient failure');
+      return { examined: 0 };
+    } }, secret, enabled: true,
+  });
+  assert.equal((await handle(request('POST', secret))).status, 503);
+  assert.equal((await handle(request('POST', secret))).status, 200);
+  assert.equal(calls, 2);
+});
