@@ -64,6 +64,24 @@ export const SII_STATUS_LABELS = Object.freeze({
   rejected: 'Rechazada por el SII',
 });
 
+// Estado único para mostrar, a partir de los DOS ejes: el del proveedor (status del ledger) y el
+// del SII (sii_status). "Emitida" solo significa folio + XML firmado; "Aceptada"/"Rechazada" son del SII.
+export function describeFiscalState({ state, siiStatus } = {}) {
+  switch (state) {
+    case 'none':
+    case 'pending': return { key: 'pendiente', label: 'Pendiente de emisión' };
+    case 'sending': return { key: 'enviando', label: 'Enviando a DTE Core' };
+    case 'unknown': return { key: 'desconocido', label: 'Resultado desconocido · requiere conciliación' };
+    case 'failed': return { key: 'fallida', label: 'Rechazada por DTE Core (sin folio)' };
+    case 'cancelled': return { key: 'anulada', label: 'Anulada con nota de crédito' };
+    case 'issued':
+      if (siiStatus === 'accepted' || siiStatus === 'accepted_with_objections') return { key: 'aceptada', label: SII_STATUS_LABELS[siiStatus] };
+      if (siiStatus === 'rejected') return { key: 'rechazada', label: SII_STATUS_LABELS.rejected };
+      return { key: 'emitida', label: SII_STATUS_LABELS[siiStatus] ?? SII_STATUS_LABELS.unverified };
+    default: return { key: 'desconocido', label: 'Estado no disponible' };
+  }
+}
+
 // Devuelve { ok, status, folio?, code? }. Nunca lanza. Código = motivo estable; resultado incierto nunca se reintenta.
 export async function emitFiscalSale(saleId) {
   let data;

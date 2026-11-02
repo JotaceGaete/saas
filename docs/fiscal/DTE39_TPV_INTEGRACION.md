@@ -77,9 +77,40 @@ Supabase, 189 migraciones del repo, las recuperadas y P0–E). Se niega a usar h
 
 ```bash
 cd supabase/functions/fiscal-emit
-npm test                                        # unidad + contrato DTE (195)
+npm test                                        # unidad + contrato DTE (201 + 1 opcional)
 FISCAL_TEST_PG_DB=walinka_test npm run test:db  # Postgres local (124)
 npm run test:deno                               # cableado Edge Function (11)
 cd ../../.. && node --test api/fiscal/*.test.js api/_lib/*.test.js   # endpoints de lectura (56)
 npx vitest run src/pages/crm/components/TpvFiscalEmitPanel.test.jsx src/services/fiscalEmitService.test.js  # 14
 ```
+
+## Estados (dos ejes)
+
+| Mostrado | Proveedor (`status`) | SII (`sii_status`) |
+|---|---|---|
+| Pendiente | sin fila / `pending` | — |
+| Enviando | `sending` | — |
+| Desconocido | `unknown` (con folio informado y motivo si los hay) | — |
+| Fallida (sin folio) | `failed` | — |
+| Emitida | `issued` | `unverified` o `received` |
+| Aceptada | `issued` | `accepted` / `accepted_with_objections` |
+| Rechazada | `issued` | `rejected` |
+| Anulada | `cancelled` | se conserva |
+
+`describeFiscalState` (src/services/fiscalEmitService.js) produce esta etiqueta.
+
+## Credenciales por comercio
+
+`fiscal.business_credentials` (migración A): clave DTE Core cifrada con AES-GCM (`FISCAL_MASTER_KEY`,
+ligada al `business_id`), guardada desde Configuración (`api/fiscal/connection`, rol dueño) y leída
+solo dentro de `crm_fiscal_claim_with_credentials`. Nunca llega al navegador ni a variables `VITE_*`.
+
+## Consulta y reimpresión sin emitir
+
+- `fiscal-emit` acción `status`: estado, folio, estado SII, si hay PDF/XML. Solo lectura.
+- `fiscal-emit` acción `reprint`: PDF guardado. Nunca llama al proveedor (`NOT_ISSUED` si no hay boleta).
+- `api/fiscal/download?format=pdf|xml` y `api/fiscal/pdf`: descarga por rol fiscal.
+- Impresión térmica 80 mm desde el XML: PR #112.
+
+Pruebas: `test/unit/late-and-double.test.mjs` (respuestas tardías, doble clic, corte de conexión,
+reintento del cliente, consulta y reimpresión), contra un DTE Core simulado en 127.0.0.1.

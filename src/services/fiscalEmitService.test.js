@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const invoke = vi.fn();
 vi.mock('../lib/supabase', () => ({ supabase: { functions: { invoke: (...a) => invoke(...a) } } }));
 
-import { emitFiscalSale, describeFiscalEmitError, getFiscalSaleStatus, LOCKING_CODES, SII_STATUS_LABELS } from './fiscalEmitService';
+import { emitFiscalSale, describeFiscalEmitError, getFiscalSaleStatus, LOCKING_CODES, SII_STATUS_LABELS, describeFiscalState } from './fiscalEmitService';
 
 describe('emitFiscalSale', () => {
   beforeEach(() => invoke.mockReset());
@@ -69,5 +69,18 @@ describe('getFiscalSaleStatus', () => {
   it('etiquetas SII distinguen emitida de aceptada', () => {
     expect(SII_STATUS_LABELS.unverified).toMatch(/sin verificar/);
     expect(SII_STATUS_LABELS.accepted).toBe('Aceptada por el SII');
+  });
+});
+
+describe('describeFiscalState', () => {
+  it('distingue estado del proveedor y estado SII', () => {
+    expect(describeFiscalState({ state: 'none' }).key).toBe('pendiente');
+    expect(describeFiscalState({ state: 'sending' }).key).toBe('enviando');
+    expect(describeFiscalState({ state: 'unknown' }).key).toBe('desconocido');
+    expect(describeFiscalState({ state: 'issued', siiStatus: 'unverified' }).key).toBe('emitida');
+    expect(describeFiscalState({ state: 'issued', siiStatus: 'received' }).key).toBe('emitida');
+    expect(describeFiscalState({ state: 'issued', siiStatus: 'accepted' }).key).toBe('aceptada');
+    expect(describeFiscalState({ state: 'issued', siiStatus: 'rejected' }).key).toBe('rechazada');
+    expect(describeFiscalState({ state: 'failed' }).key).toBe('fallida');
   });
 });
