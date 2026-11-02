@@ -24,24 +24,27 @@ fi
 PSQL=(psql -U "${PGUSER:-postgres}" -q -v ON_ERROR_STOP=1)
 "${PSQL[@]}" -d postgres -c "drop database if exists \"$DB\"" -c "create database \"$DB\""
 "${PSQL[@]}" -d "$DB" -f supabase/fiscal-recovery/localdb/00_supabase_stub.sql
-fails=()
-for f in supabase/migrations/*.sql; do
-  "${PSQL[@]}" -d "$DB" -1 -f "$f" >/dev/null 2>&1 || fails+=("$f")
-done
-printf "migraciones del repo no aplicadas en local: %s\\n" "${#fails[@]}"
-if (( ${#fails[@]} > 0 )); then
-  printf "  OMITIDA: %s\\n" "${fails[@]}"
-fi
-pilot_skipped=()
-for f in supabase/fiscal-recovery/migrations/*.sql; do
-  if ! "${PSQL[@]}" -d "$DB" -1 -f "$f" >/dev/null 2>&1; then
-    pilot_skipped+=("$f")
+# Fail closed on the FIRST failed migration. Never claim a partial reconstruction
+# is equivalent to production, even if a caller sets legacy bypass flags.
+apply_migration() {
+  local file="$1"
+  local log
+  log="$(mktemp)"
+  echo "aplicando migración: $file"
+  if ! "${PSQL[@]}" -d "$DB" -1 -f "$file" >"$log" 2>&1; then
+    echo "ERROR: migración fallida: $file" >&2
+    cat "$log" >&2
+    rm -f "$log"
+    exit 5
   fi
+  rm -f "$log"
+}
+for f in supabase/migrations/*.sql; do
+  apply_migration "$f"
 done
-printf "migraciones de recuperación omitidas: %s\\n" "${#pilot_skipped[@]}"
-if (( ${#pilot_skipped[@]} > 0 )); then
-  printf "  OMITIDA: %s\\n" "${pilot_skipped[@]}"
-fi
+for f in supabase/fiscal-recovery/migrations/*.sql; do
+  apply_migration "$f"
+done
 for f in 20261031_p0_fiscal_admin_tables 20261031_fiscal_single_ledger_guard 20261101_fiscal_connection \
          20261102_fiscal_provider_claim_guard 20261031_issuer_sucursal_config 20261102_fiscal_sii_status; do
   echo "aplicando propuesta $f"
@@ -49,13 +52,4 @@ for f in 20261031_p0_fiscal_admin_tables 20261031_fiscal_single_ledger_guard 202
   "${PSQL[@]}" -d "$DB" -1 -f "supabase/fiscal-recovery/proposed/$f.sql"
 done
 "${PSQL[@]}" -d "$DB" -f supabase/fiscal-recovery/localdb/90_service_role_grants.sql
-if (( ${#fails[@]} > 0 || ${#pilot_skipped[@]} > 0 )); then
-  echo "ATENCIÓN: base $DB construida con migraciones omitidas; NO es una réplica completa." >&2
-  if [[ "${FISCAL_ALLOW_PARTIAL_MIGRATIONS:-}" != "1" ]]; then
-    echo "Validación estricta fallida. Para pruebas parciales, definir FISCAL_ALLOW_PARTIAL_MIGRATIONS=1 explícitamente." >&2
-    exit 5
-  fi
-  echo "MODO PARCIAL ACEPTADO: resultados no demuestran paridad con producción."
-else
-  echo "listo: $DB (sin migraciones omitidas)"
-fi
+echo "listo: $DB (sin migraciones omitidas)"\n
