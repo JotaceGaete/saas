@@ -66,10 +66,16 @@ export default function CrmFiscalThermalPrint({ businessId, invoiceId }) {
     setBusy(kind);
     setResult(null);
     const source = fileMode ? { file } : { invoiceId };
-    const r = kind === 'diag'
-      ? await printTimbreDiagnostic({ businessId, ...source })
-      : await printBoletaThermal({ businessId, ...source, resolucion, timbreStrategyId: strategyId });
-    setBusy('');
+    let r;
+    try {
+      r = kind === 'diag'
+        ? await printTimbreDiagnostic({ businessId, ...source })
+        : await printBoletaThermal({ businessId, ...source, resolucion, timbreStrategyId: strategyId });
+    } catch {
+      r = { ok: false, message: 'No se pudo completar la impresión. Revisa la conexión con la impresora.' };
+    } finally {
+      setBusy('');
+    }
     if (!r.ok) {
       setResult({ tone: 'error', text: r.message });
       return;
