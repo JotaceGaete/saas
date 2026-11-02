@@ -350,3 +350,42 @@ export function buildTiledColumnBitImageCommand(bits, width, height, xDots) {
   bytes.push(ESC, 0x32); // ESC 2 -- espaciado de línea por defecto
   return new Uint8Array(bytes);
 }
+
+const BAND_HEIGHT_24_DOTS = 24;
+
+/**
+ * FISCAL-80MM — `ESC * 33 nL nH d1..dk` (24-dot double density): bit image
+ * por columnas, 3 bytes verticales por columna (MSB = dot superior), a la
+ * resolución nativa del cabezal (~203 dpi en una térmica de 80 mm). Es la
+ * variante de `ESC *` que alcanza la resolución mínima exigida por el SII
+ * para el timbre (> 200 dpi); el modo m=0 que usa el logo (`buildTiledColumnBitImageCommand`)
+ * imprime a la mitad de densidad horizontal.
+ *
+ * NO validada físicamente todavía en la Star TSP100: se usa solo desde el
+ * ticket de diagnóstico del timbre hasta confirmarla. Cada franja de 24 dots
+ * se emite como UN comando con su ancho completo en nL/nH (sin dividir en
+ * bloques ni posicionar con `ESC $`, cuya unidad en este modo no está
+ * calibrada) y la línea se avanza con `ESC 3 lineSpacing` (24 por defecto).
+ * El Walinka Print Connector ya admite `ESC *` con m=33.
+ */
+export function buildDoubleDensity24BitImageCommand(bits, width, height, { lineSpacing = BAND_HEIGHT_24_DOTS } = {}) {
+  if (!Number.isInteger(width) || width < 1 || width > 0xFFFF) throw new Error('ancho inválido para ESC * 33');
+  const spacing = Math.min(255, Math.max(1, lineSpacing | 0));
+  const bytes = [ESC, 0x33, spacing]; // ESC 3 n
+  for (let bandStart = 0; bandStart < height; bandStart += BAND_HEIGHT_24_DOTS) {
+    bytes.push(ESC, 0x2A, 0x21, width & 0xFF, (width >> 8) & 0xFF);
+    for (let x = 0; x < width; x++) {
+      for (let byteIndex = 0; byteIndex < 3; byteIndex++) {
+        let value = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const y = bandStart + byteIndex * 8 + bit;
+          if (y < height && bits[y * width + x]) value |= 0x80 >> bit;
+        }
+        bytes.push(value);
+      }
+    }
+    bytes.push(LF);
+  }
+  bytes.push(ESC, 0x32); // ESC 2 -- espaciado de línea por defecto
+  return new Uint8Array(bytes);
+}
