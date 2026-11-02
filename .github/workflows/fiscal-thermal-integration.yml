@@ -39,5 +39,7 @@ jobs:
         run: bash -n supabase/fiscal-recovery/localdb/build.sh supabase/functions/fiscal-emit/scripts/postgrest-contract/run.sh
       - name: Verify PostgREST guard rejects unsafe targets
         run: bash supabase/functions/fiscal-emit/scripts/postgrest-contract/guard.test.sh
+      - name: Verify local PostgreSQL rebuild guard
+        run: bash supabase/fiscal-recovery/localdb/guard.test.sh
       - name: Build frontend
         run: npm run build
