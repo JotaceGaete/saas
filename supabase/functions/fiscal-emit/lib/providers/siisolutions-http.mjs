@@ -90,6 +90,8 @@ export function documentProblem({ folio, xmlBase64, pdfBase64 }, expect = {}) {
   if (info.tipoDte !== 39) return 'XML_NOT_DTE39';
   if (info.folio !== folio) return 'XML_FOLIO_MISMATCH';
   if (!info.hasTed) return 'XML_WITHOUT_TED';
+  // Comprobación estructural mínima; NO equivale a verificar XMLDSig ni FRMT.
+  if (!info.hasSignature) return 'XML_WITHOUT_SIGNATURE';
   if (expect.total != null && info.mntTotal !== expect.total) return 'XML_TOTAL_MISMATCH';
   if (expect.rutEmisor && normRut(info.rutEmisor) !== normRut(expect.rutEmisor)) return 'XML_ISSUER_MISMATCH';
   if (!isB64(pdfBase64) || Buffer.from(pdfBase64, 'base64').subarray(0, 5).toString('latin1') !== '%PDF-') {
