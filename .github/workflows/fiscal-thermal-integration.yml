@@ -37,5 +37,7 @@ jobs:
         run: node --test supabase/functions/fiscal-emit/test/unit/siisolutions-http.test.mjs supabase/functions/fiscal-emit/test/unit/recovery-safety.test.mjs supabase/functions/fiscal-emit/test/unit/reconciler.test.mjs supabase/functions/fiscal-emit/test/unit/recovery-http.test.mjs supabase/functions/fiscal-emit/test/unit/state.test.mjs supabase/functions/fiscal-emit/test/unit/failures.memory.test.mjs supabase/functions/fiscal-emit/test/unit/late-and-double.test.mjs supabase/functions/fiscal-emit/test/unit/store-supabase.test.mjs supabase/functions/fiscal-emit/test/unit/postgrest-client.test.mjs
       - name: Validate local fiscal DB and PostgREST harness scripts
         run: bash -n supabase/fiscal-recovery/localdb/build.sh supabase/functions/fiscal-emit/scripts/postgrest-contract/run.sh
+      - name: Verify PostgREST guard rejects unsafe targets
+        run: bash supabase/functions/fiscal-emit/scripts/postgrest-contract/guard.test.sh
       - name: Build frontend
         run: npm run build
