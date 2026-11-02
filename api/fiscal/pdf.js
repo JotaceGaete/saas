@@ -1,11 +1,12 @@
-// Authenticated, read-only PDF of a previously issued DTE 39.
+// Authenticated, read-only PDF of a previously issued DTE 39. Access: active fiscal role on the
+// business (see siisolutions-fiscal-role-guard.js).
 import { createClient } from '@supabase/supabase-js';
-import { createBusinessOwnerGuard } from '../_lib/siisolutions-owner-guard.js';
+import { createFiscalRoleGuard } from '../_lib/siisolutions-fiscal-role-guard.js';
 import { decodeFiscalPdfForPreview } from '../_lib/siisolutions-pdf-preview.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export function createFiscalPdfHandler({ admin, assertOwner }) {
+export function createFiscalPdfHandler({ admin, assertAccess }) {
   return async function handle(req, res) {
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -15,7 +16,7 @@ export function createFiscalPdfHandler({ admin, assertOwner }) {
     if (!UUID.test(businessId || '') || !UUID.test(invoiceId || '')) {
       return res.status(400).json({ error: 'INVALID_REQUEST' });
     }
-    const guard = await assertOwner({ bearer: req.headers?.authorization, businessId });
+    const guard = await assertAccess({ bearer: req.headers?.authorization, businessId });
     if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
 
     const { data: invoice, error: invoiceError } = await admin.from('crm_invoices')
@@ -55,8 +56,8 @@ export default async function handler(req, res) {
     if (error || !data?.user?.id) throw new Error('Invalid session');
     return data.user.id;
   };
-  const assertOwner = createBusinessOwnerGuard({ authenticate, admin });
-  return createFiscalPdfHandler({ admin, assertOwner })(
+  const assertAccess = createFiscalRoleGuard({ authenticate, admin });
+  return createFiscalPdfHandler({ admin, assertAccess })(
     Object.assign(req, { query: req.query || Object.fromEntries(new URL(req.url, 'http://x').searchParams) }),
     res,
   );

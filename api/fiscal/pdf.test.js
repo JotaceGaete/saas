@@ -16,7 +16,7 @@ function mock({ owner=true, invoice=true, issuance=true, status='issued', pdf=pd
       throw Error('unexpected table');
     }};
   }};
-  const handler=createFiscalPdfHandler({admin,assertOwner:async()=>owner?{ok:true}:{ok:false,status:403,error:'FORBIDDEN'}});
+  const handler=createFiscalPdfHandler({admin,assertAccess:async()=>owner?{ok:true}:{ok:false,status:403,error:'FORBIDDEN'}});
   const req={method:'GET',headers:{authorization:'Bearer session'},query:{businessId,invoiceId}};
   const res={headers:{},setHeader(k,v){this.headers[k]=v;},status(code){this.statusCode=code;return this;},json(body){this.body=body;return this;},send(bytes){this.bytes=bytes;return this;}};
   return {handler,req,res,calls};

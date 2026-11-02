@@ -1,12 +1,14 @@
-// Owner-authenticated download of an already issued fiscal document.
+// Download of an already issued fiscal document. Access: active fiscal role on the business
+// (owner, operator or viewer), see siisolutions-fiscal-role-guard.js.
 // Read-only: never contacts DTECore and never emits or retries a DTE.
 import { createClient } from '@supabase/supabase-js';
-import { createBusinessOwnerGuard } from '../_lib/siisolutions-owner-guard.js';
+import { createFiscalRoleGuard } from '../_lib/siisolutions-fiscal-role-guard.js';
+import { LEDGER_PROVIDER_IDS as FISCAL_PROVIDER_IDS } from '../../supabase/functions/fiscal-emit/lib/provider-ids.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const FORMATS = { pdf: { column: 'pdf_base64', mime: 'application/pdf', magic: '%PDF-' }, xml: { column: 'xml_base64', mime: 'application/xml', magic: '<?xml' } };
 
-export function createFiscalDownloadHandler({ admin, assertOwner }) {
+export function createFiscalDownloadHandler({ admin, assertAccess }) {
   return async function handle(req, res) {
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -14,7 +16,7 @@ export function createFiscalDownloadHandler({ admin, assertOwner }) {
     if (req.method !== 'GET') return res.status(405).json({ error: 'METHOD_NOT_ALLOWED' });
     const { businessId, invoiceId, format } = req.query || {};
     if (!UUID.test(invoiceId || '') || !Object.hasOwn(FORMATS, format)) return res.status(400).json({ error: 'INVALID_REQUEST' });
-    const guard = await assertOwner({ bearer: req.headers?.authorization, businessId });
+    const guard = await assertAccess({ bearer: req.headers?.authorization, businessId });
     if (!guard.ok) return res.status(guard.status).json({ error: guard.error });
     const { data: invoice, error: invoiceError } = await admin.from('crm_invoices')
       .select('id').eq('id', invoiceId).eq('business_id', businessId).maybeSingle();
@@ -23,7 +25,7 @@ export function createFiscalDownloadHandler({ admin, assertOwner }) {
     const column = FORMATS[format].column;
     const { data: document, error } = await admin.from('crm_fiscal_issuances')
       .select('status,folio,' + column)
-      .eq('business_id', businessId).eq('sale_id', invoiceId).eq('dte_type', 39).eq('provider', 'siisolutions').maybeSingle();
+      .eq('business_id', businessId).eq('sale_id', invoiceId).eq('dte_type', 39).in('provider', FISCAL_PROVIDER_IDS).maybeSingle();
     if (error) return res.status(503).json({ error: 'SERVER_ERROR' });
     if (document?.status !== 'issued' || !Number.isSafeInteger(document?.folio) || document.folio <= 0) return res.status(404).json({ error: 'DOCUMENT_NOT_AVAILABLE' });
     const encoded = document[column];
@@ -46,8 +48,8 @@ export default async function handler(req, res) {
     if (error || !data?.user?.id) throw new Error('Invalid session');
     return data.user.id;
   };
-  const assertOwner = createBusinessOwnerGuard({ authenticate, admin });
-  return createFiscalDownloadHandler({ admin, assertOwner })(
+  const assertAccess = createFiscalRoleGuard({ authenticate, admin });
+  return createFiscalDownloadHandler({ admin, assertAccess })(
     Object.assign(req, { query: req.query || Object.fromEntries(new URL(req.url, 'http://x').searchParams) }), res
   );
 }
