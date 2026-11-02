@@ -92,6 +92,7 @@ test('XML que no corresponde: folio, total, emisor, tipo o timbre distintos -> u
     [{ xmlBase64: b64(syntheticDteXml({ folio: 51203, total: 1000, rutEmisor: '11111111-1' })) }, 'XML_ISSUER_MISMATCH'],
     [{ xmlBase64: b64(syntheticDteXml({ folio: 51203, total: 1000, tipo: 33 })) }, 'XML_NOT_DTE39'],
     [{ xmlBase64: b64(syntheticDteXml({ folio: 51203, total: 1000, withTed: false })) }, 'XML_WITHOUT_TED'],
+    [{ xmlBase64: b64(syntheticDteXml({ folio: 51203, total: 1000 }).replace(/<Signature[^>]*>[\s\S]*?<\/Signature>/, '')) }, 'XML_WITHOUT_SIGNATURE'],
     [{ pdfBase64: b64('<html>no es pdf</html>') }, 'PDF_INVALID'],
   ];
   for (const [override, code] of cases) {
