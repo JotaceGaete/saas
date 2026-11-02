@@ -108,8 +108,9 @@ la prueba con el XML real corre con `FISCAL_XML_51106=/ruta/al.xml`).
 Si la resolución del SII no se ingresa, una **reimpresión** sale con
 «Res. SII: por confirmar». Una boleta que no sea reimpresión sigue exigiéndola.
 
-El panel aparece en `/crm/impresion` solo en despliegues Preview de Vercel
-(`VITE_VERCEL_ENV=preview`) o con `VITE_FISCAL_THERMAL_PRINT=preview`.
+El panel aparece en `/crm/impresion` solo en el alias de rama de una Preview
+de Vercel (`saas-git-<rama>-….vercel.app`, nunca `main`), con
+`VITE_VERCEL_ENV=preview` o con `VITE_FISCAL_THERMAL_PRINT=preview`.
 `VITE_FISCAL_THERMAL_PRINT=off` lo apaga. En producción no aparece.
 
 ## 6. Pendiente después de validar

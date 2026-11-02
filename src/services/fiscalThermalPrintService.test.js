@@ -71,6 +71,13 @@ describe('fiscalThermalPrintService', () => {
     expect(isFiscalThermalPrintEnabled({ VITE_VERCEL_ENV: 'preview' })).toBe(true);
     expect(isFiscalThermalPrintEnabled({ VITE_FISCAL_THERMAL_PRINT: 'preview' })).toBe(true);
     expect(isFiscalThermalPrintEnabled({ VITE_VERCEL_ENV: 'preview', VITE_FISCAL_THERMAL_PRINT: 'off' })).toBe(false);
+    const branch = 'saas-git-claude-project-thread-34xw19-juan-s-projects-afd7e18e.vercel.app';
+    expect(isFiscalThermalPrintEnabled({}, branch)).toBe(true);
+    expect(isFiscalThermalPrintEnabled({ VITE_FISCAL_THERMAL_PRINT: 'off' }, branch)).toBe(false);
+    for (const prod of ['go.ventalink.app', 'go.walinka.com', 'saas-juan-s-projects-afd7e18e.vercel.app',
+      'saas-git-main-juan-s-projects-afd7e18e.vercel.app', 'saas-git-x.vercel.app.evil.com']) {
+      expect(isFiscalThermalPrintEnabled({}, prod)).toBe(false);
+    }
   });
 
   it('no imprime con resolución incompleta ni si la descarga falla', async () => {

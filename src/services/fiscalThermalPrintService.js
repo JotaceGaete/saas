@@ -5,10 +5,10 @@
 // de emisión: nunca llama al proveedor (DTE Core), nunca emite, nunca
 // consume folios, nunca cambia el estado fiscal y nunca crea ventas.
 //
-// Apagado en producción. Se ve con VITE_FISCAL_THERMAL_PRINT=preview o en un
-// despliegue Preview de Vercel (VITE_VERCEL_ENV=preview, variable de sistema
-// que Vercel expone sola a Vite). VITE_FISCAL_THERMAL_PRINT=off lo apaga
-// siempre. Todo ticket sale rotulado como REIMPRESION de un documento
+// Apagado en producción. Se ve con VITE_FISCAL_THERMAL_PRINT=preview, con
+// VITE_VERCEL_ENV=preview o en el alias de rama de una Preview de Vercel
+// (saas-git-<rama>-…vercel.app, nunca main). VITE_FISCAL_THERMAL_PRINT=off lo
+// apaga siempre. Todo ticket sale rotulado como REIMPRESION de un documento
 // existente.
 
 import { supabase } from '../lib/supabase';
@@ -22,11 +22,21 @@ import { buildPrinterConfigKey, readPrinterConfig } from '../lib/printing/printe
 import { buildConnectorConfigKey, readConnectorConfig } from '../lib/printing/connectorConfigStorage';
 import { buildPrintTarget, buildPrintKey } from '../lib/printing/printRouting';
 
-export function isFiscalThermalPrintEnabled(env = {}) {
+// Alias de rama de Vercel (saas-git-<rama>-<equipo>.vercel.app), salvo el de
+// main, que sirve lo mismo que producción. Los dominios propios
+// (go.ventalink.app, go.walinka.com) y las URL de producción nunca coinciden.
+const PREVIEW_BRANCH_HOST = /^saas-git-(?!main-)[a-z0-9-]+\.vercel\.app$/i;
+
+export function isFiscalThermalPrintEnabled(env = {}, hostname = '') {
   if (env.VITE_FISCAL_THERMAL_PRINT === 'off') return false;
-  return env.VITE_FISCAL_THERMAL_PRINT === 'preview' || env.VITE_VERCEL_ENV === 'preview';
+  return env.VITE_FISCAL_THERMAL_PRINT === 'preview'
+    || env.VITE_VERCEL_ENV === 'preview'
+    || PREVIEW_BRANCH_HOST.test(String(hostname || ''));
 }
-export const FISCAL_THERMAL_PRINT_ENABLED = isFiscalThermalPrintEnabled(import.meta.env || {});
+export const FISCAL_THERMAL_PRINT_ENABLED = isFiscalThermalPrintEnabled(
+  import.meta.env || {},
+  typeof window !== 'undefined' ? window.location?.hostname : '',
+);
 export const MAX_XML_FILE_BYTES = 200 * 1024;
 
 const MESSAGES = {
