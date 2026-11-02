@@ -6,23 +6,25 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 DB="${FISCAL_TEST_PG_DB:-walinka_test}"
 case "${PGHOST:-}" in /*|localhost|127.0.0.1) ;; *) echo "PGHOST debe ser local"; exit 1;; esac
-[[ "$DB" == *_test ]] || { echo "la base debe terminar en _test"; exit 1; }
-P="psql -U ${PGUSER:-postgres} -q -v ON_ERROR_STOP=1"
-$P -d postgres -c "drop database if exists $DB" -c "create database $DB"
-$P -d "$DB" -f supabase/fiscal-recovery/localdb/00_supabase_stub.sql
+# Solo nombres simples y explícitamente de prueba; jamás interpolar SQL arbitrario.
+[[ "$DB" =~ ^[a-z][a-z0-9_]*_test$ ]] || { echo "nombre de base de prueba inválido"; exit 1; }
+[[ "$DB" != "postgres_test" && "$DB" != "template0_test" && "$DB" != "template1_test" ]] || { echo "nombre reservado"; exit 1; }
+PSQL=(psql -U "${PGUSER:-postgres}" -q -v ON_ERROR_STOP=1)
+"${PSQL[@]}" -d postgres -c "drop database if exists \"$DB\"" -c "create database \"$DB\""
+"${PSQL[@]}" -d "$DB" -f supabase/fiscal-recovery/localdb/00_supabase_stub.sql
 fails=()
 for f in supabase/migrations/*.sql; do
-  $P -d "$DB" -1 -f "$f" >/dev/null 2>&1 || fails+=("$f")
+  "${PSQL[@]}" -d "$DB" -1 -f "$f" >/dev/null 2>&1 || fails+=("$f")
 done
 echo "migraciones del repo que no aplican en local (cron/realtime/email, esperado): ${#fails[@]}"
 for f in supabase/fiscal-recovery/migrations/*.sql; do
-  $P -d "$DB" -1 -f "$f" >/dev/null 2>&1 || echo "recuperada sin aplicar (datos del piloto): $f"
+  "${PSQL[@]}" -d "$DB" -1 -f "$f" >/dev/null 2>&1 || echo "recuperada sin aplicar (datos del piloto): $f"
 done
 for f in 20261031_p0_fiscal_admin_tables 20261031_fiscal_single_ledger_guard 20261101_fiscal_connection \
          20261102_fiscal_provider_claim_guard 20261031_issuer_sucursal_config 20261102_fiscal_sii_status; do
   echo "aplicando propuesta $f"
   # No ocultar fallos SQL: si una propuesta falla, la base local NO está lista para pruebas.
-  $P -d "$DB" -1 -f "supabase/fiscal-recovery/proposed/$f.sql"
+  "${PSQL[@]}" -d "$DB" -1 -f "supabase/fiscal-recovery/proposed/$f.sql"
 done
-$P -d "$DB" -f supabase/fiscal-recovery/localdb/90_service_role_grants.sql
+"${PSQL[@]}" -d "$DB" -f supabase/fiscal-recovery/localdb/90_service_role_grants.sql
 echo "listo: $DB"
