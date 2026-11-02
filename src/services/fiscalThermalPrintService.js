@@ -5,26 +5,35 @@
 // de emisión: nunca llama al proveedor (DTE Core), nunca emite, nunca
 // consume folios, nunca cambia el estado fiscal y nunca crea ventas.
 //
-// Apagado por defecto: requiere VITE_FISCAL_THERMAL_PRINT=preview. Todo
-// ticket sale rotulado como REIMPRESION de un documento existente.
+// Apagado en producción. Se ve con VITE_FISCAL_THERMAL_PRINT=preview o en un
+// despliegue Preview de Vercel (VITE_VERCEL_ENV=preview, variable de sistema
+// que Vercel expone sola a Vite). VITE_FISCAL_THERMAL_PRINT=off lo apaga
+// siempre. Todo ticket sale rotulado como REIMPRESION de un documento
+// existente.
 
 import { supabase } from '../lib/supabase';
 import { decodeDteBytes, parseDteXml, DteXmlError } from '../lib/fiscal/dte/parseDteXml';
 import { verifyTedSignature } from '../lib/fiscal/dte/verifyTed';
-import { buildBoletaReceipt, buildTimbreDiagnosticReceipt, BoletaReceiptError } from '../lib/printing/receipts/buildBoletaReceipt';
+import {
+  buildBoletaReceipt, buildTimbreDiagnosticReceipt, BoletaReceiptError, resolveTimbreStrategyId,
+} from '../lib/printing/receipts/buildBoletaReceipt';
 import { printService } from '../lib/printing/printService';
 import { buildPrinterConfigKey, readPrinterConfig } from '../lib/printing/printerConfigStorage';
 import { buildConnectorConfigKey, readConnectorConfig } from '../lib/printing/connectorConfigStorage';
 import { buildPrintTarget, buildPrintKey } from '../lib/printing/printRouting';
 
-export const FISCAL_THERMAL_PRINT_ENABLED = import.meta.env?.VITE_FISCAL_THERMAL_PRINT === 'preview';
+export function isFiscalThermalPrintEnabled(env = {}) {
+  if (env.VITE_FISCAL_THERMAL_PRINT === 'off') return false;
+  return env.VITE_FISCAL_THERMAL_PRINT === 'preview' || env.VITE_VERCEL_ENV === 'preview';
+}
+export const FISCAL_THERMAL_PRINT_ENABLED = isFiscalThermalPrintEnabled(import.meta.env || {});
 export const MAX_XML_FILE_BYTES = 200 * 1024;
 
 const MESSAGES = {
   XML_DOWNLOAD_FAILED: 'No se pudo descargar el XML de la boleta.',
   TED_NOT_VERIFIED: 'La firma del timbre no es válida. No se imprime.',
   TED_MISMATCH: 'El timbre no coincide con los datos de la boleta. No se imprime.',
-  RESOLUCION_REQUIRED: 'Ingresa el número y año de la resolución del SII.',
+  RESOLUCION_REQUIRED: 'Ingresa el número y el año de la resolución del SII, o deja ambos vacíos.',
   PAPER_WIDTH_UNSUPPORTED: 'La boleta térmica requiere papel de 80 mm.',
   MISSING_PRINTER: 'No hay impresora configurada para este equipo.',
   DTE_TYPE_UNSUPPORTED: 'Solo se pueden imprimir boletas electrónicas (DTE 39).',
@@ -106,14 +115,17 @@ export async function printBoletaThermal({ businessId, invoiceId, file, resoluci
       tedVerified,
       resolucion,
       unidadSii,
-      timbreStrategyId,
+      timbreStrategyId: resolveTimbreStrategyId(
+        { printerName: target.printerName, imageMode: printerConfig.imageMode },
+        timbreStrategyId,
+      ),
       reprint: true,
       paperWidthMm: printerConfig.paperWidthMm,
       autoCut: printerConfig.autoCut,
       cutStrategyId: printerConfig.cutStrategyId,
     });
     await send(receipt, target);
-    return { ok: true, folio: dte.folio, timbre };
+    return { ok: true, folio: dte.folio, printerName: target.printerName, timbre };
   } catch (err) {
     return toFailure(err);
   }

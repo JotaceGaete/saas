@@ -84,6 +84,33 @@ Con el XML real de la 51106, los tres modos se generaron, pasaron por una copia 
 
 Criterio de éxito: la boleta 51106 impresa en 80 mm con todos los datos correctos y un PDF417 que una app lectora decodifique como el TED.
 
+## 5 bis. Star TSP100 / TSP143 (impresora actual)
+
+El modo del timbre se elige solo según la impresora (selector «Automático»).
+Para una cola cuyo nombre contiene `Star ... TSP1xx` o `TSP143` se usa
+`starTsp100`:
+
+| Qué | Valor | Por qué |
+|---|---|---|
+| Comando | `ESC * 33` (24 dots, ~203 dpi) | `GS v 0` sale como texto en la Star; `ESC *` es lo que ya imprime el logo |
+| Posición | `ESC $ 16` antes de cada franja, `ESC a 0` | mismo mecanismo validado para el logo (PRINT-4-BUG9/10) |
+| Interlineado | `ESC 3 8` | con el logo, `ESC 3 8` avanzó justo la altura impresa (PRINT-4-BUG13); `ESC 3 24` podría dejar huecos |
+| Ancho | 8 columnas, X = 2 dots → 410 dots (51 mm), borde derecho en 426 | imágenes más allá de ~440 dots se cortan o reaparecen a la izquierda (PRINT-4-BUG10/11) |
+| Alto | filas de 4 dots → 37,5 mm con la 51106 (75 filas) | dentro del máximo de 40 mm |
+
+Verificado sin impresora con el XML real de la 51106: firma del TED válida,
+ticket de 17 006 bytes sin `GS v 0`, aceptado por una copia del validador del
+conector, y el timbre reconstruido desde los bytes `ESC $`/`ESC * 33` se
+decodifica con ZXing al TED exacto (`src/lib/printing/receipts/starTimbre.test.js`;
+la prueba con el XML real corre con `FISCAL_XML_51106=/ruta/al.xml`).
+
+Si la resolución del SII no se ingresa, una **reimpresión** sale con
+«Res. SII: por confirmar». Una boleta que no sea reimpresión sigue exigiéndola.
+
+El panel aparece en `/crm/impresion` solo en despliegues Preview de Vercel
+(`VITE_VERCEL_ENV=preview`) o con `VITE_FISCAL_THERMAL_PRINT=preview`.
+`VITE_FISCAL_THERMAL_PRINT=off` lo apaga. En producción no aparece.
+
 ## 6. Pendiente después de validar
 
 - Guardar la resolución del SII, la unidad regional y el nombre de fantasía en la configuración fiscal del comercio, en lugar del campo de prueba.

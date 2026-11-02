@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
+import { FISCAL_THERMAL_PRINT_ENABLED, printBoletaThermal } from '../../services/fiscalThermalPrintService';
 import {
-  FISCAL_THERMAL_PRINT_ENABLED, printBoletaThermal, printTimbreDiagnostic,
-} from '../../services/fiscalThermalPrintService';
-import { SELECTABLE_TIMBRE_STRATEGY_IDS, TIMBRE_STRATEGIES } from '../../lib/printing/receipts/buildBoletaReceipt';
+  AUTO_TIMBRE_STRATEGY_ID, MANUAL_TIMBRE_STRATEGY_IDS, TIMBRE_STRATEGIES,
+} from '../../lib/printing/receipts/buildBoletaReceipt';
 
 // FISCAL-80MM — REIMPRESIÓN térmica de una boleta ya emitida.
 // Oculto salvo VITE_FISCAL_THERMAL_PRINT=preview. Solo imprime: no emite,
@@ -12,8 +12,9 @@ import { SELECTABLE_TIMBRE_STRATEGY_IDS, TIMBRE_STRATEGIES } from '../../lib/pri
 // el archivo XML (p. ej. DTE_39_51106.xml descargado del portal).
 
 const RES_STORAGE_KEY = 'walinka:fiscal:resolucion-prueba';
-const STRATEGY_STORAGE_KEY = 'walinka:fiscal:timbre-strategy';
-const VARIANT_LETTERS = ['A', 'B', 'C'];
+// Clave nueva: el valor guardado por la versión anterior (GS v 0 fijo) no
+// debe forzar un modo que la Star imprime como texto.
+const STRATEGY_STORAGE_KEY = 'walinka:fiscal:timbre-strategy:v2';
 
 function readStored(key, fallback) {
   try {
@@ -34,8 +35,8 @@ function readSavedResolucion() {
 }
 
 function readSavedStrategy() {
-  const id = readStored(STRATEGY_STORAGE_KEY, SELECTABLE_TIMBRE_STRATEGY_IDS[0]);
-  return SELECTABLE_TIMBRE_STRATEGY_IDS.includes(id) ? id : SELECTABLE_TIMBRE_STRATEGY_IDS[0];
+  const id = readStored(STRATEGY_STORAGE_KEY, AUTO_TIMBRE_STRATEGY_ID);
+  return MANUAL_TIMBRE_STRATEGY_IDS.includes(id) ? id : AUTO_TIMBRE_STRATEGY_ID;
 }
 
 export default function CrmFiscalThermalPrint({ businessId, invoiceId }) {
@@ -61,23 +62,29 @@ export default function CrmFiscalThermalPrint({ businessId, invoiceId }) {
     writeStored(STRATEGY_STORAGE_KEY, event.target.value);
   };
 
-  const run = async (kind) => {
+  const run = async () => {
     if (busy || !sourceReady) return;
-    setBusy(kind);
+    setBusy('boleta');
     setResult(null);
     const source = fileMode ? { file } : { invoiceId };
-    const r = kind === 'diag'
-      ? await printTimbreDiagnostic({ businessId, ...source })
-      : await printBoletaThermal({ businessId, ...source, resolucion, timbreStrategyId: strategyId });
-    setBusy('');
+    let r;
+    try {
+      r = await printBoletaThermal({ businessId, ...source, resolucion, timbreStrategyId: strategyId });
+    } catch {
+      r = { ok: false, message: 'No se pudo completar la impresión. Revisa la conexión con la impresora.' };
+    } finally {
+      setBusy('');
+    }
     if (!r.ok) {
       setResult({ tone: 'error', text: r.message });
       return;
     }
-    const detail = r.timbre
-      ? ` Timbre esperado: ${r.timbre.widthMm} x ${r.timbre.heightMm} mm.`
-      : ` Mide y escanea las variantes ${r.timbres.map((t, i) => `${VARIANT_LETTERS[i]} (${t.widthMm} x ${t.heightMm} mm)`).join(', ')}.`;
-    setResult({ tone: 'ok', text: `Reimpresión de la boleta ${r.folio} enviada a la impresora.${detail}` });
+    const mode = TIMBRE_STRATEGIES[r.timbre.strategyId]?.label || r.timbre.strategyId;
+    setResult({
+      tone: 'ok',
+      text: `Reimpresión de la boleta ${r.folio} enviada a ${r.printerName || 'la impresora'}. `
+        + `Timbre: ${mode}, ${r.timbre.widthMm} x ${r.timbre.heightMm} mm.`,
+    });
   };
 
   return (
@@ -115,21 +122,21 @@ export default function CrmFiscalThermalPrint({ businessId, invoiceId }) {
           Modo del timbre
           <select value={strategyId} onChange={updateStrategy}
             className="mt-1 rounded border border-amber-300 bg-white px-2 py-1 text-sm">
-            {SELECTABLE_TIMBRE_STRATEGY_IDS.map((id, i) => (
-              <option key={id} value={id}>{`${VARIANT_LETTERS[i]}) ${TIMBRE_STRATEGIES[id].label}`}</option>
+            <option value={AUTO_TIMBRE_STRATEGY_ID}>Automático según la impresora</option>
+            {MANUAL_TIMBRE_STRATEGY_IDS.map((id) => (
+              <option key={id} value={id}>{TIMBRE_STRATEGIES[id].label}</option>
             ))}
           </select>
         </label>
       </div>
+      <p className="mt-1 text-xs text-amber-800">
+        La resolución es opcional en una reimpresión: si la dejas vacía, el ticket dice «Res. SII: por confirmar».
+      </p>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        <button type="button" onClick={() => run('diag')} disabled={!!busy || !sourceReady}
-          className="rounded-lg border border-amber-400 px-3 py-2 font-semibold text-amber-900 hover:bg-amber-100 disabled:opacity-50">
-          {busy === 'diag' ? 'Imprimiendo...' : '1. Diagnóstico del timbre'}
-        </button>
-        <button type="button" onClick={() => run('boleta')} disabled={!!busy || !sourceReady}
+        <button type="button" onClick={run} disabled={!!busy || !sourceReady}
           className="rounded-lg bg-amber-600 px-3 py-2 font-semibold text-white hover:bg-amber-700 disabled:opacity-50">
-          {busy === 'boleta' ? 'Imprimiendo...' : '2. Reimprimir boleta'}
+          {busy ? 'Imprimiendo...' : 'Reimprimir boleta'}
         </button>
       </div>
       {result && (

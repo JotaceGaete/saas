@@ -18,7 +18,9 @@
 // moneda, el wrap y los comandos ESC/POS son de renderEscPosReceipt.
 
 import { stripDiacritics } from './renderEscPosReceipt';
-import { buildRasterCommand, buildTiledColumnBitImageCommand, buildDoubleDensity24BitImageCommand } from './escPosImage';
+import {
+  buildRasterCommand, buildTiledColumnBitImageCommand, buildDoubleDensity24BitImageCommand, buildStarSafe24DotImageCommand,
+} from './escPosImage';
 import {
   encodeTedPdf417, scalePdf417, DOTS_PER_MM_203DPI, SII_TIMBRE_LIMITS_MM,
 } from '../../fiscal/dte/tedPdf417';
@@ -73,6 +75,25 @@ export const TIMBRE_STRATEGIES = Object.freeze({
     meetsSiiResolution: true,
     build: (bits, width, height) => buildRasterCommand(bits, width, height),
   }),
+  // Star TSP100/TSP143 (emulación ESC/POS del driver futurePRNT). Lo que se
+  // sabe del hardware real: `GS v 0` sale como texto; `ESC *` + `ESC $` sí
+  // imprimen; una imagen posicionada más allá de ~440 dots físicos se corta
+  // o reaparece a la izquierda (PRINT-4-BUG10/11). Por eso: 8 columnas
+  // (205 módulos x 2 dots = 410 dots, 51 mm), en x = 16 (borde derecho en
+  // 426 < 440), filas de 4 dots para quedar dentro de 40 mm de alto con un
+  // TED típico (75 filas -> 37,5 mm). Ver buildStarSafe24DotImageCommand.
+  starTsp100: Object.freeze({
+    id: 'starTsp100',
+    label: 'Star TSP100/TSP143: ESC * 33, 203 dpi, 8 columnas',
+    columns: 8,
+    moduleWidthDots: 2,
+    rowHeightDots: 4,
+    dotsPerMmX: DOTS_PER_MM_203DPI,
+    dotsPerMmY: DOTS_PER_MM_203DPI,
+    meetsSiiResolution: true,
+    align: 'left',
+    build: (bits, width, height) => buildStarSafe24DotImageCommand(bits, width, height, { xDots: STAR_TIMBRE_X_DOTS }),
+  }),
   // Misma ruta ESC * m=0 validada para el logo en la TSP100: ~101 dpi en
   // horizontal y ~69 dpi en vertical (100 x 100 dots midieron 25 x 37 mm).
   // NO cumple la resolución del SII; queda solo como referencia de lectura.
@@ -91,8 +112,32 @@ export const TIMBRE_STRATEGIES = Object.freeze({
 
 export const DEFAULT_TIMBRE_STRATEGY_ID = 'rasterGsV0';
 
+/** Valor de `ESC $` del timbre en la Star: margen izquierdo / zona de silencio. */
+export const STAR_TIMBRE_X_DOTS = 16;
+
+/** Opción "automático" del selector: el modo se elige según la impresora. */
+export const AUTO_TIMBRE_STRATEGY_ID = 'auto';
+
+const STAR_TSP100_QUEUE = /\bstar\b.*\btsp\s*1\d\d|\btsp\s*143/i;
+
+/**
+ * Modo del timbre según la impresora de destino. La Star TSP100/TSP143 nunca
+ * recibe `GS v 0`; si la impresora usa el perfil "Compatibilidad" (raster)
+ * o no se reconoce, se mantiene el comportamiento anterior (`GS v 0`).
+ * @param {{ printerName?: string|null, imageMode?: string|null }} printer
+ */
+export function resolveTimbreStrategyId({ printerName, imageMode } = {}, requested = AUTO_TIMBRE_STRATEGY_ID) {
+  if (requested && requested !== AUTO_TIMBRE_STRATEGY_ID && TIMBRE_STRATEGIES[requested]) return requested;
+  if (printerName && STAR_TSP100_QUEUE.test(String(printerName))) return 'starTsp100';
+  if (imageMode === 'rasterGsV0') return 'rasterGsV0';
+  return DEFAULT_TIMBRE_STRATEGY_ID;
+}
+
 /** Estrategias que se ofrecen al usuario y que salen en el diagnóstico (todas cumplen > 200 dpi). */
 export const SELECTABLE_TIMBRE_STRATEGY_IDS = Object.freeze(['rasterGsV0', 'escStar24', 'rasterGsV0Narrow']);
+
+/** Modos que se ofrecen en el selector manual (además de "automático"). */
+export const MANUAL_TIMBRE_STRATEGY_IDS = Object.freeze(['starTsp100', 'rasterGsV0', 'escStar24', 'rasterGsV0Narrow']);
 
 /**
  * Leyendas de reimpresión: dejan claro que el papel es una copia de un
@@ -150,6 +195,7 @@ export async function buildTimbreImage(tedXml, strategyId = DEFAULT_TIMBRE_STRAT
   return {
     strategyId: strategy.id,
     command: strategy.build(bits, width, height),
+    align: strategy.align || 'center',
     widthDots: width,
     heightDots: height,
     columns: symbol.widthModules,
@@ -195,7 +241,11 @@ export async function buildBoletaReceipt({
   if (tedVerified !== true) throw new BoletaReceiptError('TED_NOT_VERIFIED');
   const resNumero = String(resolucion?.numero ?? '').trim();
   const resAnio = String(resolucion?.anio ?? '').trim();
-  if (!/^\d{1,6}$/.test(resNumero) || !/^\d{4}$/.test(resAnio)) {
+  const hasResolucion = /^\d{1,6}$/.test(resNumero) && /^\d{4}$/.test(resAnio);
+  // Una boleta nueva nunca sale sin resolución. Una REIMPRESIÓN de un
+  // documento ya aceptado puede salir mientras el contador confirma el dato,
+  // y lo dice en el papel en vez de inventarlo.
+  if (!hasResolucion && (!reprint || resNumero || resAnio)) {
     throw new BoletaReceiptError('RESOLUCION_REQUIRED');
   }
   if (paperWidthMm !== 80) throw new BoletaReceiptError('PAPER_WIDTH_UNSUPPORTED');
@@ -240,9 +290,9 @@ export async function buildBoletaReceipt({
   lines.push({ type: 'total', label: 'TOTAL', amount: totales.total, emphasize: true });
 
   lines.push({ type: 'text', text: '' });
-  lines.push({ type: 'rasterBytes', command: timbre.command });
+  lines.push({ type: 'rasterBytes', command: timbre.command, align: timbre.align });
   lines.push({ type: 'text', text: 'Timbre Electronico SII', align: 'center' });
-  lines.push({ type: 'text', text: `Res. ${resNumero} de ${resAnio}`, align: 'center' });
+  lines.push({ type: 'text', text: hasResolucion ? `Res. ${resNumero} de ${resAnio}` : 'Res. SII: por confirmar', align: 'center' });
   lines.push({ type: 'text', text: 'Verifique documento: www.sii.cl', align: 'center' });
   if (notice) lines.push(...notice.footer);
 
@@ -292,7 +342,7 @@ export async function buildTimbreDiagnosticReceipt({ dte, tedVerified, paperWidt
     const label = String.fromCharCode(65 + index);
     lines.push({ type: 'text', text: `${label}) ${TIMBRE_STRATEGIES[id].label}`, bold: true });
     lines.push({ type: 'text', text: `Esperado: ${timbre.widthMm} x ${timbre.heightMm} mm (${timbre.widthDots} dots de ancho)` });
-    lines.push({ type: 'rasterBytes', command: timbre.command });
+    lines.push({ type: 'rasterBytes', command: timbre.command, align: timbre.align });
     lines.push({ type: 'text', text: `Fin ${label}`, align: 'center' });
     lines.push({ type: 'divider' });
   }

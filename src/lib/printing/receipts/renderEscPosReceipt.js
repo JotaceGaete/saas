@@ -308,7 +308,9 @@ export async function renderEscPosReceipt(receipt) {
       // para cualquier otra variante (ver escPosCapabilities.js).
       case 'rasterBytes':
         if (line.command?.length) {
-          bytes.push(...CMD.ALIGN_CENTER);
+          // FISCAL-80MM-STAR: `align: 'left'` cuando el comando ya trae su
+          // propia posición (`ESC $`), igual que el logo.
+          bytes.push(...(line.align === 'left' ? CMD.ALIGN_LEFT : CMD.ALIGN_CENTER));
           bytes.push(...line.command);
           bytes.push(LF);
         }

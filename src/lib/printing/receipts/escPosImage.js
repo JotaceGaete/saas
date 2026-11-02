@@ -389,3 +389,49 @@ export function buildDoubleDensity24BitImageCommand(bits, width, height, { lineS
   bytes.push(ESC, 0x32); // ESC 2 -- espaciado de línea por defecto
   return new Uint8Array(bytes);
 }
+
+/**
+ * FISCAL-80MM-STAR — `ESC * 33` (24-dot double density, ~203 dpi) armado
+ * con las MISMAS piezas que el logo ya validado físicamente en la Star
+ * TSP100/TSP143 (emulación ESC/POS del driver):
+ *
+ *  - Nunca `GS v 0` (en la Star se imprime como texto literal).
+ *  - Cada franja va precedida de `ESC $ xDots` (posición absoluta en dots
+ *    físicos, validada en PRINT-4-BUG9) y termina en LF. Sin margen
+ *    horneado en el bitmap (PRINT-4-BUG8).
+ *  - Interlineado `ESC 3 8`, el mismo valor del logo. La prueba física de
+ *    PRINT-4-BUG13 (100 dots -> 37 mm de alto con franjas de 8 dots m=0)
+ *    muestra que con `ESC 3 8` cada franja avanzó exactamente la altura
+ *    física impresa (24 dots), sin huecos ni solapes: o la unidad vertical
+ *    de la emulación vale 3 dots, o el avance se extiende hasta la altura
+ *    de la imagen. En ambos casos una franja de 24 dots físicos de
+ *    `ESC * 33` avanza 24 dots con `ESC 3 8`. Con `ESC 3 24` (el valor de
+ *    `buildDoubleDensity24BitImageCommand`) la primera hipótesis dejaría
+ *    48 dots en blanco entre franjas y el PDF417 sería ilegible.
+ *  - `ESC 2` al final para devolver el interlineado de texto.
+ *
+ * El ancho completo de la franja va en nL/nH de un solo comando (sin
+ * dividir en bloques de 255 columnas): dividir exigiría reposicionar cada
+ * bloque con `ESC $`, cuya unidad solo está calibrada en x pequeños.
+ */
+export function buildStarSafe24DotImageCommand(bits, width, height, { xDots = 0 } = {}) {
+  if (!Number.isInteger(width) || width < 1 || width > 0xFFFF) throw new Error('ancho inválido para ESC * 33');
+  const bytes = [ESC, 0x33, BAND_HEIGHT_DOTS]; // ESC 3 8
+  for (let bandStart = 0; bandStart < height; bandStart += BAND_HEIGHT_24_DOTS) {
+    bytes.push(...buildAbsolutePositionCommand(xDots));
+    bytes.push(ESC, 0x2A, 0x21, width & 0xFF, (width >> 8) & 0xFF);
+    for (let x = 0; x < width; x++) {
+      for (let byteIndex = 0; byteIndex < 3; byteIndex++) {
+        let value = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const y = bandStart + byteIndex * 8 + bit;
+          if (y < height && bits[y * width + x]) value |= 0x80 >> bit;
+        }
+        bytes.push(value);
+      }
+    }
+    bytes.push(LF);
+  }
+  bytes.push(ESC, 0x32); // ESC 2
+  return new Uint8Array(bytes);
+}

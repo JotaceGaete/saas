@@ -56,8 +56,25 @@ describe('fiscalThermalPrintService', () => {
     expect(printReceipt).not.toHaveBeenCalled();
   });
 
-  it('no imprime sin resolución ni si la descarga falla', async () => {
-    expect(await printBoletaThermal({ businessId: BIZ, invoiceId: INV, resolucion: { numero: '', anio: '' } }))
+  it('elige el timbre Star para la TSP100 y reimprime sin resolución rotulándola por confirmar', async () => {
+    const r = await printBoletaThermal({ businessId: BIZ, invoiceId: INV, resolucion: { numero: '', anio: '' } });
+    expect(r).toMatchObject({ ok: true, printerName: 'Star TSP100 Cutter (TSP143)', timbre: { strategyId: 'starTsp100' } });
+    const [receipt] = printReceipt.mock.calls[0];
+    expect(receipt.lines.some((l) => l.text === 'Res. SII: por confirmar')).toBe(true);
+    expect(receipt.lines.find((l) => l.type === 'rasterBytes').align).toBe('left');
+  });
+
+  it('el panel solo se activa en Preview o con la variable explícita', async () => {
+    const { isFiscalThermalPrintEnabled } = await import('./fiscalThermalPrintService');
+    expect(isFiscalThermalPrintEnabled({})).toBe(false);
+    expect(isFiscalThermalPrintEnabled({ VITE_VERCEL_ENV: 'production' })).toBe(false);
+    expect(isFiscalThermalPrintEnabled({ VITE_VERCEL_ENV: 'preview' })).toBe(true);
+    expect(isFiscalThermalPrintEnabled({ VITE_FISCAL_THERMAL_PRINT: 'preview' })).toBe(true);
+    expect(isFiscalThermalPrintEnabled({ VITE_VERCEL_ENV: 'preview', VITE_FISCAL_THERMAL_PRINT: 'off' })).toBe(false);
+  });
+
+  it('no imprime con resolución incompleta ni si la descarga falla', async () => {
+    expect(await printBoletaThermal({ businessId: BIZ, invoiceId: INV, resolucion: { numero: '80', anio: '' } }))
       .toMatchObject({ ok: false, code: 'RESOLUCION_REQUIRED' });
     globalThis.fetch = fetchXml('', 404);
     expect(await printTimbreDiagnostic({ businessId: BIZ, invoiceId: INV })).toMatchObject({ ok: false, code: 'XML_DOWNLOAD_FAILED' });
