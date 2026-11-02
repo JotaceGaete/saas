@@ -12,18 +12,23 @@
 
 export const MIN_STALE_AFTER_MS = 5 * 60_000;
 
-export function createRecovery({ store, now = () => new Date(), staleAfterMs = 15 * 60_000 }) {
+export function createRecovery({ store, now = () => new Date(), staleAfterMs = 15 * 60_000, maxRows = 100 }) {
   if (!store) throw new Error('store is required');
   if (!Number.isFinite(staleAfterMs) || staleAfterMs < MIN_STALE_AFTER_MS) {
     throw new Error(`staleAfterMs must be at least ${MIN_STALE_AFTER_MS} ms`);
   }
 
+  if (!Number.isSafeInteger(maxRows) || maxRows < 1 || maxRows > 1000) {
+    throw new Error('maxRows must be an integer between 1 and 1000');
+  }
+
   async function recoverStaleSending() {
     const before = new Date(now().getTime() - staleAfterMs);
     const rows = await store.listStaleSending(before);
-    const report = { examined: rows.length, finalizedFromReceipt: 0, markedUnknown: 0, untouched: 0 };
+    const batch = rows.slice(0, maxRows);
+    const report = { examined: batch.length, remainingCandidates: rows.length - batch.length, finalizedFromReceipt: 0, markedUnknown: 0, untouched: 0 };
 
-    for (const row of rows) {
+    for (const row of batch) {
       const fromReceipt = await store.finalizeFromReceipt(row.businessId, row.saleId, row.operationId);
       if (fromReceipt) {
         report.finalizedFromReceipt += 1;
