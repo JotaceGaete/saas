@@ -1,7 +1,7 @@
 // PDF80: etapa PURA de raster a ESC/POS. No interpreta PDF ni emite DTE.
 // El renderizador PDF seguro debe entregar píxeles RGBA a resolución nativa.
 // Cada franja es un comando independiente y pasa por el validador del conector.
-import { rgbaToGrayscale, buildRasterCommand } from './receipts/escPosImage';
+import { rgbaToGrayscale, buildRasterCommand, buildDoubleDensity24BitImageCommand } from './receipts/escPosImage';
 
 export class FiscalRasterError extends Error {
   constructor(code) { super(code); this.name = 'FiscalRasterError'; this.code = code; }
@@ -14,10 +14,10 @@ const ESC_POS_MAX_BYTES = 256 * 1024;
 
 /**
  * @param {{rgba: Uint8ClampedArray, width: number, height: number,
- *  threshold?: number, cut?: boolean}} options
+ *  threshold?: number, cut?: boolean, profile?: 'generic' | 'star-tsp100'}} options
  * @returns {Uint8Array} ESC/POS; apto para POST /v1/print si cabe en 256 KiB.
  */
-export function encodeFiscalRaster({ rgba, width, height, threshold = 160, cut = true } = {}) {
+export function encodeFiscalRaster({ rgba, width, height, threshold = 160, cut = true, profile = 'generic' } = {}) {
   if (!Number.isInteger(width) || width < 1 || width > MAX_WIDTH_DOTS ||
       !Number.isInteger(height) || height < 1 || height > MAX_HEIGHT_DOTS) {
     throw new FiscalRasterError('RASTER_DIMENSIONS_INVALID');
@@ -28,14 +28,20 @@ export function encodeFiscalRaster({ rgba, width, height, threshold = 160, cut =
   if (!Number.isInteger(threshold) || threshold < 1 || threshold > 254) {
     throw new FiscalRasterError('RASTER_THRESHOLD_INVALID');
   }
+  if (!['generic', 'star-tsp100'].includes(profile)) throw new FiscalRasterError('RASTER_PROFILE_INVALID');
   const grayscale = rgbaToGrayscale(rgba, width, height);
   const chunks = [Uint8Array.from([0x1b, 0x40])]; // ESC @
   let total = 2;
-  for (let y = 0; y < height; y += STRIP_HEIGHT) {
-    const stripHeight = Math.min(STRIP_HEIGHT, height - y);
+  const bandHeight = profile === 'star-tsp100' ? 24 : STRIP_HEIGHT;
+  for (let y = 0; y < height; y += bandHeight) {
+    const stripHeight = Math.min(bandHeight, height - y);
     const bits = new Uint8Array(width * stripHeight);
     for (let i = 0; i < bits.length; i++) bits[i] = grayscale[y * width + i] < threshold ? 1 : 0;
-    const command = buildRasterCommand(bits, width, stripHeight);
+    // Star: ESC * 33 (24-dot double-density); NO GS v 0.
+    // La calibración física del avance vertical de este modo sigue pendiente.
+    const command = profile === 'star-tsp100'
+      ? buildDoubleDensity24BitImageCommand(bits, width, stripHeight)
+      : buildRasterCommand(bits, width, stripHeight);
     chunks.push(command);
     total += command.length;
     if (total > ESC_POS_MAX_BYTES - 8) throw new FiscalRasterError('RASTER_PAYLOAD_TOO_LARGE');
