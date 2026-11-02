@@ -42,6 +42,18 @@ describe('encodeTedPdf417', () => {
     expect(decode(scaled)).toBe(ted.xml);
   });
 
+
+  it.each([
+    ['estandar 12 columnas', 12, 2, 5],
+    ['angosto 10 columnas', 10, 2, 5],
+    ['referencia de baja densidad', 12, 1, 2],
+  ])('decodifica el TED completo en modo %s sin alterar datos', async (_name, columns, moduleWidthDots, rowHeightDots) => {
+    const { ted } = parseDteXml(buildSyntheticDteXml());
+    const symbol = await encodeTedPdf417(ted.xml, { columns });
+    const image = scalePdf417(symbol, { moduleWidthDots, rowHeightDots, quietZoneDots: 10 });
+    expect(decode(image)).toBe(ted.xml);
+  });
+
   it('rechaza textos que no son un TED o que no son ISO-8859-1', async () => {
     await expect(encodeTedPdf417('hola')).rejects.toBeInstanceOf(TedBarcodeError);
     await expect(encodeTedPdf417('<TED>€</TED>')).rejects.toMatchObject({ code: 'TED_NOT_LATIN1' });
