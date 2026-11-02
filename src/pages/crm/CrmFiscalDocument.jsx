@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '../../lib/supabase';
+import CrmFiscalThermalPrint from './CrmFiscalThermalPrint';
 
 export default function CrmFiscalDocument({ businessId, invoiceId }) {
   const [document, setDocument] = useState(null);
@@ -225,6 +226,9 @@ export default function CrmFiscalDocument({ businessId, invoiceId }) {
           </button>
           {pdfError && <p role="alert" className="w-full mt-2 text-sm text-red-600">{pdfError}</p>}
         </div>
+      )}
+      {document.status === 'issued' && document.folio && (
+        <CrmFiscalThermalPrint businessId={businessId} invoiceId={invoiceId} />
       )}
     </section>
   );
