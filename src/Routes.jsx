@@ -45,6 +45,7 @@ import CrmCostCenter from './pages/crm/CrmCostCenter';
 import CrmCostos from './pages/crm/CrmCostos';
 import CrmBarcodes from './pages/crm/CrmBarcodes';
 import CrmPrintSettings from './pages/crm/CrmPrintSettings';
+import CrmFiscalPrintTest from './pages/crm/CrmFiscalPrintTest';
 import Login from './pages/login';
 import AuthCallback from './pages/auth-callback';
 import ResetPassword from './pages/reset-password';
@@ -137,6 +138,7 @@ const Routes = () => {
             <Route path="/onboarding" element={<RequireAuth><OnboardingPage /></RequireAuth>} />
             {/* CRM — requiere plan Pro o superior (RequireCrm hace el bloqueo duro) */}
             <Route path="/crm"                    element={<RequireCrm><CrmDashboard /></RequireCrm>} />
+            <Route path="/crm/impresion-fiscal-prueba/:businessId" element={<RequireCrm><CrmFiscalPrintTest /></RequireCrm>} />
             <Route path="/crm/clientes"           element={<RequireCrm><CrmCustomers /></RequireCrm>} />
             <Route path="/crm/presupuestos"       element={<RequireCrm><CrmQuotes /></RequireCrm>} />
             <Route path="/crm/presupuestos/nuevo" element={<RequireCrm><CrmQuoteEditor /></RequireCrm>} />
