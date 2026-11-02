@@ -127,14 +127,14 @@ export function createSiisolutionsHttpProvider({
 } = {}) {
   const origin = assertSafeBaseUrl(baseUrl);
 
-  async function getDocument(kind, folio, apiKey) {
+  async function getDocument(kind, folio, apiKey, signal) {
     let res;
     try {
       res = await fetchImpl(`${origin}${documentPath(folio, kind)}`, {
         method: 'GET',
         headers: { 'X-Api-Key': apiKey, accept: '*/*' },
         redirect: 'error',
-        signal: AbortSignal.timeout(docsTimeoutMs),
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(docsTimeoutMs)]) : AbortSignal.timeout(docsTimeoutMs),
       });
     } catch {
       return null;
@@ -146,10 +146,10 @@ export function createSiisolutionsHttpProvider({
   }
 
   // Solo lectura. Nunca llama al POST de emisión.
-  async function retrieveDocuments({ folio, credentials, expect = {} }) {
+  async function retrieveDocuments({ folio, credentials, expect = {}, signal }) {
     if (!Number.isSafeInteger(folio) || folio <= 0 || !credentials?.apiKey) return null;
-    const xmlBase64 = await getDocument('xml', folio, credentials.apiKey);
-    const pdfBase64 = xmlBase64 ? await getDocument('pdf', folio, credentials.apiKey) : null;
+    const xmlBase64 = await getDocument('xml', folio, credentials.apiKey, signal);
+    const pdfBase64 = xmlBase64 ? await getDocument('pdf', folio, credentials.apiKey, signal) : null;
     const doc = { folio, xmlBase64, pdfBase64 };
     return documentProblem(doc, expect) ? null : doc;
   }
@@ -158,7 +158,7 @@ export function createSiisolutionsHttpProvider({
     name: 'dtecore',
     ready: ready === true,
     retrieveDocuments,
-    async emit({ payload, credentials, expect = {} }) {
+    async emit({ payload, credentials, expect = {}, signal }) {
       if (!credentials?.apiKey) throw new ProviderUnknownError('PROVIDER_AUTH', { message: 'missing api key' });
       let res;
       try {
@@ -171,7 +171,7 @@ export function createSiisolutionsHttpProvider({
           },
           body: JSON.stringify(payload),
           redirect: 'error',
-          signal: AbortSignal.timeout(timeoutMs),
+          signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)]) : AbortSignal.timeout(timeoutMs),
         });
       } catch (err) {
         // Pudo haber llegado al proveedor: resultado desconocido.
@@ -196,7 +196,7 @@ export function createSiisolutionsHttpProvider({
           return inline;
         }
         // Folio asignado sin documentos inline: se recuperan por GET (no emite).
-        const retrieved = await retrieveDocuments({ folio, credentials, expect });
+        const retrieved = await retrieveDocuments({ folio, credentials, expect, signal });
         if (!retrieved) throw new ProviderUnknownError('FOLIO_ASSIGNED_DOCUMENTS_NOT_RETRIEVED', { folio });
         return retrieved;
       }
