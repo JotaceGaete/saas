@@ -78,7 +78,9 @@ function resolveTarget(businessId, kind, folio) {
   const target = buildPrintTarget({
     connectorConfig: readConnectorConfig(buildConnectorConfigKey(businessId)),
     qzPrinterName: printerConfig.printerName,
-    idempotencyKey: buildPrintKey(kind, `${businessId}:${folio}`),
+    // Cada pulsación es una nueva reimpresión voluntaria. Evitar una clave fija
+    // que el conector pueda interpretar como duplicado y omitir silenciosamente.
+    idempotencyKey: buildPrintKey(kind, `${businessId}:${folio}:${crypto.randomUUID()}`),
   });
   if (target.error) throw Object.assign(new Error(MESSAGES.MISSING_PRINTER), { code: 'MISSING_PRINTER' });
   return { printerConfig, target };
