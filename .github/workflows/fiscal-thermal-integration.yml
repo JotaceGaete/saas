@@ -22,9 +22,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
-      # Temporary validation only. Replace with npm ci after package-lock is regenerated.
-      - name: Resolve test dependencies without modifying repository
-        run: npm install --no-audit --no-fund --ignore-scripts
+      # Rebuild the lock in the runner for validation; this does not modify the PR.
+      # The generated lockfile must be committed before the PR can be merged.
+      - name: Generate lockfile and verify clean install
+        run: |
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify thermal and TPV components
         run: npx vitest run src/lib/fiscal/dte/parseDteXml.test.js src/lib/fiscal/dte/tedPdf417.test.js src/lib/printing/receipts/buildBoletaReceipt.test.js src/services/fiscalThermalPrintService.test.js src/pages/crm/components/TpvFiscalEmitPanel.test.jsx
       - name: Build frontend
