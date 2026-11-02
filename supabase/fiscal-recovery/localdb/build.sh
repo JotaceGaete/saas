@@ -6,6 +6,18 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 DB="${FISCAL_TEST_PG_DB:-walinka_test}"
 case "${PGHOST:-}" in /*|localhost|127.0.0.1) ;; *) echo "PGHOST debe ser local"; exit 1;; esac
+# Las variables PG* pueden redirigir psql a otro servidor sin cambiar PGHOST.
+# Bloquear cadenas de conexión, servicios y puertos no declarados explícitamente.
+for unsafe in PGHOSTADDR PGSERVICE PGSERVICEFILE PGDATABASE PGOPTIONS; do
+  if [[ -n "${!unsafe:-}" ]]; then
+    echo "Variable $unsafe no permitida en reconstrucción local" >&2
+    exit 1
+  fi
+done
+if [[ -n "${PGPORT:-}" && ! "${PGPORT}" =~ ^[0-9]{1,5}$ ]]; then
+  echo "PGPORT inválido" >&2
+  exit 1
+fi
 # Solo nombres simples y explícitamente de prueba; jamás interpolar SQL arbitrario.
 [[ "$DB" =~ ^[a-z][a-z0-9_]*_test$ ]] || { echo "nombre de base de prueba inválido"; exit 1; }
 [[ "$DB" != "postgres_test" && "$DB" != "template0_test" && "$DB" != "template1_test" ]] || { echo "nombre reservado"; exit 1; }
