@@ -41,6 +41,20 @@ if ! node -e '
   exit 3
 fi
 
+# No aceptar un servicio preexistente en el puerto de pruebas.
+# Un HTTP 404 también significa que el puerto está ocupado; comprobar TCP, no el status HTTP.
+if node -e '
+  const net = require("node:net");
+  const s = net.connect({host:"127.0.0.1", port:3999});
+  s.setTimeout(1000);
+  s.on("connect", () => { s.destroy(); process.exit(0); });
+  s.on("error", () => process.exit(1));
+  s.on("timeout", () => { s.destroy(); process.exit(1); });
+'; then
+  echo "Negado: puerto local 3999 ocupado; no se ejecutarán pruebas contra un servicio ajeno." >&2
+  exit 4
+fi
+
 export PGRST_DB_URI
 export PGRST_JWT_SECRET="${PGRST_JWT_SECRET:-$(openssl rand -hex 32)}"
 export POSTGREST_URL="http://127.0.0.1:${PORT}"
