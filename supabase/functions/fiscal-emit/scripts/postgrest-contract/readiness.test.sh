@@ -6,7 +6,7 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 cat > "$TMP/postgrest" <<'EOF'
 #!/usr/bin/env bash
-sleep 30
+/bin/sleep 30
 EOF
 cat > "$TMP/curl" <<'EOF'
 #!/usr/bin/env bash
