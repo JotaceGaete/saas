@@ -1,8 +1,14 @@
 # fiscal-emit (F2.2 / F2.3) — emisor fiscal server-side, DTE 39
 
 Estado: **implementación en rama de desarrollo (PR #108, borrador). No desplegada. Emisión automática deshabilitada.**
-El proveedor real (DTECore) está **bloqueado** hasta verificar su contrato por escrito: el adaptador
-real lanza `ContractNotVerifiedError` y no hace red. Las pruebas usan un proveedor simulado.
+
+**Actualización 2026-11-02** (ver `docs/fiscal/DTE39_TPV_INTEGRACION.md`): contrato de DTE Core fijado
+contra los XML aceptados 51105/51106 (precio **bruto**, sucursal opcional); adaptador real
+`lib/providers/siisolutions-http.mjs` con validación del XML devuelto, 409 y recuperación por GET;
+acción `status` para el TPV; migración E (estado SII separado, documento inmutable, sin emisión
+retroactiva); base local reproducible (`supabase/fiscal-recovery/localdb/build.sh`). El adaptador
+real solo se activa con `FISCAL_PROVIDER=dtecore`; sin esa variable se usa el bloqueado. Las secciones
+siguientes describen la ronda anterior y pueden citar supuestos ya corregidos (precio neto, sucursal obligatoria).
 
 ## Piezas
 

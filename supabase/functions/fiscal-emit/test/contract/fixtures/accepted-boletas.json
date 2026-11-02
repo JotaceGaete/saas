@@ -1,0 +1,34 @@
+{
+  "_comment": "Valores extraídos de los XML firmados de las boletas 51105 y 51106 (emisor 77804207-K), aceptadas por el SII. No contiene el XML, la firma ni el certificado. sha256 identifica el archivo original verificado (copia del propietario).",
+  "boletas": [
+    {
+      "folio": 51106,
+      "tipoDte": 39,
+      "fchEmis": "2026-10-31",
+      "rutEmisor": "77804207-K",
+      "rutRecep": "66666666-6",
+      "rznSocRecep": "CLIENTE VARIOS",
+      "origen": "Walinka (rama feat/boleta-real-unica-20261031)",
+      "detalle": [{ "nmbItem": "prueba", "qtyItem": 1, "prcItem": 100, "montoItem": 100 }],
+      "totales": { "mntNeto": 84, "iva": 16, "mntTotal": 100 },
+      "sha256": "19b609b2e84681ad256dd5652401eb791a6df25fa7063c8c49474fddcf290dac"
+    },
+    {
+      "folio": 51105,
+      "tipoDte": 39,
+      "fchEmis": "2026-10-30",
+      "rutEmisor": "77804207-K",
+      "rutRecep": "66666666-6",
+      "rznSocRecep": "CLIENTE DEMO",
+      "origen": "Ejemplo del proveedor, fuera de Walinka",
+      "detalle": [{ "vlrCodigo": "TEST001", "nmbItem": "Producto de prueba", "qtyItem": 1, "prcItem": 1190, "montoItem": 1190 }],
+      "totales": { "mntNeto": 1000, "iva": 190, "mntTotal": 1190 },
+      "sha256": "ff8f321bac037d954f48837fd037ff296eb544dffd372906deb8a244fc2e8eb0"
+    }
+  ],
+  "solicitudAceptada51106": {
+    "_comment": "Campos del cuerpo POST /dte/boletas/emitir que produjo la 51106 (api/_lib/siisolutions-adapter.js en feat/boleta-real-unica-20261031).",
+    "campos": ["cliente", "descuentoGlobal", "detalles", "enviarCorreo", "formatoPdf", "idBoletaOperacion", "medioPago", "modoPdfSalida", "montoPago", "referencias", "retornarPdf", "retornarXml", "rutOperador", "vuelto"],
+    "camposDetalle": ["DscItem", "cantidad", "codigo", "descripcion", "esExento", "linea", "precio", "precioDescuento", "precioPorcentajeDescuento", "precioSubtotal"]
+  }
+}

@@ -56,7 +56,19 @@ export function mapCredentialRecord(raw) {
 // Respuesta de public.crm_fiscal_get_issuance(business, sale).
 export function mapIssuance(raw) {
   if (!raw) return null;
-  return { id: raw.id, status: raw.status, folio: raw.folio, pdfBase64: raw.pdf_base64 ?? null };
+  return {
+    id: raw.id,
+    status: raw.status,
+    folio: raw.folio,
+    pdfBase64: raw.pdf_base64 ?? null,
+    // Campos de la migración E. Sin ella, quedan en sus valores neutros.
+    hasXml: raw.has_xml === true,
+    errorCode: raw.error_code ?? null,
+    siiStatus: raw.sii_status ?? 'unverified',
+    siiTrackId: raw.sii_track_id ?? null,
+    siiCheckedAt: raw.sii_checked_at ?? null,
+    issuedAt: raw.issued_at ?? null,
+  };
 }
 
 // Error de infraestructura del almacén (red, PostgREST, función inexistente, etc.). No es un

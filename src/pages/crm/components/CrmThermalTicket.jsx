@@ -3,6 +3,7 @@ import { supabase } from '../../../lib/supabase';
 import ReactDOM from 'react-dom';
 import Icon from 'components/AppIcon';
 import { formatMoney } from '../../../utils/formatMoney';
+import TpvFiscalEmitPanel, { FISCAL_EMIT_ENABLED } from './TpvFiscalEmitPanel';
 
 const PAYMENT_LABELS = {
   cash: 'Efectivo',
@@ -71,7 +72,9 @@ export default function CrmThermalTicket({
 }) {
   // Pilot-only fiscal status. This never issues a DTE or allocates a folio.
   const fiscalPilotBusinessId = 'cda904a1-e331-4bd4-9f33-a6715687d3dd';
-  const showFiscalPilot = business?.id === fiscalPilotBusinessId;
+  // Con la emisión DTE 39 activada (VITE_FISCAL_EMIT_ENABLED), el panel piloto antiguo se oculta:
+  // sus acciones escriben en el pipeline fiscal.operations, que bloquea la emisión nueva de la venta.
+  const showFiscalPilot = business?.id === fiscalPilotBusinessId && !FISCAL_EMIT_ENABLED;
   const [fiscalCheck, setFiscalCheck] = useState({ status: 'idle', data: null });
   useEffect(() => {
     if (!showFiscalPilot || !sale?.id) return;
@@ -575,6 +578,10 @@ export default function CrmThermalTicket({
               <button type="button" disabled style={{ marginTop: 9, padding: '8px 12px', borderRadius: 7, border: '1px solid #d1d5db', color: '#6b7280', background: '#e5e7eb', cursor: 'not-allowed' }}>Emitir boleta electrónica (próximamente)</button>
               <div style={{ marginTop: 6, color: '#6b7280', fontSize: 11 }}>No se envían documentos al SII ni se consumen folios.</div>
             </section>
+          )}
+
+          {FISCAL_EMIT_ENABLED && sale?.id && (
+            <TpvFiscalEmitPanel saleId={sale.id} businessId={business?.id} total={total} />
           )}
 
           {/* Ticket preview (screen only) */}

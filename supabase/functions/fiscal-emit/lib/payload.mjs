@@ -1,39 +1,42 @@
-// Cuerpo de POST /dte/boletas/emitir según el ejemplo oficial de la colección Postman
-// (SII Solutions API). Nombres y tipos siguen ese ejemplo: montoPago y vuelto son texto,
-// total y descuentoGlobal son números, folio va null (lo asigna el proveedor).
+// Cuerpo de POST /dte/boletas/emitir (DTE Core / SII Solutions) para DTE 39.
 //
-// SUPUESTOS PENDIENTES DE CONFIRMAR (no verificados contra un entorno real):
-//  - Los precios del TPV son BRUTOS (IVA incluido). El ejemplo oficial muestra precio neto
-//    10000 con total 11900 (IVA 19%), así que para líneas IVA_AFECTO_19 se envía precio = neto.
-//  - Cliente por defecto (CONSUMIDOR_FINAL) es el del ejemplo; no está confirmado que el
-//    proveedor lo acepte como regla. La sucursal NO tiene valor por defecto: es obligatoria.
+// CONTRATO VERIFICADO (2026-11-02), en este orden de autoridad:
+//  1. XML firmados de las boletas 51105 y 51106, ACEPTADAS por el SII:
+//       51106: PrcItem 100, MontoItem 100, MntNeto 84, IVA 16, MntTotal 100.
+//       51105: PrcItem 1190, MontoItem 1190, MntNeto 1000, IVA 190, MntTotal 1190.
+//     El precio por línea es BRUTO (IVA incluido) y el proveedor calcula neto e IVA.
+//  2. El cuerpo que produjo la 51106 (rama feat/boleta-real-unica-20261031,
+//     api/_lib/siisolutions-adapter.js): precio bruto, sin folio, sin fecha, sin total,
+//     sin sucursal, cliente 66666666-6 "CLIENTE VARIOS".
+//  3. Referencia de campos del proveedor (scripts/siisolutions/README.md en esa rama):
+//     "gross boleta prices are used"; medioPago EF/PE/TF/CQ/OT; folio opcional.
+//
+// La versión anterior de este archivo (PR #108) enviaba precio NETO = round(bruto / 1,19) a
+// partir de un ejemplo de Postman. Eso contradice los XML aceptados y se corrigió.
+// test/contract/accepted-boletas.contract.test.mjs fija el contrato contra esos XML.
+//
+// Reglas:
+//  - El cuerpo replica los campos de la emisión aceptada. No se agregan campos sin evidencia.
+//  - Sucursal: la 51106 se aceptó sin sucursal. Solo se envía si el emisor la tiene configurada.
+//  - Fecha: no se envía; el proveedor usa la fecha de emisión. La elegibilidad exige que la venta
+//    sea del mismo día (hora de Santiago), así la fecha del documento coincide con la venta.
 
 import { FiscalError } from './errors.mjs';
 
 export const MAX_DESCRIPCION = 80;
 export const MEDIO_PAGO = Object.freeze({ CASH: 'EF', POINT: 'PE' });
-export const IVA_RATE = 0.19;
 
+// Receptor de las boletas aceptadas (XML 51105/51106: RUTRecep 66666666-6, CLIENTE VARIOS).
 export const CONSUMIDOR_FINAL = Object.freeze({
-    idCliente: 0,
-    rut: '66666666',
-    digito: '6',
-    razonSocial: 'Consumidor final',
-    giro: 'SIN GIRO',
-    direccion: '',
-    ciudad: '',
-    comuna: '',
-    contacto: '',
-    fono: '',
-    email: '',
-    cargo: '',
-  nombreSucursal: '',
+  rut: '66666666',
+  digito: '6',
+  razonSocial: 'CLIENTE VARIOS',
 });
 
-// Fecha de emisión YYYY-MM-DD en hora de Santiago (la boleta se emite el día de la venta).
+// Fecha YYYY-MM-DD en hora de Santiago.
 export function santiagoDate(date) {
   const d = date instanceof Date ? date : new Date(date);
-  if (Number.isNaN(d.getTime())) throw new FiscalError('PAYLOAD_INVALID', 'invalid paidAt');
+  if (Number.isNaN(d.getTime())) throw new FiscalError('PAYLOAD_INVALID', 'invalid date');
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Santiago', year: 'numeric', month: '2-digit', day: '2-digit' })
     .format(d);
 }
@@ -44,25 +47,23 @@ export function buildBoletaPayload({
   lines,
   montoPago,
   medioPago,
-  fechaEmision,
-  sucursal,
+  sucursal = null,
   cliente = CONSUMIDOR_FINAL,
 }) {
   if (!operationId || typeof operationId !== 'string') {
     throw new FiscalError('PAYLOAD_INVALID', 'operationId required');
   }
-  if (!rutOperador) throw new FiscalError('PAYLOAD_INVALID', 'rutOperador required');
+  if (!/^\d{7,8}-[0-9Kk]$/.test(String(rutOperador ?? ''))) {
+    throw new FiscalError('PAYLOAD_INVALID', 'rutOperador must be a RUT like 77804207-K');
+  }
   if (!Object.values(MEDIO_PAGO).includes(medioPago)) {
     throw new FiscalError('PAYLOAD_INVALID', `unsupported medioPago ${medioPago}`);
   }
   if (!Number.isSafeInteger(montoPago) || montoPago <= 0) {
     throw new FiscalError('PAYLOAD_INVALID', 'montoPago must be a positive integer');
   }
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(String(fechaEmision ?? ''))) {
-    throw new FiscalError('PAYLOAD_INVALID', 'fechaEmision must be YYYY-MM-DD');
-  }
-  if (!sucursal?.nombre || !sucursal?.codigo) {
-    throw new FiscalError('SUCURSAL_NOT_CONFIGURED', 'sucursal del comercio no configurada');
+  if (sucursal != null && (!sucursal.nombre || !sucursal.codigo)) {
+    throw new FiscalError('PAYLOAD_INVALID', 'sucursal requires nombre and codigo');
   }
   if (!Array.isArray(lines) || lines.length === 0) {
     throw new FiscalError('PAYLOAD_INVALID', 'at least one line required');
@@ -84,19 +85,24 @@ export function buildBoletaPayload({
     if (Number(l.discountPct ?? 0) !== 0) {
       throw new FiscalError('DISCOUNT_NOT_SUPPORTED', `line ${idx + 1} has discount`);
     }
-    const esExento = l.category === 'EXENTO';
-    const subtotal = l.unitPrice * l.quantity; // bruto: lo que paga el cliente
+    if (l.category !== 'IVA_AFECTO_19' && l.category !== 'EXENTO') {
+      throw new FiscalError('FISCAL_TAX_LINES_NOT_VERIFIED', `line ${idx + 1} without verified tax category`);
+    }
+    // Bruto: lo que paga el cliente (IVA incluido). Es lo que el XML aceptado muestra en PrcItem.
+    const subtotal = l.unitPrice * l.quantity;
+    if (!Number.isSafeInteger(subtotal)) throw new FiscalError('PAYLOAD_INVALID', `line ${idx + 1} overflow`);
     grossSum += subtotal;
     return {
       linea: idx + 1,
+      codigo: String(l.sku ?? ''),
       descripcion,
       DscItem: '',
-      precio: esExento ? l.unitPrice : Math.round(l.unitPrice / (1 + IVA_RATE)),
+      precio: l.unitPrice,
       cantidad: l.quantity,
       precioPorcentajeDescuento: 0,
       precioDescuento: 0,
       precioSubtotal: subtotal,
-      esExento,
+      esExento: l.category === 'EXENTO',
     };
   });
 
@@ -104,26 +110,40 @@ export function buildBoletaPayload({
     throw new FiscalError('PRICE_MISMATCH', `sum of lines ${grossSum} != montoPago ${montoPago}`);
   }
 
-  return {
+  const body = {
     rutOperador,
     idBoletaOperacion: operationId,
-    folio: null,
-    fechaEmision,
-    total: montoPago,
     descuentoGlobal: 0,
+    medioPago,
+    retornarPdf: true,
+    formatoPdf: '80mm',
+    modoPdfSalida: 'base64',
+    retornarXml: true,
     montoPago: String(montoPago),
     vuelto: '0',
-    medioPago,
-    formatoPdf: '80mm',
-    retornarPdf: true,
-    retornarXml: true,
-    modoPdfSalida: 'base64',
-    modoEntrada: 'json',
     enviarCorreo: false,
-    sucursalEmision: sucursal.nombre,
-    sucursalCodigo: sucursal.codigo,
-    cliente,
+    cliente: { ...cliente },
     detalles,
     referencias: [],
   };
+  if (sucursal) {
+    body.sucursalEmision = sucursal.nombre;
+    body.sucursalCodigo = sucursal.codigo;
+  }
+  return body;
+}
+
+// Totales que el proveedor debería calcular para un cuerpo dado (boleta, precios brutos):
+// neto = round(afecto / 1,19), IVA = afecto - neto, total = afecto + exento.
+// Coincide con 51105 (1190 -> 1000 + 190) y 51106 (100 -> 84 + 16). Sirve para validar el XML
+// devuelto; el proveedor es quien calcula.
+export function expectedTotals(payload) {
+  let afecto = 0;
+  let exento = 0;
+  for (const d of payload.detalles) {
+    if (d.esExento) exento += d.precioSubtotal;
+    else afecto += d.precioSubtotal;
+  }
+  const neto = Math.round(afecto / 1.19);
+  return { neto, iva: afecto - neto, exento, total: afecto + exento };
 }

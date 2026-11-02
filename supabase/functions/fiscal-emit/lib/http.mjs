@@ -10,7 +10,7 @@ import { FiscalError } from './errors.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ALLOWED_FIELDS = new Set(['action', 'saleId']);
-const ACTIONS = new Set(['emit', 'reprint']);
+const ACTIONS = new Set(['emit', 'reprint', 'status']);
 
 const STATUS_BY_CODE = {
   SALE_NOT_FOUND: 404,
@@ -26,6 +26,8 @@ const STATUS_BY_CODE = {
   // Venta Point antigua: emisión retroactiva automática bloqueada. No es reintentable.
   FISCAL_RETROACTIVE_BLOCKED: 409,
   PROVIDER_NOT_READY: 503,
+  SALE_NOT_SAME_DAY: 409,
+  FISCAL_SALE_NOT_SAME_DAY: 409,
   CREDENTIALS_MISSING: 503,
   // Configuración de proveedor o credencial inválida: no es reintentable hasta corregir la configuración.
   CREDENTIAL_INVALID: 503,
@@ -62,7 +64,11 @@ export function createHttpHandler({ emitter, resolveUser }) {
         if (r.folio != null) out.folio = r.folio;
         if (r.alreadyIssued) out.alreadyIssued = true;
         if (r.medioPago) out.medioPago = r.medioPago;
+        if (r.folioHint) out.folioHint = r.folioHint;
         return { status: r.status === 'issued' ? 200 : 202, body: out };
+      }
+      if (body.action === 'status') {
+        return { status: 200, body: await emitter.status({ actorUserId: userId, saleId: body.saleId }) };
       }
       const r = await emitter.reprint({ actorUserId: userId, saleId: body.saleId });
       return { status: 200, body: { folio: r.folio, pdfBase64: r.pdfBase64 } };

@@ -189,7 +189,8 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
 
     getIssuance: guard('getIssuance', async (b, s) => {
       const r = issuances.get(key(b, s));
-      return r ? { ...r } : null;
+      // Misma forma que mapIssuance (crm_fiscal_get_issuance con la migración E).
+      return r ? { ...r, hasXml: Boolean(r.xmlBase64), siiStatus: r.siiStatus ?? 'unverified', siiTrackId: r.siiTrackId ?? null } : null;
     }),
 
     loadEmissionContext: guard('loadEmissionContext', async (b, s) => {
@@ -252,7 +253,8 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
         if (!out.folio || !out.xmlBase64 || !out.pdfBase64) throw new FiscalError('Invalid fiscal outcome');
         Object.assign(cur, { status: 'issued', folio: out.folio, xmlBase64: out.xmlBase64, pdfBase64: out.pdfBase64 });
       } else {
-        Object.assign(cur, { status: 'unknown', folio: null, xmlBase64: null, pdfBase64: null });
+        // Igual que la RPC: unknown conserva el folio informado (pista) y el motivo.
+        Object.assign(cur, { status: 'unknown', folio: out.folio ?? null, xmlBase64: null, pdfBase64: null, errorCode: out.errorCode ?? null });
       }
       stamp(cur);
       return true;

@@ -112,6 +112,14 @@ export function createPgStore(cfg) {
     },
 
     async finalize(businessId, saleId, operationId, out) {
+      if (out.errorCode) {
+        return Boolean(await scalar(
+          `select public.crm_finalize_fiscal_issuance(p_business_id => $1, p_sale_id => $2, p_operation_id => $3, p_status => $4,
+             p_folio => $5, p_xml_base64 => $6, p_pdf_base64 => $7, p_error_code => $8) as ok`,
+          [businessId, saleId, operationId, out.status, out.folio ?? null, out.xmlBase64 ?? null, out.pdfBase64 ?? null, out.errorCode],
+          'ok',
+        ));
+      }
       return Boolean(await scalar(
         `select public.crm_finalize_fiscal_issuance($1, $2, $3, $4, $5, $6, $7) as ok`,
         [businessId, saleId, operationId, out.status, out.folio ?? null, out.xmlBase64 ?? null, out.pdfBase64 ?? null],

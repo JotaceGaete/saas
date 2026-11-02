@@ -156,7 +156,7 @@ test('roles: fiscal_operator puede emitir', async () => {
 test('el emisor público no expone reconcile', () => {
   const { emitter } = setup();
   assert.equal('reconcile' in emitter, false);
-  assert.deepEqual(Object.keys(emitter).sort(), ['emitSale', 'reprint']);
+  assert.deepEqual(Object.keys(emitter).sort(), ['emitSale', 'reprint', 'status']);
   assert.equal(Object.isFrozen(emitter), true);
 });
 
