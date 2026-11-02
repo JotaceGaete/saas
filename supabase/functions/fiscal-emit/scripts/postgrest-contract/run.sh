@@ -28,11 +28,18 @@ if [[ "$PGRST_DB_URI" == *"$PRODUCTION_REF"* ]]; then
   echo "Negado: PGRST_DB_URI apunta al proyecto de producción." >&2
   exit 3
 fi
-DB_HOST="$(printf '%s' "$PGRST_DB_URI" | sed -E 's#^[a-z]+://([^@]*@)?([^:/?]+).*#\2#')"
-case "$DB_HOST" in
-  localhost|127.0.0.1|::1|host.docker.internal) ;;
-  *) echo "Negado: la base de contrato debe ser local (host actual: no local)." >&2; exit 3 ;;
-esac
+# Validar URI con parser real: host local, base *_test y protocolo PostgreSQL.
+# No imprimir la URI: puede contener contraseñas.
+if ! node -e '
+  const u = new URL(process.env.PGRST_DB_URI);
+  const db = decodeURIComponent(u.pathname.slice(1));
+  const local = ["localhost", "127.0.0.1", "[::1]"].includes(u.hostname);
+  const testDb = /^[a-z][a-z0-9_]*_test$/.test(db);
+  if (!["postgres:", "postgresql:"].includes(u.protocol) || !local || !testDb) process.exit(1);
+' 2>/dev/null; then
+  echo "Negado: se exige PostgreSQL en loopback y una base *_test." >&2
+  exit 3
+fi
 
 export PGRST_DB_URI
 export PGRST_JWT_SECRET="${PGRST_JWT_SECRET:-$(openssl rand -hex 32)}"
