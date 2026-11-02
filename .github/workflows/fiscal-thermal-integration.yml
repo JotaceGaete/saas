@@ -45,5 +45,7 @@ jobs:
         run: bash supabase/functions/fiscal-emit/scripts/postgrest-contract/readiness.test.sh
       - name: Verify fiscal SQL migration failures abort local rebuild
         run: bash supabase/fiscal-recovery/localdb/migration-failure.test.sh
+      - name: Verify skipped migrations cannot certify a complete local DB
+        run: bash supabase/fiscal-recovery/localdb/partial-migrations.test.sh
       - name: Build frontend
         run: npm run build
