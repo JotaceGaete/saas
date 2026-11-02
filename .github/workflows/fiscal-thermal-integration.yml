@@ -33,6 +33,6 @@ jobs:
       - name: Protect existing commercial ticket and TPV
         run: npx vitest run src/pages/crm/components/CrmThermalTicket.fiscalIntegration.test.js src/lib/printing/receipts/buildSaleReceipt.test.js src/lib/printing/receipts/renderEscPosReceipt.test.js src/lib/printing/receipts/escPosImage.test.js
       - name: Verify DTE Core HTTP uncertainty and duplicate prevention
-        run: node --test supabase/functions/fiscal-emit/test/unit/siisolutions-http.test.mjs supabase/functions/fiscal-emit/test/unit/recovery-safety.test.mjs supabase/functions/fiscal-emit/test/unit/reconciler.test.mjs supabase/functions/fiscal-emit/test/unit/recovery-http.test.mjs supabase/functions/fiscal-emit/test/unit/state.test.mjs supabase/functions/fiscal-emit/test/unit/failures.memory.test.mjs supabase/functions/fiscal-emit/test/unit/late-and-double.test.mjs
+        run: node --test supabase/functions/fiscal-emit/test/unit/siisolutions-http.test.mjs supabase/functions/fiscal-emit/test/unit/recovery-safety.test.mjs supabase/functions/fiscal-emit/test/unit/reconciler.test.mjs supabase/functions/fiscal-emit/test/unit/recovery-http.test.mjs supabase/functions/fiscal-emit/test/unit/state.test.mjs supabase/functions/fiscal-emit/test/unit/failures.memory.test.mjs supabase/functions/fiscal-emit/test/unit/late-and-double.test.mjs supabase/functions/fiscal-emit/test/unit/store-supabase.test.mjs supabase/functions/fiscal-emit/test/unit/postgrest-client.test.mjs
       - name: Build frontend
         run: npm run build
