@@ -95,6 +95,8 @@ jobs:
         timeout-minutes: 8
         working-directory: supabase/functions/fiscal-emit
         run: npm run test:db
+      - name: Verify pinned PostgREST container image exists
+        run: docker pull postgrest/postgrest:v12.2.3
       - name: Run real PostgREST contract against isolated PostgreSQL
         timeout-minutes: 5
         env:
@@ -113,3 +115,22 @@ jobs:
           chmod +x /tmp/walinka-fiscal-ci/postgrest
           POSTGREST_BIN=/tmp/walinka-fiscal-ci/postgrest \
             bash supabase/functions/fiscal-emit/scripts/postgrest-contract/run.sh
+      - name: Diagnose PostgREST startup without exposing credentials
+        if: failure()
+        env:
+          PGRST_DB_URI: postgres://postgres:fiscal_test_only@127.0.0.1:5432/walinka_test
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          p = Path('supabase/functions/fiscal-emit/scripts/postgrest-contract/.postgrest.log')
+          if not p.exists():
+              print('No PostgREST startup log was created.')
+          else:
+              data = p.read_text(errors='replace')
+              for secret in (os.environ.get('PGRST_DB_URI'), os.environ.get('PGPASSWORD')):
+                  if secret:
+                      data = data.replace(secret, '[REDACTED]')
+              print('PostgREST startup diagnostic (redacted):')
+              print('\n'.join(data.splitlines()[-25:])[:5000])
+          PY
