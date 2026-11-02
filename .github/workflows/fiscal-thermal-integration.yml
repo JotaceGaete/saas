@@ -92,9 +92,11 @@ jobs:
       - name: Build isolated fiscal test database
         run: bash supabase/fiscal-recovery/localdb/build.sh
       - name: Run real PostgreSQL fiscal RPC and security tests
+        timeout-minutes: 8
         working-directory: supabase/functions/fiscal-emit
         run: npm run test:db
       - name: Run real PostgREST contract against isolated PostgreSQL
+        timeout-minutes: 5
         env:
           PGRST_DB_URI: postgres://postgres:fiscal_test_only@127.0.0.1:5432/walinka_test
         run: |
