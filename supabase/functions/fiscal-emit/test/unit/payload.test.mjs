@@ -1,21 +1,20 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { buildBoletaPayload, santiagoDate, CONSUMIDOR_FINAL } from '../../lib/payload.mjs';
+import { buildBoletaPayload, santiagoDate, expectedTotals, CONSUMIDOR_FINAL } from '../../lib/payload.mjs';
 
 const OP = 'WLK-b1-s1';
 const RUT = '76123456-7';
-const FECHA = '2026-10-31';
 const line = (over = {}) => ({ name: 'Café', unitPrice: 1190, quantity: 2, discountPct: 0, category: 'IVA_AFECTO_19', ...over });
-const SUC = { nombre: 'SUCURSAL DE PRUEBA', codigo: '1' };
-const build = (over = {}) => buildBoletaPayload({ operationId: OP, rutOperador: RUT, lines: [line()], montoPago: 2380, medioPago: 'EF', fechaEmision: FECHA, sucursal: SUC, ...over });
+const build = (over = {}) => buildBoletaPayload({ operationId: OP, rutOperador: RUT, lines: [line()], montoPago: 2380, medioPago: 'EF', ...over });
 
-test('nombres y tipos del ejemplo oficial: montoPago y vuelto texto, total y descuentoGlobal número', () => {
+test('campos iguales a los de la emisión aceptada (51106): sin folio, sin fecha, sin total, sin sucursal', () => {
   const p = build();
+  assert.deepEqual(Object.keys(p).sort(), [
+    'cliente', 'descuentoGlobal', 'detalles', 'enviarCorreo', 'formatoPdf', 'idBoletaOperacion', 'medioPago',
+    'modoPdfSalida', 'montoPago', 'referencias', 'retornarPdf', 'retornarXml', 'rutOperador', 'vuelto',
+  ]);
   assert.equal(p.rutOperador, RUT);
   assert.equal(p.idBoletaOperacion, OP);
-  assert.equal(p.folio, null);
-  assert.equal(p.fechaEmision, FECHA);
-  assert.equal(p.total, 2380);
   assert.equal(p.descuentoGlobal, 0);
   assert.equal(p.montoPago, '2380');
   assert.equal(p.vuelto, '0');
@@ -24,35 +23,59 @@ test('nombres y tipos del ejemplo oficial: montoPago y vuelto texto, total y des
   assert.equal(p.retornarPdf, true);
   assert.equal(p.retornarXml, true);
   assert.equal(p.modoPdfSalida, 'base64');
-  assert.equal(p.modoEntrada, 'json');
   assert.equal(p.enviarCorreo, false);
   assert.deepEqual(p.referencias, []);
-  assert.equal(p.cliente.rut, CONSUMIDOR_FINAL.rut);
-  assert.equal(p.sucursalEmision, SUC.nombre);
-  assert.equal(p.sucursalCodigo, SUC.codigo);
+  assert.deepEqual(p.cliente, { rut: '66666666', digito: '6', razonSocial: 'CLIENTE VARIOS' });
+  assert.equal(CONSUMIDOR_FINAL.razonSocial, 'CLIENTE VARIOS');
 });
 
-test('precio de detalle es NETO (ejemplo: precio 10000 -> precioSubtotal 11900 bruto); subtotal es bruto', () => {
+test('precio de detalle es BRUTO (IVA incluido), igual que PrcItem en los XML aceptados', () => {
   const p = build({ lines: [line({ unitPrice: 1190, quantity: 2 })], montoPago: 2380 });
-  assert.equal(p.detalles[0].precio, 1000);
+  assert.equal(p.detalles[0].precio, 1190);
   assert.equal(p.detalles[0].precioSubtotal, 2380);
   assert.equal(p.detalles[0].cantidad, 2);
   assert.equal(p.detalles[0].esExento, false);
   assert.equal(p.detalles[0].precioDescuento, 0);
 });
 
-test('línea EXENTA: precio igual al bruto y esExento true', () => {
+test('venta de $100: precio 100, subtotal 100; totales esperados 84 + 16 = 100 (como la 51106)', () => {
+  const p = build({ lines: [line({ name: 'prueba', unitPrice: 100, quantity: 1 })], montoPago: 100 });
+  assert.equal(p.detalles[0].precio, 100);
+  assert.equal(p.detalles[0].precioSubtotal, 100);
+  assert.deepEqual(expectedTotals(p), { neto: 84, iva: 16, exento: 0, total: 100 });
+});
+
+test('venta de $1.190: totales esperados 1000 + 190 (como la 51105)', () => {
+  const p = build({ lines: [line({ unitPrice: 1190, quantity: 1 })], montoPago: 1190 });
+  assert.deepEqual(expectedTotals(p), { neto: 1000, iva: 190, exento: 0, total: 1190 });
+});
+
+test('$999: el total nunca cambia por redondeo; el neto/IVA los calcula el proveedor', () => {
+  const p = build({ lines: [line({ unitPrice: 999, quantity: 1 })], montoPago: 999 });
+  assert.equal(p.detalles[0].precio, 999);
+  const t = expectedTotals(p);
+  assert.equal(t.total, 999);
+  assert.equal(t.neto + t.iva, 999);
+});
+
+test('línea EXENTA: esExento true, precio bruto, cuenta como exento en los totales', () => {
   const p = build({ lines: [line({ category: 'EXENTO', unitPrice: 500, quantity: 1 })], montoPago: 500, medioPago: 'PE' });
   assert.equal(p.detalles[0].esExento, true);
   assert.equal(p.detalles[0].precio, 500);
   assert.equal(p.medioPago, 'PE');
+  assert.deepEqual(expectedTotals(p), { neto: 0, iva: 0, exento: 500, total: 500 });
 });
 
-test('venta de $100 CLP: precio neto 84, subtotal 100', () => {
-  const p = build({ lines: [line({ name: 'Prueba', unitPrice: 100, quantity: 1 })], montoPago: 100 });
-  assert.equal(p.detalles[0].precio, 84);
-  assert.equal(p.detalles[0].precioSubtotal, 100);
-  assert.equal(p.total, 100);
+test('línea sin categoría tributaria verificada se rechaza', () => {
+  assert.throws(() => build({ lines: [line({ category: null })] }), { code: 'FISCAL_TAX_LINES_NOT_VERIFIED' });
+});
+
+test('sucursal: opcional (la 51106 se aceptó sin ella); si existe se envía completa', () => {
+  assert.equal('sucursalEmision' in build(), false);
+  const p = build({ sucursal: { nombre: 'CASA MATRIZ', codigo: '1' } });
+  assert.equal(p.sucursalEmision, 'CASA MATRIZ');
+  assert.equal(p.sucursalCodigo, '1');
+  assert.throws(() => build({ sucursal: { nombre: '', codigo: '0' } }), { code: 'PAYLOAD_INVALID' });
 });
 
 test('descripción de más de 80 caracteres se rechaza (no se trunca en silencio)', () => {
@@ -82,34 +105,14 @@ test('medio de pago fuera de EF/PE se rechaza', () => {
   assert.throws(() => build({ medioPago: 'TC' }), { code: 'PAYLOAD_INVALID' });
 });
 
-test('fecha de emisión inválida se rechaza', () => {
-  assert.throws(() => build({ fechaEmision: '31/10/2026' }), { code: 'PAYLOAD_INVALID' });
-});
-
-test('sin operationId o sin RUT se rechaza', () => {
+test('sin operationId o con RUT mal formado se rechaza', () => {
   assert.throws(() => build({ operationId: '' }), { code: 'PAYLOAD_INVALID' });
   assert.throws(() => build({ rutOperador: '' }), { code: 'PAYLOAD_INVALID' });
+  assert.throws(() => build({ rutOperador: '77.804.207-K' }), { code: 'PAYLOAD_INVALID' });
+  assert.doesNotThrow(() => build({ rutOperador: '77804207-K' }));
 });
 
 test('santiagoDate usa la fecha local de Santiago, no UTC', () => {
   // 2026-11-01 02:30 UTC = 2026-10-31 23:30 en Santiago (UTC-03 en octubre).
   assert.equal(santiagoDate(new Date('2026-11-01T02:30:00Z')), '2026-10-31');
-});
-
-test('sin sucursal configurada se rechaza: no hay valor por defecto', () => {
-  assert.throws(() => build({ sucursal: undefined }), { code: 'SUCURSAL_NOT_CONFIGURED' });
-  assert.throws(() => build({ sucursal: { nombre: '', codigo: '0' } }), { code: 'SUCURSAL_NOT_CONFIGURED' });
-});
-
-test('desglose neto/IVA: $100 bruto -> neto 84 + IVA 16 = 100 exacto', () => {
-  const p = build({ lines: [line({ unitPrice: 100, quantity: 1 })], montoPago: 100 });
-  assert.equal(p.detalles[0].precio, 84);
-  assert.equal(p.detalles[0].precioSubtotal, 100);
-});
-
-test('precios de rounding no se rechazan: $999 se construye sin error y el monto cuadra con la suma bruta', () => {
-  const p = build({ lines: [line({ unitPrice: 999, quantity: 1 })], montoPago: 999 });
-  assert.equal(p.total, 999);
-  assert.equal(p.detalles[0].precioSubtotal, 999);
-  assert.equal(p.detalles[0].precio, 839); // round(999 / 1.19)
 });

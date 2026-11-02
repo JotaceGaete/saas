@@ -17,9 +17,16 @@ export function evaluateEligibility({
   payments,
   pointOps,
   operationId,
+  now = new Date(),
 }) {
   if (!sale || sale.status !== 'pagada' || !sale.paidAt || !(Number(sale.total) > 0)) {
     throw new FiscalError('SALE_NOT_ELIGIBLE');
+  }
+  // Solo ventas del día (hora de Santiago). La boleta lleva la fecha de emisión que pone el
+  // proveedor; emitirla otro día la desfasaría de la venta. Además protege las ventas históricas
+  // (incluidas las ventas Point anteriores): nunca se emiten boletas retroactivas desde el TPV.
+  if (santiagoDate(sale.paidAt) !== santiagoDate(now)) {
+    throw new FiscalError('SALE_NOT_SAME_DAY');
   }
   if (!business || business.countryCode !== 'CL') {
     throw new FiscalError('COUNTRY_NOT_SUPPORTED');
@@ -80,8 +87,7 @@ export function evaluateEligibility({
     lines,
     montoPago: total,
     medioPago,
-    fechaEmision: santiagoDate(sale.paidAt),
-    sucursal: issuer?.sucursal,
+    sucursal: issuer?.sucursal ?? null,
   });
   return { medioPago, montoPago: total, payload };
 }

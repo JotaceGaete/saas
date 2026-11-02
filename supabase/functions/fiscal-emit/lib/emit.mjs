@@ -18,6 +18,7 @@ import { evaluateEligibility } from './eligibility.mjs';
 import { authorizeAction } from './authz.mjs';
 import { validDocument } from './document.mjs';
 import { open as openSecret, parseMasterKey } from './secrets.mjs';
+import { expectedTotals } from './payload.mjs';
 
 export const DEFAULT_TIMEOUT_MS = 20_000;
 // Reintentos acotados SOLO para errores de transporte/almacén (no FiscalError). Todas las
@@ -55,6 +56,7 @@ export function createFiscalEmitter({
   provider,
   masterKey, // string base64 de 32 bytes (FISCAL_MASTER_KEY)
   timeoutMs = DEFAULT_TIMEOUT_MS,
+  now = () => new Date(),
 }) {
   if (!store || !provider) throw new Error('store and provider are required');
   const key = typeof masterKey === 'string' || masterKey === undefined ? parseMasterKey(masterKey) : masterKey;
@@ -131,7 +133,11 @@ export function createFiscalEmitter({
       payments: ctx.payments,
       pointOps: ctx.pointOps,
       operationId,
+      now: now(),
     });
+    // Lo que el documento devuelto debe declarar: total y emisor. Un XML que no coincide no se
+    // marca issued (queda unknown con su folio para revisión).
+    const expect = { total: expectedTotals(payload).total, rutEmisor: ctx.issuer?.issuerRut ?? null };
 
     // Reclamo atómico con credenciales (pending -> sending) bajo el mismo candado que conectar,
     // reemplazar o desconectar. Las credenciales se leen DENTRO del reclamo: una emisión nunca usa
@@ -156,17 +162,23 @@ export function createFiscalEmitter({
       throw new FiscalError('CREDENTIAL_INVALID');
     }
 
-    const markUnknown = async (reason) => {
+    // unknown conserva el folio si el proveedor lo informó (409 folioExistente, 2xx sin documentos
+    // válidos). Ese folio es una pista para la reconciliación, no prueba de emisión.
+    const markUnknown = async (reason, folio = null) => {
+      const out = { status: 'unknown', errorCode: String(reason ?? 'ERROR').slice(0, 64) };
+      if (Number.isSafeInteger(folio) && folio > 0) out.folio = folio;
       const ok = await settle(businessId, sale.id,
-        () => store.finalize(businessId, sale.id, operationId, { status: 'unknown' }),
+        () => store.finalize(businessId, sale.id, operationId, out),
         { status: 'unknown' });
       if (!ok) throw new FiscalError('PERSIST_PENDING_RECOVERY', 'state remains sending; recovery will decide');
-      return { status: 'unknown', providerCalls: 1, medioPago, montoPago, reason };
+      const r = { status: 'unknown', providerCalls: 1, medioPago, montoPago, reason };
+      if (out.folio) r.folioHint = out.folio;
+      return r;
     };
 
     let doc;
     try {
-      doc = await withTimeout(provider.emit({ payload, credentials: creds }), timeoutMs);
+      doc = await withTimeout(provider.emit({ payload, credentials: creds, expect }), timeoutMs);
     } catch (err) {
       if (err instanceof ProviderRejectedError) {
         const ok = await settle(businessId, sale.id,
@@ -176,7 +188,7 @@ export function createFiscalEmitter({
         return { status: 'failed', providerCalls: 1, medioPago, montoPago };
       }
       // Timeout, red o error no clasificado: el proveedor pudo haber emitido. Es unknown, nunca failed.
-      return markUnknown(err?.code ?? 'ERROR');
+      return markUnknown(err?.code ?? 'ERROR', err?.folio ?? null);
     }
 
     if (!validDocument(doc)) {
@@ -226,6 +238,46 @@ export function createFiscalEmitter({
     return { folio: row.folio, pdfBase64: row.pdfBase64, providerCalls: 0 };
   }
 
-  // Superficie pública: solo emit y reprint. No hay reconcile aquí (lib/reconciler.mjs).
-  return Object.freeze({ emitSale, reprint });
+  // Estado fiscal de la venta para el TPV. Solo lectura: nunca reclama ni llama al proveedor.
+  // canEmit es true solo si el rol permite emitir, la venta no tiene fila (o está pending), el
+  // proveedor está activo y la venta pasa la elegibilidad completa. blockedReason explica por qué no.
+  async function status({ actorUserId, saleId }) {
+    const { sale, business, role } = await loadAuthorizedSale(actorUserId, saleId, 'reprint');
+    const row = await store.getIssuance(sale.businessId, sale.id);
+    const out = {
+      state: row?.status ?? 'none',
+      folio: row?.folio ?? null,
+      siiStatus: row?.status === 'issued' || row?.status === 'cancelled' ? (row.siiStatus ?? 'unverified') : null,
+      siiTrackId: row?.siiTrackId ?? null,
+      hasPdf: Boolean(row?.pdfBase64),
+      hasXml: Boolean(row?.hasXml),
+      canEmit: false,
+      blockedReason: null,
+    };
+    if (row?.status === 'unknown' || row?.status === 'failed') out.errorCode = row.errorCode ?? null;
+    if (row && row.status !== 'pending') {
+      out.blockedReason = row.status === 'issued' ? 'ALREADY_ISSUED'
+        : row.status === 'unknown' ? 'UNKNOWN_REQUIRES_RECONCILIATION'
+          : row.status === 'sending' ? 'ALREADY_IN_PROGRESS' : 'NOT_EMITTABLE_IN_STATE';
+      return out;
+    }
+    if (!authorizeAction(role, 'emit')) { out.blockedReason = 'FISCAL_ROLE_REQUIRED'; return out; }
+    if (provider.ready === false) { out.blockedReason = 'PROVIDER_NOT_READY'; return out; }
+    try {
+      const ctx = await store.loadEmissionContext(sale.businessId, sale.id);
+      evaluateEligibility({
+        sale, business, issuer: ctx.issuer, emissionEnabled: ctx.emissionEnabled,
+        taxLinesVerified: ctx.taxLinesVerified, lines: ctx.lines, payments: ctx.payments,
+        pointOps: ctx.pointOps, operationId: operationIdFor(sale.businessId, sale.id), now: now(),
+      });
+    } catch (err) {
+      out.blockedReason = err instanceof FiscalError ? err.code : 'STATUS_UNAVAILABLE';
+      return out;
+    }
+    out.canEmit = true;
+    return out;
+  }
+
+  // Superficie pública: emit, reprint y status. No hay reconcile aquí (lib/reconciler.mjs).
+  return Object.freeze({ emitSale, reprint, status });
 }

@@ -13,10 +13,13 @@ import { buildFiscalHandler } from './app.ts';
 import { createDtecoreBlockedProvider } from './lib/providers/dtecore-blocked.mjs';
 import { createSiisolutionsHttpProvider } from './lib/providers/siisolutions-http.mjs';
 
-// Proveedor: bloqueado salvo FISCAL_PROVIDER=siisolutions (activación explícita en el entorno).
-// Aun activado, la emisión exige sucursal configurada, emisor habilitado y control de emisión.
-const provider = Deno.env.get('FISCAL_PROVIDER') === 'siisolutions'
-  ? createSiisolutionsHttpProvider({ baseUrl: 'https://api.siisolutions.cl', ready: true })
+// Proveedor: bloqueado salvo FISCAL_PROVIDER=dtecore (alias histórico: siisolutions).
+// Aun activado, la emisión exige emisor habilitado y verificado, control de emisión global
+// encendido, credencial del comercio guardada en el servidor y una venta elegible del día.
+// La URL del proveedor es fija (no se lee del entorno ni del cliente).
+const providerName = Deno.env.get('FISCAL_PROVIDER') ?? '';
+const provider = providerName === 'dtecore' || providerName === 'siisolutions'
+  ? createSiisolutionsHttpProvider({ ready: true })
   : createDtecoreBlockedProvider();
 
 const service = createClient(

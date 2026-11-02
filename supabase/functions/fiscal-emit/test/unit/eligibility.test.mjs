@@ -100,6 +100,14 @@ test('sin ningún pago confirmado no es elegible', () => {
   assert.throws(() => run({ payments: [] }), { code: 'NO_CONFIRMED_PAYMENT' });
 });
 
-test('sin sucursal del comercio: la elegibilidad se rechaza antes de reclamar nada', () => {
-  assert.throws(() => run({ issuer: { issuerRut: '76123456-7', enabled: true, verified: true, sucursal: null } }), { code: 'SUCURSAL_NOT_CONFIGURED' });
+test('sin sucursal del comercio: se emite igual (la 51106 se aceptó sin sucursal) y no se envía', () => {
+  const r = run({ issuer: { issuerRut: '76123456-7', enabled: true, verified: true, sucursal: null } });
+  assert.equal('sucursalEmision' in r.payload, false);
+});
+
+test('venta de otro día (hora de Santiago) se rechaza: sin boletas retroactivas', () => {
+  const paidAt = new Date('2026-10-31T12:00:00Z');
+  assert.throws(() => run({ sale: { ...base().sale, paidAt }, now: new Date('2026-11-01T12:00:00Z') }), { code: 'SALE_NOT_SAME_DAY' });
+  // 23:30 del 31-10 en Santiago (02:30 UTC del 1-11) sigue siendo el mismo día local.
+  assert.doesNotThrow(() => run({ sale: { ...base().sale, paidAt }, now: new Date('2026-11-01T02:30:00Z') }));
 });

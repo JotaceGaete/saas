@@ -110,6 +110,8 @@ export function createSupabaseStore(client) {
         p_folio: out.folio ?? null,
         p_xml_base64: out.xmlBase64 ?? null,
         p_pdf_base64: out.pdfBase64 ?? null,
+        // Solo con la migración E (20261102_fiscal_sii_status.sql). Se omite si no hay motivo.
+        ...(out.errorCode ? { p_error_code: out.errorCode } : {}),
       }));
     },
 
