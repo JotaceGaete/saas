@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
+import CrmFiscalThermalPrint from '../CrmFiscalThermalPrint';
 import {
   emitFiscalSale,
   getFiscalSaleStatus,
@@ -106,6 +107,9 @@ export default function TpvFiscalEmitPanel({ saleId, businessId, total, enabled 
           {data.hasPdf && <button type="button" style={btn(true, false)} onClick={() => download('pdf')}>Descargar PDF</button>}
           {data.hasXml && <button type="button" style={btn(true, false)} onClick={() => download('xml')}>Descargar XML</button>}
         </div>
+        {data.state === 'issued' && data.hasXml && businessId && (
+          <CrmFiscalThermalPrint businessId={businessId} invoiceId={saleId} />
+        )}
         {downloadError && <div role="alert" style={{ marginTop: 4, color: '#b91c1c' }}>{downloadError}</div>}
       </>
     );
