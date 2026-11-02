@@ -22,7 +22,7 @@ test('recuperación con recibo: finaliza issued, idempotente y sin proveedor', a
   });
   const recovery = createRecovery({ store, now: () => T0 });
   assert.deepEqual(await recovery.recoverStaleSending(), {
-    examined: 1, finalizedFromReceipt: 1, markedUnknown: 0, untouched: 0,
+    examined: 1, remainingCandidates: 0, finalizedFromReceipt: 1, markedUnknown: 0, untouched: 0,
   });
   assert.equal((await store.getIssuance(IDS.bizA, IDS.saleA)).status, 'issued');
   assert.equal((await store.getIssuance(IDS.bizA, IDS.saleA)).folio, 51105);
@@ -47,4 +47,23 @@ test('recuperación respeta ventana mínima y no toca emisiones recientes', asyn
   const recovery = createRecovery({ store, now: () => OLD });
   assert.equal((await recovery.recoverStaleSending()).examined, 0);
   assert.equal((await store.getIssuance(IDS.bizA, IDS.saleA)).status, 'sending');
+});
+
+test('límite por lote impide procesar más filas de las autorizadas', async () => {
+  const calls = [];
+  const rows = Array.from({ length: 4 }, (_, i) => ({
+    businessId: 'b', saleId: String(i), operationId: 'op',
+  }));
+  const store = {
+    listStaleSending: async () => rows,
+    finalizeFromReceipt: async (_b, saleId) => { calls.push(saleId); return true; },
+    markStaleUnknown: async () => { throw new Error('unexpected'); },
+  };
+  const recovery = createRecovery({ store, now: () => T0, maxRows: 2 });
+  const report = await recovery.recoverStaleSending();
+  assert.equal(report.examined, 2);
+  assert.equal(report.remainingCandidates, 2);
+  assert.deepEqual(calls, ['0', '1']);
+  assert.throws(() => createRecovery({ store, maxRows: 0 }));
+  assert.throws(() => createRecovery({ store, maxRows: 1001 }));
 });
