@@ -94,7 +94,7 @@ export default function TpvFiscalEmitPanel({ saleId, businessId, total, enabled 
   if (status.loading && !data) {
     body = <div>Revisando el estado fiscal de la venta…</div>;
   } else if (!data) {
-    body = <div>No fue posible consultar el estado fiscal ({status.code}). No se emitió ninguna boleta.</div>;
+    body = <div>No fue posible consultar el estado fiscal ({status.code}). No podemos confirmar si existe una boleta previa. No intentes emitir hasta recuperar el estado.</div>;
   } else if (data.state === 'issued' || data.state === 'cancelled') {
     body = (
       <>
