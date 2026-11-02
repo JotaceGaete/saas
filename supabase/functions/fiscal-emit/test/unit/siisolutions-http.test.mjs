@@ -92,6 +92,7 @@ test('XML que no corresponde: folio, total, emisor, tipo o timbre distintos -> u
     [{ xmlBase64: b64(syntheticDteXml({ folio: 51203, total: 1000, rutEmisor: '11111111-1' })) }, 'XML_ISSUER_MISMATCH'],
     [{ xmlBase64: b64(syntheticDteXml({ folio: 51203, total: 1000, tipo: 33 })) }, 'XML_NOT_DTE39'],
     [{ xmlBase64: b64(syntheticDteXml({ folio: 51203, total: 1000, withTed: false })) }, 'XML_WITHOUT_TED'],
+    [{ xmlBase64: b64(syntheticDteXml({ folio: 51203, total: 1000 }).replace(/<Signature[^>]*>[\s\S]*?<\/Signature>/, '')) }, 'XML_WITHOUT_SIGNATURE'],
     [{ pdfBase64: b64('<html>no es pdf</html>') }, 'PDF_INVALID'],
   ];
   for (const [override, code] of cases) {
@@ -257,4 +258,19 @@ test('status: antes de emitir canEmit true; después ALREADY_ISSUED con estado S
   assert.equal(after.blockedReason, 'ALREADY_ISSUED');
   assert.equal(after.siiStatus, 'unverified'); // emitido != aceptado por el SII
   assert.equal(after.hasPdf, true);
+});
+
+test('cancelación externa interrumpe el POST y no lo reintenta', async () => {
+  const controller = new AbortController();
+  let requests = 0;
+  const p = createSiisolutionsHttpProvider({ baseUrl, fetchImpl: (_url, options) => {
+    requests += 1;
+    return new Promise((_resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(Object.assign(new Error('aborted'), { name: 'AbortError' })), { once: true });
+    });
+  } });
+  const pending = p.emit({ payload: PAYLOAD, credentials: CREDS, signal: controller.signal });
+  controller.abort();
+  await assert.rejects(pending, { code: 'PROVIDER_NETWORK' });
+  assert.equal(requests, 1);
 });

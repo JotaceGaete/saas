@@ -1,0 +1,23 @@
+name: Fiscal DTE39 unit tests
+
+on:
+  pull_request:
+    paths:
+      - 'supabase/functions/fiscal-emit/**'
+      - '.github/workflows/fiscal-dte39-unit.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fiscal-unit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Fiscal unit tests (offline provider mocks, no production secrets)
+        run: node --test supabase/functions/fiscal-emit/test/unit/*.test.mjs

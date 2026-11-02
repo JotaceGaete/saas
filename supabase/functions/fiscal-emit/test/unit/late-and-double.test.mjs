@@ -130,3 +130,31 @@ test('reimpresión de una venta sin boleta: NOT_ISSUED, nunca emite', async () =
   assert.equal(rp.body.error, 'NOT_ISSUED');
   assert.equal(posts + gets, 0);
 });
+
+test('plazo externo: aborta el proveedor y mantiene unknown sin segundo intento', async () => {
+  const masterKey = randomBytes(32);
+  const store = createMemoryStore({ masterKey });
+  store.seed({ businessId: IDS.bizA, userId: IDS.userA, saleId: SALE });
+  let calls = 0;
+  let aborted = false;
+  const provider = {
+    ready: true,
+    emit: ({ signal }) => {
+      calls += 1;
+      return new Promise((_resolve, reject) => {
+        signal.addEventListener('abort', () => {
+          aborted = true;
+          reject(Object.assign(new Error('aborted'), { name: 'AbortError' }));
+        }, { once: true });
+      });
+    },
+  };
+  const emitter = createFiscalEmitter({ store, provider, masterKey, timeoutMs: 50 });
+  const result = await emitter.emitSale({ actorUserId: IDS.userA, saleId: SALE });
+  assert.equal(result.status, 'unknown');
+  assert.equal(aborted, true);
+  assert.equal(calls, 1);
+  await assert.rejects(emitter.emitSale({ actorUserId: IDS.userA, saleId: SALE }),
+    { code: 'UNKNOWN_REQUIRES_RECONCILIATION' });
+  assert.equal(calls, 1);
+});

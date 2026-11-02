@@ -30,12 +30,17 @@ export function operationIdFor(businessId, saleId) {
   return `WLK-${businessId}-${saleId}`;
 }
 
-function withTimeout(promise, ms) {
+function withTimeout(task, ms) {
+  const controller = new AbortController();
   let timer;
   const timeout = new Promise((_, reject) => {
-    timer = setTimeout(() => reject(new ProviderTimeoutError(ms)), ms);
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new ProviderTimeoutError(ms));
+    }, ms);
   });
-  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer));
+  return Promise.race([Promise.resolve().then(() => task(controller.signal)), timeout])
+    .finally(() => clearTimeout(timer));
 }
 
 async function retryTransient(fn, attempts = PERSIST_ATTEMPTS) {
@@ -178,7 +183,7 @@ export function createFiscalEmitter({
 
     let doc;
     try {
-      doc = await withTimeout(provider.emit({ payload, credentials: creds, expect }), timeoutMs);
+      doc = await withTimeout((signal) => provider.emit({ payload, credentials: creds, expect, signal }), timeoutMs);
     } catch (err) {
       if (err instanceof ProviderRejectedError) {
         const ok = await settle(businessId, sale.id,
