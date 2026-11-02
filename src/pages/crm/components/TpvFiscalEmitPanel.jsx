@@ -97,7 +97,7 @@ export default function TpvFiscalEmitPanel({ saleId, businessId, total, enabled 
   } else if (data.state === 'issued' || data.state === 'cancelled') {
     body = (
       <>
-        <div style={{ fontWeight: 700, color: '#065f46' }}>Boleta electrónica emitida · Folio {data.folio}</div>
+        <div style={{ fontWeight: 700, color: data.state === 'cancelled' ? '#92400e' : '#065f46' }}>{data.state === 'cancelled' ? 'Boleta electrónica anulada' : 'Boleta electrónica emitida'} · Folio {data.folio}</div>
         <div data-testid="sii-status" style={{ marginTop: 4 }}>
           {data.state === 'cancelled' ? 'Anulada con nota de crédito' : (SII_STATUS_LABELS[data.siiStatus] ?? SII_STATUS_LABELS.unverified)}
           {data.siiTrackId ? ` · TrackId ${data.siiTrackId}` : ''}
