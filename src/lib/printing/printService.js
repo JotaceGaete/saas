@@ -22,10 +22,11 @@ export const printService = {
    * @param {import('./receipts/renderEscPosReceipt').Receipt} receipt
    * @param {{ printerName: string, copies?: number }} target
    */
-  printReceipt: async (receipt, { printerName, copies } = {}) => {
+  printReceipt: async (receipt, { printerName, copies, idempotencyKey, connector } = {}) => {
     // PRINT-4: renderEscPosReceipt es async (el logo requiere cargar y
     // rasterizar una imagen) -- ver receipts/renderEscPosReceipt.js.
     const bytes = await renderEscPosReceipt(receipt);
+    if (connector) return connector.print(printerName, bytes, { copies, idempotencyKey });
     return provider.print(printerName, bytes, { copies });
   },
 };

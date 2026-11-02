@@ -201,7 +201,11 @@ export function createSiisolutionsHttpProvider({
         return retrieved;
       }
       if (res.status === 400 && body?.success === false) {
-        // Rechazo explícito de validación: el proveedor no asignó folio.
+        // Un 400 con folio asignado o existente NO demuestra rechazo definitivo.
+        // Preservamos la pista y bloqueamos reemisión hasta conciliar con el proveedor.
+        const folioHint = folioOf(body?.folioExistente) ?? folioOf(body?.folio);
+        if (folioHint) throw new ProviderUnknownError('PROVIDER_400_WITH_FOLIO', { folio: folioHint });
+        // Solo el rechazo explícito sin folio se considera definitivo.
         throw new ProviderRejectedError(`provider rejected: ${String(body.error ?? 'validation').slice(0, 200)}`);
       }
       if (res.status === 409) {

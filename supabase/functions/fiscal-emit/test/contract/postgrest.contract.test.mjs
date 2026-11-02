@@ -40,7 +40,7 @@ test('RPC existentes responden con la forma esperada', { skip }, async () => {
   const store = createSupabaseStore(service);
   assert.equal(await store.loadActorRole(NONEXISTENT, NONEXISTENT), null);
   assert.equal(await store.hasRole(NONEXISTENT, NONEXISTENT, 'fiscal_reconciler'), false);
-  assert.deepEqual(await store.listStaleSending(new Date()), []);
+  assert.deepEqual(await store.listStaleSending(new Date(0)), []);
 });
 
 test('rol anon no puede ejecutar RPC fiscales -> STORE_PERMISSION_DENIED (sin detalles)', { skip }, async () => {

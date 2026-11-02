@@ -132,6 +132,27 @@ test('400 con success=false: rechazo explícito (sin folio)', async () => {
   await assert.rejects(provider().emit({ payload: PAYLOAD, credentials: CREDS }), (e) => e instanceof ProviderRejectedError);
 });
 
+test('400 con success=false pero folio informado: unknown, nunca rechazo definitivo', async () => {
+  for (const field of ['folio', 'folioExistente']) {
+    reset();
+    next = { status: 400, body: { success: false, error: 'Documento previo', [field]: 51106 } };
+    await assert.rejects(provider().emit({ payload: PAYLOAD, credentials: CREDS }),
+      (e) => e.code === 'PROVIDER_400_WITH_FOLIO' && e.folio === 51106 && !(e instanceof ProviderRejectedError));
+    assert.equal(posts().length, 1);
+  }
+});
+
+test('flujo completo 400 con folio: conserva folio y bloquea un segundo POST', async () => {
+  const { result, row, emitter } = await runSale(400, { success: false, folioExistente: 51106 });
+  assert.equal(result.status, 'unknown');
+  assert.equal(row.status, 'unknown');
+  assert.equal(row.folio, 51106);
+  log = [];
+  await assert.rejects(emitter.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA }),
+    { code: 'UNKNOWN_REQUIRES_RECONCILIATION' });
+  assert.equal(posts().length, 0);
+});
+
 test('400 sin success=false, 401, 403, 500: unknown (no es rechazo del documento)', async () => {
   for (const [status, body, code] of [[400, { error: 'x' }, 'PROVIDER_HTTP_400'], [401, {}, 'PROVIDER_AUTH'], [403, {}, 'PROVIDER_AUTH'], [500, 'boom', 'PROVIDER_HTTP_500']]) {
     reset();

@@ -1,0 +1,136 @@
+name: Fiscal thermal integration checks
+on:
+  pull_request:
+    paths:
+      - 'src/lib/fiscal/dte/**'
+      - 'supabase/functions/fiscal-emit/**'
+      - 'supabase/fiscal-recovery/localdb/**'
+      - 'src/lib/printing/receipts/**'
+      - 'src/pages/crm/CrmTerminal*'
+      - 'src/pages/crm/components/CrmThermalTicket*'
+      - 'src/lib/printing/printService*'
+      - 'src/services/fiscalThermalPrintService*'
+      - 'src/pages/crm/components/TpvFiscalEmitPanel*'
+      - 'src/pages/crm/CrmFiscalThermalPrint.jsx'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/fiscal-thermal-integration.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  thermal-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify clean install using committed lockfile
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify thermal and TPV components
+        run: npx vitest run src/lib/fiscal/dte/parseDteXml.test.js src/lib/fiscal/dte/tedPdf417.test.js src/lib/printing/receipts/buildBoletaReceipt.test.js src/services/fiscalThermalPrintService.test.js src/pages/crm/components/TpvFiscalEmitPanel.test.jsx
+      - name: Protect existing commercial ticket and TPV
+        run: npx vitest run src/pages/crm/components/CrmThermalTicket.fiscalIntegration.test.js src/lib/printing/receipts/buildSaleReceipt.test.js src/lib/printing/receipts/renderEscPosReceipt.test.js src/lib/printing/receipts/escPosImage.test.js
+      - name: Verify DTE Core HTTP uncertainty and duplicate prevention
+        run: node --test supabase/functions/fiscal-emit/test/unit/siisolutions-http.test.mjs supabase/functions/fiscal-emit/test/unit/recovery-safety.test.mjs supabase/functions/fiscal-emit/test/unit/reconciler.test.mjs supabase/functions/fiscal-emit/test/unit/recovery-http.test.mjs supabase/functions/fiscal-emit/test/unit/state.test.mjs supabase/functions/fiscal-emit/test/unit/failures.memory.test.mjs supabase/functions/fiscal-emit/test/unit/late-and-double.test.mjs supabase/functions/fiscal-emit/test/unit/store-supabase.test.mjs supabase/functions/fiscal-emit/test/unit/postgrest-client.test.mjs
+      - name: Validate local fiscal DB and PostgREST harness scripts
+        run: bash -n supabase/fiscal-recovery/localdb/build.sh supabase/functions/fiscal-emit/scripts/postgrest-contract/run.sh
+      - name: Verify PostgREST guard rejects unsafe targets
+        run: bash supabase/functions/fiscal-emit/scripts/postgrest-contract/guard.test.sh
+      - name: Verify local PostgreSQL rebuild guard
+        run: bash supabase/fiscal-recovery/localdb/guard.test.sh
+      - name: Verify PostgREST readiness fail-closed
+        run: bash supabase/functions/fiscal-emit/scripts/postgrest-contract/readiness.test.sh
+      - name: Verify fiscal SQL migration failures abort local rebuild
+        run: bash supabase/fiscal-recovery/localdb/migration-failure.test.sh
+      - name: Verify skipped migrations cannot certify a complete local DB
+        run: bash supabase/fiscal-recovery/localdb/partial-migrations.test.sh
+      - name: Verify PostgREST refuses preoccupied local port
+        run: node --test supabase/functions/fiscal-emit/scripts/postgrest-contract/occupied-port.test.mjs
+      - name: Build frontend
+        run: npm run build
+
+  fiscal-postgres-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fiscal_test_only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: fiscal_test_only
+      FISCAL_TEST_PG_HOST: 127.0.0.1
+      FISCAL_TEST_PG_PORT: '5432'
+      FISCAL_TEST_PG_USER: postgres
+      FISCAL_TEST_PG_DB: walinka_test
+      FISCAL_ALLOW_PARTIAL_MIGRATIONS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+      - name: Install fiscal DB test dependencies
+        working-directory: supabase/functions/fiscal-emit
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build isolated fiscal test database
+        run: bash supabase/fiscal-recovery/localdb/build.sh
+      - name: Run real PostgreSQL fiscal RPC and security tests
+        timeout-minutes: 8
+        working-directory: supabase/functions/fiscal-emit
+        run: npm run test:db
+      - name: Verify pinned PostgREST container image exists
+        run: docker pull postgrest/postgrest:v12.2.3
+      - name: Run real PostgREST contract against isolated PostgreSQL
+        timeout-minutes: 5
+        env:
+          PGRST_DB_URI: postgres://postgres:fiscal_test_only@127.0.0.1:5432/walinka_test
+        run: |
+          mkdir -p /tmp/walinka-fiscal-ci
+          cat > /tmp/walinka-fiscal-ci/postgrest <<'EOF'
+          #!/usr/bin/env bash
+          set -euo pipefail
+          config="$1"
+          exec docker run --rm --network host --entrypoint postgrest \
+            -e PGRST_DB_URI -e PGRST_JWT_SECRET \
+            -v "$(dirname "$config"):/fiscal-config:ro" \
+            postgrest/postgrest:v12.2.3 /fiscal-config/$(basename "$config")
+          EOF
+          chmod +x /tmp/walinka-fiscal-ci/postgrest
+          POSTGREST_BIN=/tmp/walinka-fiscal-ci/postgrest \
+            bash supabase/functions/fiscal-emit/scripts/postgrest-contract/run.sh
+      - name: Diagnose PostgREST startup without exposing credentials
+        if: failure()
+        env:
+          PGRST_DB_URI: postgres://postgres:fiscal_test_only@127.0.0.1:5432/walinka_test
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          p = Path('supabase/functions/fiscal-emit/scripts/postgrest-contract/.postgrest.log')
+          if not p.exists():
+              print('No PostgREST startup log was created.')
+          else:
+              data = p.read_text(errors='replace')
+              for secret in (os.environ.get('PGRST_DB_URI'), os.environ.get('PGPASSWORD')):
+                  if secret:
+                      data = data.replace(secret, '[REDACTED]')
+              print('PostgREST startup diagnostic (redacted):')
+              print('\n'.join(data.splitlines()[-25:])[:5000])
+          PY

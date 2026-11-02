@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { supabase } from '../../../lib/supabase';
+import CrmFiscalThermalPrint from '../CrmFiscalThermalPrint';
 import {
   emitFiscalSale,
   getFiscalSaleStatus,
@@ -93,7 +94,7 @@ export default function TpvFiscalEmitPanel({ saleId, businessId, total, enabled 
   if (status.loading && !data) {
     body = <div>Revisando el estado fiscal de la venta…</div>;
   } else if (!data) {
-    body = <div>No fue posible consultar el estado fiscal ({status.code}). No se emitió ninguna boleta.</div>;
+    body = <div>No fue posible consultar el estado fiscal ({status.code}). No podemos confirmar si existe una boleta previa. No intentes emitir hasta recuperar el estado.</div>;
   } else if (data.state === 'issued' || data.state === 'cancelled') {
     body = (
       <>
@@ -106,6 +107,9 @@ export default function TpvFiscalEmitPanel({ saleId, businessId, total, enabled 
           {data.hasPdf && <button type="button" style={btn(true, false)} onClick={() => download('pdf')}>Descargar PDF</button>}
           {data.hasXml && <button type="button" style={btn(true, false)} onClick={() => download('xml')}>Descargar XML</button>}
         </div>
+        {data.state === 'issued' && data.hasXml && businessId && (
+          <CrmFiscalThermalPrint businessId={businessId} invoiceId={saleId} />
+        )}
         {downloadError && <div role="alert" style={{ marginTop: 4, color: '#b91c1c' }}>{downloadError}</div>}
       </>
     );

@@ -24,6 +24,24 @@ describe('TpvFiscalEmitPanel', () => {
     expect(invoke).not.toHaveBeenCalled();
   });
 
+  it('al desactivar el módulo fiscal no realiza emisiones ni consultas, aunque exista una venta', async () => {
+    const { rerender, container } = render(
+      <TpvFiscalEmitPanel saleId="venta-1" businessId="negocio-1" total={1000} enabled={false} />,
+    );
+    rerender(<TpvFiscalEmitPanel saleId="venta-2" businessId="negocio-1" total={2000} enabled={false} />);
+    await Promise.resolve();
+    expect(container.innerHTML).toBe('');
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('si falla la consulta de estado, no afirma que no hay boleta ni permite emitir', async () => {
+    invoke.mockRejectedValueOnce(new Error('network'));
+    render(<TpvFiscalEmitPanel saleId="s1" businessId="b1" total={100} enabled />);
+    expect(await screen.findByText(/No podemos confirmar si existe una boleta previa/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Emitir boleta electrónica' })).toBeNull();
+    expect(calls('emit')).toBe(0);
+  });
+
   it('bloqueada por el servidor: botón deshabilitado con el motivo', async () => {
     invoke.mockResolvedValueOnce(statusReply({ state: 'none', canEmit: false, blockedReason: 'SALE_NOT_SAME_DAY' }));
     render(<TpvFiscalEmitPanel saleId="s1" businessId="b1" total={100} enabled />);
