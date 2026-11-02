@@ -4,6 +4,8 @@ on:
     paths:
       - 'src/lib/fiscal/dte/**'
       - 'src/lib/printing/receipts/**'
+      - 'src/pages/crm/CrmTerminal*'
+      - 'src/lib/printing/printService*'
       - 'src/services/fiscalThermalPrintService*'
       - 'src/pages/crm/components/TpvFiscalEmitPanel*'
       - 'src/pages/crm/CrmFiscalThermalPrint.jsx'
@@ -26,5 +28,7 @@ jobs:
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Verify thermal and TPV components
         run: npx vitest run src/lib/fiscal/dte/parseDteXml.test.js src/lib/fiscal/dte/tedPdf417.test.js src/lib/printing/receipts/buildBoletaReceipt.test.js src/services/fiscalThermalPrintService.test.js src/pages/crm/components/TpvFiscalEmitPanel.test.jsx
+      - name: Protect existing commercial ticket and TPV
+        run: npx vitest run src/pages/crm/CrmTerminal.test.js src/lib/printing/receipts/buildSaleReceipt.test.js src/lib/printing/receipts/renderEscPosReceipt.test.js src/lib/printing/receipts/escPosImage.test.js
       - name: Build frontend
         run: npm run build
