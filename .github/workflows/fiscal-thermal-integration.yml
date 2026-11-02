@@ -51,3 +51,46 @@ jobs:
         run: node --test supabase/functions/fiscal-emit/scripts/postgrest-contract/occupied-port.test.mjs
       - name: Build frontend
         run: npm run build
+
+  fiscal-postgres-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: fiscal_test_only
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      PGHOST: 127.0.0.1
+      PGPORT: '5432'
+      PGUSER: postgres
+      PGPASSWORD: fiscal_test_only
+      FISCAL_TEST_PG_HOST: 127.0.0.1
+      FISCAL_TEST_PG_PORT: '5432'
+      FISCAL_TEST_PG_USER: postgres
+      FISCAL_TEST_PG_DB: walinka_test
+      FISCAL_ALLOW_PARTIAL_MIGRATIONS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install PostgreSQL client
+        run: sudo apt-get update -qq && sudo apt-get install -y postgresql-client
+      - name: Install fiscal DB test dependencies
+        working-directory: supabase/functions/fiscal-emit
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Build isolated fiscal test database
+        run: bash supabase/fiscal-recovery/localdb/build.sh
+      - name: Run real PostgreSQL fiscal RPC and security tests
+        working-directory: supabase/functions/fiscal-emit
+        run: npm run test:db
