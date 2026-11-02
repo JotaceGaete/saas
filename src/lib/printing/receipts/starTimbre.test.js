@@ -60,20 +60,24 @@ function validateLikeConnector(data) {
   return null;
 }
 
-// Reconstruye el bitmap que la Star dibujaría con ESC $ + ESC * 33: cada
-// franja ocupa 24 dots físicos y empieza en la x de ESC $.
+// Reconstruye el bitmap que la Star dibujaría con ESC $ + ESC * 32/33: cada
+// franja ocupa 24 dots físicos y empieza en la x de ESC $. En ESC * 32
+// (densidad simple) cada columna ocupa 2 dots físicos de ancho.
 function rasterizeStarImage(bytes) {
   const bands = [];
   let x = 0;
   for (let i = 0; i < bytes.length; i++) {
     if (bytes[i] === 0x1b && bytes[i + 1] === 0x24) { x = bytes[i + 2] | (bytes[i + 3] << 8); i += 3; continue; }
-    if (bytes[i] === 0x1b && bytes[i + 1] === 0x2a && bytes[i + 2] === 0x21) {
-      const cols = bytes[i + 3] | (bytes[i + 4] << 8);
-      bands.push({ x, cols, data: bytes.slice(i + 5, i + 5 + cols * 3) });
+    if (bytes[i] === 0x1b && bytes[i + 1] === 0x2a && (bytes[i + 2] === 0x20 || bytes[i + 2] === 0x21)) {
+      const m = bytes[i + 2];
+      const nH = bytes[i + 4];
+      const cols = bytes[i + 3] | (nH << 8);
+      const scale = m === 0x20 ? 2 : 1;
+      bands.push({ x, m, nH, cols, scale, physicalWidth: cols * scale, data: bytes.slice(i + 5, i + 5 + cols * 3) });
       i += 4 + cols * 3;
     }
   }
-  const width = Math.max(...bands.map((band) => band.x + band.cols)) + 20;
+  const width = Math.max(...bands.map((band) => band.x + band.physicalWidth)) + 20;
   const height = bands.length * 24 + 20;
   const lum = new Uint8ClampedArray(width * height).fill(255);
   bands.forEach((band, n) => {
@@ -81,7 +85,8 @@ function rasterizeStarImage(bytes) {
       for (let k = 0; k < 3; k++) {
         const v = band.data[c * 3 + k];
         for (let bit = 0; bit < 8; bit++) {
-          if (v & (0x80 >> bit)) lum[(10 + n * 24 + k * 8 + bit) * width + band.x + c] = 0;
+          if (!(v & (0x80 >> bit))) continue;
+          for (let d = 0; d < band.scale; d++) lum[(10 + n * 24 + k * 8 + bit) * width + band.x + c * band.scale + d] = 0;
         }
       }
     }
@@ -98,8 +103,8 @@ function hasGsV0(bytes) {
   return bytes.some((b, i) => b === 0x1d && bytes[i + 1] === 0x76);
 }
 
-async function starTicket(dte) {
-  const timbreStrategyId = resolveTimbreStrategyId({ printerName: STAR_QUEUE, imageMode: 'bitImageEscStar' });
+async function starTicket(dte, requested) {
+  const timbreStrategyId = resolveTimbreStrategyId({ printerName: STAR_QUEUE, imageMode: 'bitImageEscStar' }, requested);
   const { receipt, timbre } = await buildBoletaReceipt({
     dte, tedVerified: true, resolucion: { numero: '', anio: '' }, reprint: true, timbreStrategyId,
   });
@@ -122,38 +127,54 @@ describe('resolveTimbreStrategyId', () => {
 
   it('el modo Star está primero en el selector manual y cumple > 200 dpi', () => {
     expect(MANUAL_TIMBRE_STRATEGY_IDS[0]).toBe('starTsp100');
+    expect(MANUAL_TIMBRE_STRATEGY_IDS[1]).toBe('starTsp100Double');
     expect(TIMBRE_STRATEGIES.starTsp100.meetsSiiResolution).toBe(true);
   });
 });
 
 describe('buildStarSafe24DotImageCommand', () => {
-  it('ESC 3 8, y por franja ESC $ x + ESC * 33 nL nH + LF; ESC 2 al final', () => {
-    const width = 300;
+  it('ESC 3 8, y por franja ESC $ x + ESC * 32 nL nH + LF; ESC 2 al final', () => {
+    const width = 205;
     const bits = new Uint8Array(width * 30);
     bits[0] = 1;
-    const cmd = buildStarSafe24DotImageCommand(bits, width, 30, { xDots: 16 });
+    const cmd = buildStarSafe24DotImageCommand(bits, width, 30, { xDots: 16, density: 'single' });
     expect(Array.from(cmd.slice(0, 3))).toEqual([0x1b, 0x33, 8]);
-    expect(Array.from(cmd.slice(3, 12))).toEqual([0x1b, 0x24, 16, 0, 0x1b, 0x2a, 0x21, 300 & 0xff, 1]);
+    expect(Array.from(cmd.slice(3, 12))).toEqual([0x1b, 0x24, 16, 0, 0x1b, 0x2a, 0x20, 205, 0]);
     expect(cmd[12]).toBe(0x80);
     const band = 4 + 5 + width * 3 + 1;
-    expect(Array.from(cmd.slice(3 + band, 3 + band + 4))).toEqual([0x1b, 0x24, 16, 0]);
+    expect(Array.from(cmd.slice(3 + band, 3 + band + 7))).toEqual([0x1b, 0x24, 16, 0, 0x1b, 0x2a, 0x20]);
     expect(cmd.length).toBe(3 + 2 * band + 2);
     expect(Array.from(cmd.slice(-2))).toEqual([0x1b, 0x32]);
+  });
+
+  it('densidad doble usa ESC * 33 y rechaza densidades desconocidas', () => {
+    const cmd = buildStarSafe24DotImageCommand(new Uint8Array(300 * 24), 300, 24, { density: 'double' });
+    expect(Array.from(cmd.slice(7, 12))).toEqual([0x1b, 0x2a, 0x21, 300 & 0xff, 1]);
+    expect(() => buildStarSafe24DotImageCommand(new Uint8Array(8), 8, 1, { density: 'triple' })).toThrow();
   });
 });
 
 describe('boleta completa hacia la Star', () => {
   const dte = parseDteXml(buildSyntheticDteXml());
 
-  it('sin GS v 0, aceptada por el validador del conector y con el timbre legible', async () => {
+  it('sin GS v 0, con ESC * 32 de 205 columnas (nH = 0), aceptada por el conector y con el timbre legible', async () => {
     const { bytes, timbre } = await starTicket(dte);
     expect(hasGsV0(bytes)).toBe(false);
     expect(validateLikeConnector(bytes)).toBeNull();
-    expect(timbre).toMatchObject({ strategyId: 'starTsp100', meetsSiiResolution: true, withinSiiSize: true });
+    expect(timbre).toMatchObject({ strategyId: 'starTsp100', meetsSiiResolution: true, withinSiiSize: true, widthDots: 410 });
     const image = rasterizeStarImage(bytes);
-    expect(Math.max(...image.bands.map((b) => b.x + b.cols))).toBeLessThanOrEqual(STAR_IMAGE_RIGHT_LIMIT_DOTS);
+    expect(image.bands.every((b) => b.m === 0x20 && b.cols === 205 && b.nH === 0)).toBe(true);
+    expect(Math.max(...image.bands.map((b) => b.x + b.physicalWidth))).toBeLessThanOrEqual(STAR_IMAGE_RIGHT_LIMIT_DOTS);
     expect(image.bands.every((b) => b.x === STAR_TIMBRE_X_DOTS)).toBe(true);
     expect(decodePdf417(image)).toBe(dte.ted.xml);
+  });
+
+  it('ESC * 32 y ESC * 33 dejan el mismo timbre físico, dot por dot', async () => {
+    const single = rasterizeStarImage((await starTicket(dte, 'starTsp100')).bytes);
+    const double = rasterizeStarImage((await starTicket(dte, 'starTsp100Double')).bytes);
+    expect(double.bands.every((b) => b.m === 0x21 && b.cols === 410)).toBe(true);
+    expect([single.width, single.height]).toEqual([double.width, double.height]);
+    expect(Buffer.from(single.lum).equals(Buffer.from(double.lum))).toBe(true);
   });
 
   it('se rotula como reimpresión y no inventa la resolución', async () => {
@@ -194,7 +215,10 @@ describe.skipIf(!realXmlPath || !existsSync(realXmlPath))('boleta real 51106 hac
     expect(hasGsV0(bytes)).toBe(false);
     expect(validateLikeConnector(bytes)).toBeNull();
     expect(timbre.withinSiiSize).toBe(true);
-    expect(decodePdf417(rasterizeStarImage(bytes))).toBe(dte.ted.xml);
+    const image = rasterizeStarImage(bytes);
+    expect(image.bands.every((b) => b.m === 0x20 && b.nH === 0)).toBe(true);
+    expect(Math.max(...image.bands.map((b) => b.x + b.physicalWidth))).toBeLessThanOrEqual(STAR_IMAGE_RIGHT_LIMIT_DOTS);
+    expect(decodePdf417(image)).toBe(dte.ted.xml);
     // eslint-disable-next-line no-console
     console.log(`51106 -> ${bytes.length} bytes, timbre ${timbre.widthMm} x ${timbre.heightMm} mm, ${timbre.rows} filas`);
   });

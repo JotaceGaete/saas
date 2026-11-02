@@ -414,12 +414,24 @@ export function buildDoubleDensity24BitImageCommand(bits, width, height, { lineS
  * dividir en bloques de 255 columnas): dividir exigiría reposicionar cada
  * bloque con `ESC $`, cuya unidad solo está calibrada en x pequeños.
  */
-export function buildStarSafe24DotImageCommand(bits, width, height, { xDots = 0 } = {}) {
-  if (!Number.isInteger(width) || width < 1 || width > 0xFFFF) throw new Error('ancho inválido para ESC * 33');
+//
+// `density`: 'single' -> `ESC * 32` (24-dot single density): cada columna
+// del bitmap se imprime con 2 dots físicos de ancho (igual que `ESC * 0`, la
+// ruta del logo, cuyo ancho doble está medido: 100 columnas = 25 mm) y 1 dot
+// de alto. El bitmap se arma por eso a MEDIA resolución horizontal: un
+// módulo PDF417 de 2 dots físicos es 1 columna. 'double' -> `ESC * 33`
+// (1 columna = 1 dot físico). Con 'single' el ancho del timbre (205
+// columnas) cabe en nL y nH vale 0.
+export const STAR_24_DOT_MODES = Object.freeze({ single: 0x20, double: 0x21 });
+
+export function buildStarSafe24DotImageCommand(bits, width, height, { xDots = 0, density = 'double' } = {}) {
+  const m = STAR_24_DOT_MODES[density];
+  if (m === undefined) throw new Error('densidad inválida para ESC * 32/33');
+  if (!Number.isInteger(width) || width < 1 || width > 0xFFFF) throw new Error('ancho inválido para ESC * 32/33');
   const bytes = [ESC, 0x33, BAND_HEIGHT_DOTS]; // ESC 3 8
   for (let bandStart = 0; bandStart < height; bandStart += BAND_HEIGHT_24_DOTS) {
     bytes.push(...buildAbsolutePositionCommand(xDots));
-    bytes.push(ESC, 0x2A, 0x21, width & 0xFF, (width >> 8) & 0xFF);
+    bytes.push(ESC, 0x2A, m, width & 0xFF, (width >> 8) & 0xFF);
     for (let x = 0; x < width; x++) {
       for (let byteIndex = 0; byteIndex < 3; byteIndex++) {
         let value = 0;

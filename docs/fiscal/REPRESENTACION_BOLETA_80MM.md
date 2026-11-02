@@ -92,15 +92,16 @@ Para una cola cuyo nombre contiene `Star ... TSP1xx` o `TSP143` se usa
 
 | Qué | Valor | Por qué |
 |---|---|---|
-| Comando | `ESC * 33` (24 dots, ~203 dpi) | `GS v 0` sale como texto en la Star; `ESC *` es lo que ya imprime el logo |
+| Comando | `ESC * 32` (24 dots, densidad simple) | `GS v 0` sale como texto en la Star; `ESC *` de densidad simple es lo que ya imprime el logo (cada columna = 2 dots físicos) |
+| Densidad del bitmap | 1 columna por módulo, 205 columnas (nH = 0), filas de 4 dots | la impresora duplica cada columna: módulo físico de 2 dots (0,25 mm) del cabezal de 203 dpi; idéntico dot por dot a `ESC * 33` con X = 2 (alternativa manual `starTsp100Double`) |
 | Posición | `ESC $ 16` antes de cada franja, `ESC a 0` | mismo mecanismo validado para el logo (PRINT-4-BUG9/10) |
 | Interlineado | `ESC 3 8` | con el logo, `ESC 3 8` avanzó justo la altura impresa (PRINT-4-BUG13); `ESC 3 24` podría dejar huecos |
 | Ancho | 8 columnas, X = 2 dots → 410 dots (51 mm), borde derecho en 426 | imágenes más allá de ~440 dots se cortan o reaparecen a la izquierda (PRINT-4-BUG10/11) |
 | Alto | filas de 4 dots → 37,5 mm con la 51106 (75 filas) | dentro del máximo de 40 mm |
 
 Verificado sin impresora con el XML real de la 51106: firma del TED válida,
-ticket de 17 006 bytes sin `GS v 0`, aceptado por una copia del validador del
-conector, y el timbre reconstruido desde los bytes `ESC $`/`ESC * 33` se
+ticket de 9 011 bytes sin `GS v 0`, aceptado por una copia del validador del
+conector, y el timbre reconstruido desde los bytes `ESC $`/`ESC * 32` se
 decodifica con ZXing al TED exacto (`src/lib/printing/receipts/starTimbre.test.js`;
 la prueba con el XML real corre con `FISCAL_XML_51106=/ruta/al.xml`).
 

@@ -77,22 +77,49 @@ export const TIMBRE_STRATEGIES = Object.freeze({
   }),
   // Star TSP100/TSP143 (emulación ESC/POS del driver futurePRNT). Lo que se
   // sabe del hardware real: `GS v 0` sale como texto; `ESC *` + `ESC $` sí
-  // imprimen; una imagen posicionada más allá de ~440 dots físicos se corta
-  // o reaparece a la izquierda (PRINT-4-BUG10/11). Por eso: 8 columnas
-  // (205 módulos x 2 dots = 410 dots, 51 mm), en x = 16 (borde derecho en
-  // 426 < 440), filas de 4 dots para quedar dentro de 40 mm de alto con un
-  // TED típico (75 filas -> 37,5 mm). Ver buildStarSafe24DotImageCommand.
+  // imprimen; `ESC *` de densidad simple dibuja cada columna con 2 dots de
+  // ancho (100 columnas = 25 mm, PRINT-4-BUG13); una imagen posicionada más
+  // allá de ~440 dots físicos se corta o reaparece a la izquierda
+  // (PRINT-4-BUG10/11).
+  //
+  // Modo por defecto: `ESC * 32`. El bitmap va a media densidad horizontal
+  // (1 columna por módulo) y la impresora duplica cada columna: el módulo
+  // físico mide 2 dots (0,25 mm) a 203 dpi del cabezal, en filas de 4 dots
+  // físicos. Es el mismo papel que con `ESC * 33` y X = 2, pero con 205
+  // columnas por franja (nH = 0) y la misma densidad horizontal que el logo
+  // que ya imprime bien. 8 columnas de datos: 205 módulos = 410 dots
+  // (51 mm), en x = 16 (borde derecho en 426 < 440); 75 filas x 4 = 37,5 mm
+  // con la 51106. Ver buildStarSafe24DotImageCommand.
   starTsp100: Object.freeze({
     id: 'starTsp100',
+    label: 'Star TSP100/TSP143: ESC * 32, módulo 0,25 mm, 8 columnas',
+    columns: 8,
+    moduleWidthDots: 1,
+    rowHeightDots: 4,
+    dotsPerMmX: DOTS_PER_MM_203DPI / 2,
+    dotsPerMmY: DOTS_PER_MM_203DPI,
+    physicalDotsPerColumn: 2,
+    meetsSiiResolution: true,
+    align: 'left',
+    build: (bits, width, height) => buildStarSafe24DotImageCommand(bits, width, height, {
+      xDots: STAR_TIMBRE_X_DOTS, density: 'single',
+    }),
+  }),
+  // Alternativa manual: el mismo timbre con `ESC * 33` (1 columna = 1 dot).
+  starTsp100Double: Object.freeze({
+    id: 'starTsp100Double',
     label: 'Star TSP100/TSP143: ESC * 33, 203 dpi, 8 columnas',
     columns: 8,
     moduleWidthDots: 2,
     rowHeightDots: 4,
     dotsPerMmX: DOTS_PER_MM_203DPI,
     dotsPerMmY: DOTS_PER_MM_203DPI,
+    physicalDotsPerColumn: 1,
     meetsSiiResolution: true,
     align: 'left',
-    build: (bits, width, height) => buildStarSafe24DotImageCommand(bits, width, height, { xDots: STAR_TIMBRE_X_DOTS }),
+    build: (bits, width, height) => buildStarSafe24DotImageCommand(bits, width, height, {
+      xDots: STAR_TIMBRE_X_DOTS, density: 'double',
+    }),
   }),
   // Misma ruta ESC * m=0 validada para el logo en la TSP100: ~101 dpi en
   // horizontal y ~69 dpi en vertical (100 x 100 dots midieron 25 x 37 mm).
@@ -137,7 +164,7 @@ export function resolveTimbreStrategyId({ printerName, imageMode } = {}, request
 export const SELECTABLE_TIMBRE_STRATEGY_IDS = Object.freeze(['rasterGsV0', 'escStar24', 'rasterGsV0Narrow']);
 
 /** Modos que se ofrecen en el selector manual (además de "automático"). */
-export const MANUAL_TIMBRE_STRATEGY_IDS = Object.freeze(['starTsp100', 'rasterGsV0', 'escStar24', 'rasterGsV0Narrow']);
+export const MANUAL_TIMBRE_STRATEGY_IDS = Object.freeze(['starTsp100', 'starTsp100Double', 'rasterGsV0', 'escStar24', 'rasterGsV0Narrow']);
 
 /**
  * Leyendas de reimpresión: dejan claro que el papel es una copia de un
@@ -196,7 +223,8 @@ export async function buildTimbreImage(tedXml, strategyId = DEFAULT_TIMBRE_STRAT
     strategyId: strategy.id,
     command: strategy.build(bits, width, height),
     align: strategy.align || 'center',
-    widthDots: width,
+    widthDots: width * (strategy.physicalDotsPerColumn || 1),
+    bitmapColumns: width,
     heightDots: height,
     columns: symbol.widthModules,
     rows: symbol.rows,
