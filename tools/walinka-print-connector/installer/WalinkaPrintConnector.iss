@@ -31,6 +31,13 @@ WizardStyle=modern
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName} {#AppVersion}
 SetupLogging=yes
+; Metadatos visibles en Propiedades → Detalles del instalador.
+VersionInfoVersion={#AppVersion}
+VersionInfoCompany=Walinka
+VersionInfoDescription=Instalador de {#AppName}
+VersionInfoProductName={#AppName}
+VersionInfoProductVersion={#AppVersion}
+VersionInfoCopyright=Walinka
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
