@@ -60,6 +60,12 @@ async function goToPayment() {
   fireEvent.click(await screen.findByText('Prueba Point'));
   const cobrar = await screen.findAllByRole('button', { name: /Cobrar/ });
   fireEvent.click(cobrar[0]);
+  await screen.findByTestId('payment-method-picker');
+}
+
+async function goToPoint() {
+  await goToPayment();
+  fireEvent.click(screen.getByTestId('pay-point'));
   await screen.findByText('Mercado Pago Point');
 }
 
@@ -72,7 +78,7 @@ afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 describe('TPV en Preview: Point REAL usa Mercado Pago', () => {
   it('por defecto la Preview usa Point REAL: terminales y cobro van a Mercado Pago con el importe exacto', async () => {
-    await goToPayment();
+    await goToPoint();
     expect(await screen.findByTestId('point-real-banner')).toBeInTheDocument();
     expect(screen.queryByTestId('point-sim-banner')).toBeNull();
     await waitFor(() => expect(calls.some((c) => c.name === 'getPointTerminals')).toBe(true));
@@ -89,12 +95,12 @@ describe('TPV en Preview: Point REAL usa Mercado Pago', () => {
   });
 
   it('modo DEMO: rotulado como simulación, el botón no dice «a la Point» y no llama a Mercado Pago', async () => {
-    await goToPayment();
+    await goToPoint();
     fireEvent.click(await screen.findByTestId('point-demo-enable'));
     expect(await screen.findByTestId('point-sim-banner')).toHaveTextContent(/MODO DEMO/);
     expect(screen.queryByTestId('point-real-banner')).toBeNull();
     calls.length = 0;
-    const demo = await screen.findByRole('button', { name: /DEMO: simular cobro/ });
+    const [demo] = await screen.findAllByRole('button', { name: /DEMO: simular cobro/ });
     expect(screen.queryByRole('button', { name: /a la Point$/ })).toBeNull();
     await waitFor(() => expect(demo).not.toBeDisabled());
     fireEvent.click(demo);
@@ -103,12 +109,81 @@ describe('TPV en Preview: Point REAL usa Mercado Pago', () => {
   });
 
   it('volver de DEMO a REAL usa otra vez Mercado Pago', async () => {
-    await goToPayment();
+    await goToPoint();
     fireEvent.click(await screen.findByTestId('point-demo-enable'));
     await screen.findByTestId('point-sim-banner');
     calls.length = 0;
     fireEvent.click(await screen.findByTestId('point-real-enable'));
     expect(await screen.findByTestId('point-real-banner')).toBeInTheDocument();
     await waitFor(() => expect(calls.some((c) => c.name === 'getPointTerminals')).toBe(true));
+  });
+});
+
+describe('TPV — interfaz de cobro simplificada', () => {
+  it('opciones principales: Point, Efectivo, Tarjeta externa y Transferencia; el resto en «Más medios»', async () => {
+    await goToPayment();
+    for (const key of ['point', 'cash', 'card', 'transfer']) expect(screen.getByTestId(`pay-${key}`)).toBeInTheDocument();
+    expect(screen.queryByTestId('pay-check')).toBeNull();
+    expect(screen.queryByTestId('pay-split')).toBeNull();
+    fireEvent.click(screen.getByTestId('pay-more-toggle'));
+    for (const key of ['check', 'mercado_pago', 'other', 'split']) expect(screen.getByTestId(`pay-${key}`)).toBeInTheDocument();
+    expect(screen.getByTestId('pay-credit')).toBeInTheDocument();
+  });
+
+  it('efectivo por defecto: solo «Efectivo recibido» y vuelto; sin panel Point ni campos de tarjeta', async () => {
+    await goToPayment();
+    expect(screen.getByTestId('pay-cash')).toHaveAttribute('aria-checked', 'true');
+    expect(screen.getByLabelText('Efectivo recibido')).toBeInTheDocument();
+    expect(screen.queryByTestId('point-panel')).toBeNull();
+    expect(screen.queryByTestId('card-details')).toBeNull();
+    expect(realPointCalls().filter((c) => c.name === 'createPointOrder')).toHaveLength(0);
+  });
+
+  it('tarjeta externa: un botón, con Débito/Crédito para la contabilidad y la venta registrada con ese medio', async () => {
+    await goToPayment();
+    fireEvent.click(screen.getByTestId('pay-card'));
+    const details = screen.getByTestId('card-details');
+    expect(within(details).getByRole('radio', { name: 'Débito' })).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(within(details).getByRole('radio', { name: 'Crédito' }));
+    expect(within(screen.getByTestId('card-details')).getByRole('radio', { name: 'Crédito' })).toHaveAttribute('aria-checked', 'true');
+    expect(screen.queryByLabelText('Efectivo recibido')).toBeNull();
+    fireEvent.click(screen.getAllByRole('button', { name: /Confirmar/ })[0]);
+    await waitFor(() => expect(calls.some((c) => c.name === 'createPosInvoice')).toBe(true));
+    const sale = calls.find((c) => c.name === 'createPosInvoice').args[1];
+    expect(sale.payments).toEqual([expect.objectContaining({ method: 'credit_card', amount: 1000 })]);
+  });
+
+  it('transferencia: sin campos extra; se registra el total con bank_transfer', async () => {
+    await goToPayment();
+    fireEvent.click(screen.getByTestId('pay-transfer'));
+    expect(screen.getByTestId('simple-method-details')).toHaveTextContent('Transferencia');
+    expect(screen.queryByLabelText('Efectivo recibido')).toBeNull();
+    fireEvent.click(screen.getAllByRole('button', { name: /Confirmar/ })[0]);
+    await waitFor(() => expect(calls.some((c) => c.name === 'createPosInvoice')).toBe(true));
+    expect(calls.find((c) => c.name === 'createPosInvoice').args[1].payments).toEqual([expect.objectContaining({ method: 'bank_transfer', amount: 1000 })]);
+  });
+
+  it('cuenta corriente: exige cliente registrado antes de confirmar', async () => {
+    await goToPayment();
+    fireEvent.click(screen.getByTestId('pay-credit'));
+    expect(screen.getByTestId('credit-details')).toBeInTheDocument();
+    expect(screen.getByLabelText('Cliente de la cuenta corriente')).toHaveValue('');
+    expect(screen.queryAllByRole('button', { name: /Confirmar/ })).toHaveLength(0);
+    expect(screen.getAllByRole('button', { name: /Falta pagar/ })[0]).toBeDisabled();
+    expect(calls.some((c) => c.name === 'createPosInvoice')).toBe(false);
+  });
+
+  it('Point con terminal lista: configuración colapsada (terminal activa + cambiar) y el cobro en la barra inferior', async () => {
+    await goToPoint();
+    const active = await screen.findByTestId('point-active-terminal');
+    expect(active).toHaveTextContent(REAL_TERMINAL);
+    expect(screen.queryByText('Cuenta Point conectada')).toBeNull();
+    expect(screen.queryByText(/Actualizar/)).toBeNull();
+    expect(screen.queryByTestId('payment-details')).toBeNull();
+    const bar = screen.getByTestId('checkout-action-bar');
+    expect(within(bar).getByRole('button', { name: /Enviar \$?1\.000 a la Point/ })).toBeInTheDocument();
+    fireEvent.click(within(active).getByRole('button', { name: 'Cambiar terminal' }));
+    expect(await screen.findByText('Cuenta Point conectada')).toBeInTheDocument();
+    expect(screen.queryByTestId('point-active-terminal')).toBeNull();
   });
 });
