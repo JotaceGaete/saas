@@ -2,17 +2,20 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { buildSyntheticDteXml, latin1Bytes } from '../lib/fiscal/dte/__fixtures__/syntheticDte';
 
 const printReceipt = vi.fn();
+// Walinka Print Connector activo y emparejado: la única ruta de la boleta.
+const PAIRED = { enabled: true, token: 't'.repeat(40), baseUrl: 'http://127.0.0.1:17777', printerName: 'Star TSP100 Cutter (TSP143)' };
+let connectorConfig = PAIRED;
 vi.mock('../lib/supabase', () => ({
   supabase: { auth: { getSession: async () => ({ data: { session: { access_token: 'tok' } } }) } },
 }));
 vi.mock('../lib/printing/printService', () => ({ printService: { printReceipt: (...a) => printReceipt(...a) } }));
 vi.mock('../lib/printing/printerConfigStorage', () => ({
   buildPrinterConfigKey: (id) => `p:${id}`,
-  readPrinterConfig: () => ({ printerName: 'Star TSP100 Cutter (TSP143)', paperWidthMm: 80, autoCut: true, cutStrategyId: 'gs-v-modern' }),
+  readPrinterConfig: () => ({ printerName: null, paperWidthMm: 80, autoCut: true, cutStrategyId: 'gs-v-modern' }),
 }));
 vi.mock('../lib/printing/connectorConfigStorage', () => ({
   buildConnectorConfigKey: (id) => `c:${id}`,
-  readConnectorConfig: () => ({ enabled: false }),
+  readConnectorConfig: () => connectorConfig,
 }));
 
 const { printBoletaThermal, printTimbreDiagnostic, loadVerifiedDte, MAX_XML_FILE_BYTES } = await import('./fiscalThermalPrintService');
@@ -25,6 +28,7 @@ function fetchXml(xml, status = 200) {
 }
 
 beforeEach(() => {
+  connectorConfig = PAIRED;
   printReceipt.mockReset();
   globalThis.fetch = fetchXml(buildSyntheticDteXml());
 });
@@ -46,7 +50,15 @@ describe('fiscalThermalPrintService', () => {
     const [receipt, target] = printReceipt.mock.calls[0];
     expect(receipt.lines[0]).toMatchObject({ text: 'REIMPRESION', bold: true });
     expect(target.printerName).toBe('Star TSP100 Cutter (TSP143)');
+    expect(target.connector).toBeTruthy(); // sale por el conector, nunca por QZ Tray
     expect(globalThis.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('sin el conector activo no imprime la boleta (no hay ruta QZ Tray)', async () => {
+    connectorConfig = { enabled: false, token: null, printerName: null };
+    const r = await printBoletaThermal({ businessId: BIZ, invoiceId: INV, resolucion: { numero: '80', anio: '2014' } });
+    expect(r).toMatchObject({ ok: false, code: 'CONNECTOR_REQUIRED' });
+    expect(printReceipt).not.toHaveBeenCalled();
   });
 
   it('no imprime si el timbre fue alterado', async () => {

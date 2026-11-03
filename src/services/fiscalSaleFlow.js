@@ -39,6 +39,8 @@ export const NOT_ELIGIBLE_CODES = Object.freeze(new Set([
 const MESSAGES = Object.freeze({
   ATTEMPT_ALREADY_SENT: 'Esta venta ya se envió a emisión desde este equipo y no hay confirmación. No se reenvía sola: consulta el estado.',
   RESOLUCION_REQUIRED: 'Falta la resolución del SII del emisor (Impresión > boleta). No se emitió la boleta.',
+  CONNECTOR_REQUIRED: 'El Walinka Print Connector no está activo y emparejado en este equipo. No se emitió la boleta.',
+  MISSING_PRINTER: 'El conector no tiene impresora elegida. No se emitió la boleta.',
   STATUS_UNAVAILABLE: 'No se pudo consultar el estado fiscal de la venta. No se emitió ninguna boleta.',
 });
 
@@ -86,9 +88,10 @@ export function reprintKey(businessId, folio, { now = Date.now(), nonce = Math.r
  * @param {ReturnType<import('./fiscalEmitters').createLiveEmitter>} deps.emitter
  * @param {(p: { bytes: Uint8Array, reprint: boolean, idempotencyKey: string }) => Promise<{ ok: boolean, code?: string, message?: string, simulation?: boolean }>} deps.print
  * @param {ReturnType<typeof createFlowMarks>} [deps.marks]
- * @param {() => boolean} [deps.canPrintOriginal] - false si falta algo para imprimir una boleta nueva (p. ej. la resolución en modo real)
+ * @param {() => (string|null)} [deps.printBlocker] - código si falta algo para imprimir una boleta nueva
+ *   (conector no activo, sin impresora, resolución en modo real); null si se puede imprimir
  */
-export function createFiscalSaleFlow({ businessId, emitter, print, marks = createFlowMarks({ businessId }), canPrintOriginal = () => true }) {
+export function createFiscalSaleFlow({ businessId, emitter, print, marks = createFlowMarks({ businessId }), printBlocker = () => null }) {
 
   async function printOriginal(saleId, folio, { force = false } = {}) {
     if (!force && marks.printed(folio)) return { phase: PHASE.PRINTED, folio, alreadyPrinted: true };
@@ -128,7 +131,8 @@ export function createFiscalSaleFlow({ businessId, emitter, print, marks = creat
     if (marks.attempted(saleId) && !allowEmit.manual) return { phase: PHASE.UNCERTAIN, code: 'ATTEMPT_ALREADY_SENT' };
     if (!allowEmit.auto && !allowEmit.manual) return { phase: PHASE.BLOCKED, code: 'NOT_EMITTED' };
     // Una boleta nueva que no se puede imprimir no se emite.
-    if (!canPrintOriginal()) return { phase: PHASE.BLOCKED, code: 'RESOLUCION_REQUIRED' };
+    const blocker = printBlocker();
+    if (blocker) return { phase: PHASE.BLOCKED, code: blocker, retryable: true };
 
     marks.markAttempt(saleId);
     const r = await emitter.emit(saleId, sale);

@@ -29,7 +29,10 @@ desplegado, ninguna boleta emitida.** La emisión sigue apagada en todas las cap
 
 Un solo flujo, sin pasos manuales: al confirmar una venta cobrada, el TPV emite la boleta DTE 39 y
 envía la representación 80 mm con el timbre PDF417 a la impresora configurada, por la misma ruta del
-ticket (Walinka Print Connector de PR #111, o QZ Tray). No hay otro sistema de impresión.
+ticket: el Walinka Print Connector (PR #109-#111), por `POST /v1/print` con clave de idempotencia.
+La boleta **no** tiene ruta QZ Tray: sin conector activo, emparejado y con impresora, no se emite
+(`CONNECTOR_REQUIRED` / `MISSING_PRINTER`) y el cajero puede reintentar cuando lo active. No hay
+otro sistema de impresión.
 
 | Pieza | Archivo |
 |---|---|

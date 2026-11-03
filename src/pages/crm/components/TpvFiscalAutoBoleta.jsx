@@ -2,12 +2,12 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FISCAL_AUTO_MODE } from '../../../services/fiscalAutoMode';
 import { createLiveEmitter, createSimulatedEmitter, SIM_SCENARIO_STORAGE_KEY, SIM_SCENARIOS } from '../../../services/fiscalEmitters';
 import { createFiscalSaleFlow, describeFlowCode, PHASE } from '../../../services/fiscalSaleFlow';
-import { hasValidResolucion, printIssuedBoleta, readFiscalPrintSettings } from '../../../services/fiscalThermalPrintService';
+import { fiscalPrintBlocker, printIssuedBoleta } from '../../../services/fiscalThermalPrintService';
 
 // Boleta electrónica automática al confirmar una venta cobrada en el TPV.
 // Emite (DTE Core o simulación) y envía la boleta con su timbre PDF417 a la
-// impresora configurada, por la misma ruta de impresión del ticket (Walinka
-// Print Connector o QZ Tray). Ver services/fiscalSaleFlow.js.
+// impresora configurada del Walinka Print Connector, el mismo que imprime los
+// tickets (sin QZ Tray). Ver services/fiscalSaleFlow.js.
 //
 // Cuando la venta no lleva boleta (no pagada, etc.) llama a onPlainTicket
 // para que el TPV imprima el ticket de siempre.
@@ -29,8 +29,9 @@ export function buildFlowForMode(mode, businessId) {
     businessId,
     emitter,
     print: ({ bytes, reprint, idempotencyKey }) => printIssuedBoleta({ businessId, bytes, reprint, idempotencyKey }),
-    // En modo real, una boleta nueva no se emite si no se puede imprimir con su resolución.
-    canPrintOriginal: () => mode !== 'live' || hasValidResolucion(readFiscalPrintSettings().resolucion),
+    // Una boleta nueva no se emite si este equipo no puede imprimirla: conector
+    // activo con impresora y, en modo real, resolución SII.
+    printBlocker: () => fiscalPrintBlocker(businessId, { requireResolucion: mode === 'live' }),
   });
   return { emitter, flow };
 }
@@ -144,6 +145,9 @@ export default function TpvFiscalAutoBoleta({ businessId, sale, saleContext, onP
         )}
         {hasBoleta && (
           <button type="button" style={btn()} disabled={busy} onClick={() => run('reprint')}>Reimprimir boleta</button>
+        )}
+        {phase === PHASE.BLOCKED && state.retryable && (
+          <button type="button" style={btn(true)} disabled={busy} onClick={() => run('start')}>Reintentar boleta</button>
         )}
         {(phase === PHASE.UNCERTAIN || phase === PHASE.ERROR) && (
           <button type="button" style={btn()} disabled={busy} onClick={() => run('refresh')}>Consultar estado</button>

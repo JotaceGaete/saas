@@ -9,6 +9,8 @@ const { createFiscalSaleFlow, createFlowMarks, PHASE } = await import('./fiscalS
 const { createSimulatedEmitter } = await import('./fiscalEmitters');
 const { printIssuedBoleta } = await import('./fiscalThermalPrintService');
 const { buildConnectorConfigKey, writeConnectorConfig } = await import('../lib/printing/connectorConfigStorage');
+const { validateLikeConnector, rasterizeStarImage, decodePdf417 } = await import('../lib/printing/receipts/__testUtils__/starConnectorHarness');
+const { decodeDteBytes, parseDteXml } = await import('../lib/fiscal/dte/parseDteXml');
 
 const BIZ = 'cda904a1-e331-4bd4-9f33-a6715687d3dd';
 const sale = { items: [{ name: 'Té verde', quantity: 1, unit_price: 100 }], payments: [{ method: 'cash', amount: 100 }], total: 100, discountAmount: 0, pendingBalance: 0 };
@@ -72,6 +74,29 @@ describe('flujo TPV completo (simulado) hasta el conector', () => {
     expect(text).toContain('Timbre Electronico SII');
     expect(hasSeq(job.bytes, [0x1b, 0x2a, 0x20])).toBe(true); // ESC * 32
     expect(hasSeq(job.bytes, [0x1d, 0x76, 0x30])).toBe(false); // nunca GS v 0 en la Star
+    // El conector acepta el trabajo tal cual (copia de EscPosStreamValidator.cs)...
+    expect(validateLikeConnector(job.bytes)).toBeNull();
+    // ...y el timbre que dibujaría la Star se decodifica al TED exacto del XML emitido.
+    const dte = parseDteXml(decodeDteBytes(await emitter.loadDte('sale-1')));
+    const image = rasterizeStarImage(job.bytes);
+    expect(Math.max(...image.bands.map((b) => b.x + b.physicalWidth))).toBeLessThanOrEqual(440);
+    expect(decodePdf417(image)).toBe(dte.ted.xml);
+  });
+
+  it('sin conector activo no emite ni intenta otra ruta de impresión', async () => {
+    localStorage.clear();
+    const connector = fakeConnector();
+    globalThis.fetch = connector.fetchImpl;
+    const { fiscalPrintBlocker } = await import('./fiscalThermalPrintService');
+    const emitter = createSimulatedEmitter({ businessId: BIZ, storage: localStorage, scenario: () => 'ok' });
+    const flow = createFiscalSaleFlow({
+      businessId: BIZ, emitter, marks: createFlowMarks({ businessId: BIZ, storage: localStorage }),
+      print: ({ bytes, reprint, idempotencyKey }) => printIssuedBoleta({ businessId: BIZ, bytes, reprint, idempotencyKey }),
+      printBlocker: () => fiscalPrintBlocker(BIZ),
+    });
+    expect(await flow.start('sale-1', sale)).toMatchObject({ phase: PHASE.BLOCKED, code: 'CONNECTOR_REQUIRED' });
+    expect(emitter.providerCalls).toBe(0);
+    expect(connector.fetchImpl).not.toHaveBeenCalled();
   });
 
   it('impresora sin papel: reintentar reimprime el mismo trabajo sin emitir', async () => {

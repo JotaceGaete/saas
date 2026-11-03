@@ -20,7 +20,7 @@ import {
 import { printService } from '../lib/printing/printService';
 import { buildPrinterConfigKey, readPrinterConfig } from '../lib/printing/printerConfigStorage';
 import { buildConnectorConfigKey, readConnectorConfig } from '../lib/printing/connectorConfigStorage';
-import { buildPrintTarget, buildPrintKey } from '../lib/printing/printRouting';
+import { buildPrintTarget, buildPrintKey, resolvePrintRoute, ROUTE } from '../lib/printing/printRouting';
 import { isSimulatedDte } from '../lib/fiscal/dte/simulatedDte';
 import { AUTO_TIMBRE_STRATEGY_ID, MANUAL_TIMBRE_STRATEGY_IDS } from '../lib/printing/receipts/buildBoletaReceipt';
 
@@ -48,6 +48,7 @@ const MESSAGES = {
   RESOLUCION_REQUIRED: 'Ingresa el número y el año de la resolución del SII, o deja ambos vacíos.',
   PAPER_WIDTH_UNSUPPORTED: 'La boleta térmica requiere papel de 80 mm.',
   MISSING_PRINTER: 'No hay impresora configurada para este equipo.',
+  CONNECTOR_REQUIRED: 'La boleta se imprime solo con el Walinka Print Connector. Actívalo y emparéjalo en Configuración de impresión.',
   DTE_TYPE_UNSUPPORTED: 'Solo se pueden imprimir boletas electrónicas (DTE 39).',
   XML_FILE_INVALID: 'El archivo no es un XML de boleta válido.',
   XML_FILE_TOO_LARGE: 'El archivo es demasiado grande para ser el XML de una boleta.',
@@ -94,11 +95,17 @@ function loadSource({ businessId, invoiceId, file }) {
   return file ? loadVerifiedDteFromFile(file) : loadVerifiedDte({ businessId, invoiceId });
 }
 
+// La boleta sale SOLO por el Walinka Print Connector (el mismo de los
+// tickets). No hay ruta QZ Tray para documentos fiscales: sin conector
+// activo y emparejado no se imprime y se avisa.
 function resolveTarget(businessId, kind, folio, idempotencyKey) {
   const printerConfig = readPrinterConfig(buildPrinterConfigKey(businessId));
+  const connectorConfig = readConnectorConfig(buildConnectorConfigKey(businessId));
+  if (resolvePrintRoute(connectorConfig) !== ROUTE.CONNECTOR) {
+    throw Object.assign(new Error(MESSAGES.CONNECTOR_REQUIRED), { code: 'CONNECTOR_REQUIRED' });
+  }
   const target = buildPrintTarget({
-    connectorConfig: readConnectorConfig(buildConnectorConfigKey(businessId)),
-    qzPrinterName: printerConfig.printerName,
+    connectorConfig,
     idempotencyKey: idempotencyKey || buildPrintKey(kind, `${businessId}:${folio}`),
   });
   if (target.error) throw Object.assign(new Error(MESSAGES.MISSING_PRINTER), { code: 'MISSING_PRINTER' });
@@ -181,6 +188,21 @@ export function readFiscalPrintSettings() {
     resolucion: { numero: String(res?.numero ?? '').trim(), anio: String(res?.anio ?? '').trim() },
     timbreStrategyId: MANUAL_TIMBRE_STRATEGY_IDS.includes(strategy) ? strategy : AUTO_TIMBRE_STRATEGY_ID,
   };
+}
+
+/**
+ * Lo que falta en este equipo para imprimir una boleta NUEVA, o null.
+ * Se revisa ANTES de emitir: no se emite una boleta que no se puede imprimir.
+ * Solo mira la configuración guardada (conector activo y emparejado, con
+ * impresora); si el conector no responde al imprimir, la boleta queda
+ * emitida y se reintenta el papel con la misma clave.
+ */
+export function fiscalPrintBlocker(businessId, { requireResolucion = false, settings = readFiscalPrintSettings() } = {}) {
+  const connectorConfig = readConnectorConfig(buildConnectorConfigKey(businessId));
+  if (resolvePrintRoute(connectorConfig) !== ROUTE.CONNECTOR) return 'CONNECTOR_REQUIRED';
+  if (!connectorConfig.printerName) return 'MISSING_PRINTER';
+  if (requireResolucion && !hasValidResolucion(settings.resolucion)) return 'RESOLUCION_REQUIRED';
+  return null;
 }
 
 export function hasValidResolucion(resolucion) {

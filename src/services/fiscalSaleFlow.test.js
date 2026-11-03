@@ -13,7 +13,7 @@ function memStorage() {
   return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
 }
 
-function setup({ scenario = 'ok', printOk = true, storage = memStorage(), canPrintOriginal } = {}) {
+function setup({ scenario = 'ok', printOk = true, storage = memStorage(), printBlocker } = {}) {
   let sc = scenario;
   const base = createSimulatedEmitter({ businessId: BIZ, storage, scenario: () => sc });
   // Copia mutable (el emisor real está congelado) para poder reemplazar métodos en las pruebas.
@@ -22,7 +22,7 @@ function setup({ scenario = 'ok', printOk = true, storage = memStorage(), canPri
     get providerCalls() { return base.providerCalls; },
   };
   const print = vi.fn(async () => (typeof printOk === 'function' ? printOk() : printOk) ? { ok: true, simulation: true } : { ok: false, code: 'connector_unreachable', message: 'Conector no encontrado.' });
-  const flow = createFiscalSaleFlow({ businessId: BIZ, emitter, print, marks: createFlowMarks({ businessId: BIZ, storage }), canPrintOriginal });
+  const flow = createFiscalSaleFlow({ businessId: BIZ, emitter, print, marks: createFlowMarks({ businessId: BIZ, storage }), printBlocker });
   return { emitter, flow, print, storage, setScenario: (s) => { sc = s; } };
 }
 
@@ -117,10 +117,21 @@ describe('fiscalSaleFlow', () => {
   });
 
   it('sin resolución SII (modo real): no emite una boleta que no se podría imprimir', async () => {
-    const { flow, emitter } = setup({ canPrintOriginal: () => false });
+    const { flow, emitter } = setup({ printBlocker: () => 'RESOLUCION_REQUIRED' });
     const r = await flow.start('s1', sale);
     expect(r).toMatchObject({ phase: PHASE.BLOCKED, code: 'RESOLUCION_REQUIRED' });
     expect(emitter.providerCalls).toBe(0);
+  });
+
+  it('conector no activo: no emite; al activarlo, reintentar emite e imprime una vez', async () => {
+    let blocker = 'CONNECTOR_REQUIRED';
+    const { flow, emitter, print } = setup({ printBlocker: () => blocker });
+    expect(await flow.start('s1', sale)).toMatchObject({ phase: PHASE.BLOCKED, code: 'CONNECTOR_REQUIRED', retryable: true });
+    expect(emitter.providerCalls).toBe(0);
+    blocker = null;
+    expect(await flow.start('s1', sale)).toMatchObject({ phase: PHASE.PRINTED, folio: 900001 });
+    expect(emitter.providerCalls).toBe(1);
+    expect(print).toHaveBeenCalledTimes(1);
   });
 
   it('rechazo del proveedor: sin folio y sin reintento automático', async () => {
