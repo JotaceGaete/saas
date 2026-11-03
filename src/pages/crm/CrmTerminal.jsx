@@ -5,7 +5,7 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, holdPosSale, listHeldPosSales, claimHeldPosSale, releaseClaimedPosSale, consumeClaimedPosSale, discardHeldPosSale, getPointTerminals, getPointTerminalPreference, selectPointTerminal, unlinkPointTerminal, verifyPointTerminal, startPointOauth, getPointConnection, disconnectPointConnection, setupPointTerminal, createPointOrder, getPointOrder, cancelPointOrder } from '../../services/crmService';
+import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, holdPosSale, listHeldPosSales, claimHeldPosSale, releaseClaimedPosSale, consumeClaimedPosSale, discardHeldPosSale, getPointTerminals, getPointTerminalPreference, selectPointTerminal, unlinkPointTerminal, verifyPointTerminal, startPointOauth, getPointConnection, disconnectPointConnection, setupPointTerminal, createPointOrder, getPointOrder, cancelPointOrder, getSaleNumber } from '../../services/crmService';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { canUseFeature } from '../../config/planFeatures';
 import CrmThermalTicket from './components/CrmThermalTicket';
@@ -420,6 +420,8 @@ function CrmTerminalUI() {
     total: ticketData.total,
     discountAmount: ticketData.discountAmount,
     pendingBalance: ticketData.pendingBalance,
+    // Número interno del servidor, para el pie de la boleta.
+    saleNumber: ticketData.sale?.invoice_number ?? null,
   } : null), [ticketData]);
 
   // Debounce search → debouncedSearch
@@ -1132,7 +1134,7 @@ function CrmTerminalUI() {
     } catch { /* localStorage no es autoridad */ }
   }, [pointStorageKey, pointOperation]);
 
-  const finishPointUi = useCallback((data) => {
+  const finishPointUi = useCallback(async (data) => {
     if (!data?.invoice_id) return;
     const saleSnapshot = {
       items: [...cart], customer: selectedCustomer, paymentMethod: 'mercado_pago',
@@ -1145,9 +1147,16 @@ function CrmTerminalUI() {
     if (draftKey) removePosTerminalDraft(draftKey);
     if (pointStorageKey) localStorage.removeItem(pointStorageKey);
     setPointOperation(null);
-    setTicketData({ sale: data.sale || { id: data.invoice_id }, ...saleSnapshot });
+    let sale = data.sale || { id: data.invoice_id };
+    // Si la respuesta trajo solo el id, el número interno se lee del
+    // servidor ANTES de mostrar e imprimir (nunca se inventa en el navegador).
+    if (sale.invoice_number == null) {
+      const invoiceNumber = await getSaleNumber(business?.id, sale.id);
+      if (invoiceNumber != null) sale = { ...sale, invoice_number: invoiceNumber };
+    }
+    setTicketData({ sale, ...saleSnapshot });
     refreshProducts();
-  }, [cart, selectedCustomer, total, discountAmount, subtotal, notes, draftKey, pointStorageKey]);
+  }, [cart, selectedCustomer, total, discountAmount, subtotal, notes, draftKey, pointStorageKey, business?.id]);
 
   const pollPointOnce = useCallback(async () => {
     const operationId = pointOperation?.operation_id;

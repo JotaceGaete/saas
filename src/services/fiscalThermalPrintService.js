@@ -125,8 +125,23 @@ async function send(receipt, target) {
  * @param {{ businessId: string, invoiceId?: string, file?: File, resolucion: { numero: string, anio: string }, unidadSii?: string, timbreStrategyId?: string }} params
  * @returns {Promise<{ ok: true, folio: number, timbre: Object } | { ok: false, code: string, message: string }>}
  */
-export async function printBoletaThermal({ businessId, invoiceId, file, resolucion, unidadSii, timbreStrategyId }) {
+// Número interno de la venta desde el servidor (crm_invoices.invoice_number),
+// para el pie de la reimpresión. Mejor esfuerzo: sin él, el papel sale sin
+// número, nunca con uno inventado.
+async function lookupSaleNumber(businessId, invoiceId) {
   try {
+    if (!invoiceId || typeof supabase.from !== 'function') return null;
+    const { data, error } = await supabase.from('crm_invoices')
+      .select('invoice_number').eq('id', invoiceId).eq('business_id', businessId).maybeSingle();
+    return error ? null : (data?.invoice_number ?? null);
+  } catch {
+    return null;
+  }
+}
+
+export async function printBoletaThermal({ businessId, invoiceId, file, resolucion, unidadSii, timbreStrategyId, saleNumber = null }) {
+  try {
+    if (saleNumber == null && invoiceId) saleNumber = await lookupSaleNumber(businessId, invoiceId);
     const { dte, tedVerified } = await loadSource({ businessId, invoiceId, file });
     const { printerConfig, target } = resolveTarget(businessId, 'fiscal-reprint', dte.folio);
     const { receipt, timbre } = await buildBoletaReceipt({
@@ -139,6 +154,7 @@ export async function printBoletaThermal({ businessId, invoiceId, file, resoluci
         timbreStrategyId,
       ),
       reprint: true,
+      saleNumber,
       paperWidthMm: printerConfig.paperWidthMm,
       autoCut: printerConfig.autoCut,
       cutStrategyId: printerConfig.cutStrategyId,
@@ -217,7 +233,7 @@ export function hasValidResolucion(resolucion) {
  * no quien llama.
  * @param {{ businessId: string, bytes: ArrayBuffer|Uint8Array, reprint?: boolean, idempotencyKey?: string, settings?: ReturnType<typeof readFiscalPrintSettings>, sender?: Function }} params
  */
-export async function printIssuedBoleta({ businessId, bytes, reprint = false, idempotencyKey, settings = readFiscalPrintSettings(), sender = send }) {
+export async function printIssuedBoleta({ businessId, bytes, reprint = false, idempotencyKey, saleNumber = null, settings = readFiscalPrintSettings(), sender = send }) {
   try {
     const { dte, tedVerified } = await verifyDteBytes(bytes);
     const simulation = isSimulatedDte(dte);
@@ -232,6 +248,7 @@ export async function printIssuedBoleta({ businessId, bytes, reprint = false, id
       ),
       reprint,
       simulation,
+      saleNumber,
       paperWidthMm: printerConfig.paperWidthMm,
       autoCut: printerConfig.autoCut,
       cutStrategyId: printerConfig.cutStrategyId,

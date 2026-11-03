@@ -50,7 +50,7 @@ function makeFlow(connector) {
   const emitter = createSimulatedEmitter({ businessId: BIZ, storage: localStorage, scenario: () => 'ok' });
   const flow = createFiscalSaleFlow({
     businessId: BIZ, emitter, marks: createFlowMarks({ businessId: BIZ, storage: localStorage }),
-    print: ({ bytes, reprint, idempotencyKey }) => printIssuedBoleta({ businessId: BIZ, bytes, reprint, idempotencyKey }),
+    print: ({ bytes, reprint, idempotencyKey, saleNumber }) => printIssuedBoleta({ businessId: BIZ, bytes, reprint, idempotencyKey, saleNumber }),
   });
   return { emitter, flow };
 }
@@ -59,7 +59,7 @@ describe('flujo TPV completo (simulado) hasta el conector', () => {
   it('imprime la boleta con timbre PDF417 (ESC * 32 en la Star) y rótulo de simulación', async () => {
     const connector = fakeConnector();
     const { flow, emitter } = makeFlow(connector);
-    const r = await flow.start('sale-1', sale);
+    const r = await flow.start('sale-1', { ...sale, saleNumber: 1 });
     expect(r).toMatchObject({ phase: PHASE.PRINTED, folio: 900001, simulation: true });
     expect(emitter.providerCalls).toBe(1);
     expect(connector.printed).toHaveLength(1);
@@ -72,6 +72,9 @@ describe('flujo TPV completo (simulado) hasta el conector', () => {
     expect(text).toContain('BOLETA ELECTRONICA');
     expect(text).toContain('900001');
     expect(text).toContain('Timbre Electronico SII');
+    // Número interno de la venta al pie, sin tocar el folio SII.
+    expect(text).toContain('Ref. interna NV-0001');
+    expect(text.indexOf('Ref. interna NV-0001')).toBeGreaterThan(text.indexOf('Timbre Electronico SII'));
     expect(hasSeq(job.bytes, [0x1b, 0x2a, 0x20])).toBe(true); // ESC * 32
     expect(hasSeq(job.bytes, [0x1d, 0x76, 0x30])).toBe(false); // nunca GS v 0 en la Star
     // El conector acepta el trabajo tal cual (copia de EscPosStreamValidator.cs)...
@@ -125,13 +128,15 @@ describe('flujo TPV completo (simulado) hasta el conector', () => {
   it('reimpresión: sale rotulada REIMPRESION con el mismo folio', async () => {
     const connector = fakeConnector();
     const { flow, emitter } = makeFlow(connector);
-    await flow.start('sale-1', sale);
+    await flow.start('sale-1', { ...sale, saleNumber: 42 });
     const r = await flow.reprint('sale-1', 900001);
     expect(r.phase).toBe(PHASE.PRINTED);
     expect(connector.printed).toHaveLength(2);
     const text = ascii(connector.printed[1].bytes);
     expect(text).toContain('REIMPRESION');
     expect(text).toContain('900001');
+    expect(text).toContain('Ref. interna NV-0042');
+    expect(validateLikeConnector(connector.printed[1].bytes)).toBeNull();
     expect(emitter.providerCalls).toBe(1);
   });
 });

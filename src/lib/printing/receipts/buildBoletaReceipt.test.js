@@ -65,6 +65,15 @@ describe('buildBoletaReceipt', () => {
     expect(plain.lines.some((l) => /REIMPRESION/.test(l.text || ''))).toBe(false);
   });
 
+  it('lleva el número interno de la venta al pie, también en la reimpresión', async () => {
+    const last = async (extra) => (await buildBoletaReceipt({ ...base, ...extra })).receipt.lines.filter((l) => l.type === 'text').at(-1).text;
+    expect(await last({ saleNumber: 12 })).toBe('Ref. interna NV-0012');
+    expect(await last({ saleNumber: 12, reprint: true })).toBe('Ref. interna NV-0012');
+    expect(await last({ saleNumber: 'NV-0012' })).toBe('Ref. interna NV-0012');
+    const { receipt } = await buildBoletaReceipt(base);
+    expect(receipt.lines.some((l) => /Ref\. interna/.test(l.text || ''))).toBe(false);
+  });
+
   it('no imprime sin timbre verificado, sin resolución o con otro tipo de documento', async () => {
     await expect(buildBoletaReceipt({ ...base, tedVerified: false })).rejects.toMatchObject({ code: 'TED_NOT_VERIFIED' });
     await expect(buildBoletaReceipt({ ...base, resolucion: null })).rejects.toMatchObject({ code: 'RESOLUCION_REQUIRED' });

@@ -86,12 +86,20 @@ export function reprintKey(businessId, folio, { now = Date.now(), nonce = Math.r
  * @param {Object} deps
  * @param {string} deps.businessId
  * @param {ReturnType<import('./fiscalEmitters').createLiveEmitter>} deps.emitter
- * @param {(p: { bytes: Uint8Array, reprint: boolean, idempotencyKey: string }) => Promise<{ ok: boolean, code?: string, message?: string, simulation?: boolean }>} deps.print
+ * @param {(p: { bytes: Uint8Array, reprint: boolean, idempotencyKey: string, saleNumber: (number|string|null) }) => Promise<{ ok: boolean, code?: string, message?: string, simulation?: boolean }>} deps.print
  * @param {ReturnType<typeof createFlowMarks>} [deps.marks]
  * @param {() => (string|null)} [deps.printBlocker] - código si falta algo para imprimir una boleta nueva
  *   (conector no activo, sin impresora, resolución en modo real); null si se puede imprimir
  */
 export function createFiscalSaleFlow({ businessId, emitter, print, marks = createFlowMarks({ businessId }), printBlocker = () => null }) {
+
+  // Número interno de cada venta (invoice_number del servidor), para el pie
+  // de la boleta y de sus reimpresiones. Lo trae el contexto de la venta.
+  const saleNumbers = new Map();
+  const remember = (saleId, sale) => {
+    if (sale && sale.saleNumber != null) saleNumbers.set(saleId, sale.saleNumber);
+  };
+  const saleNumberOf = (saleId) => saleNumbers.get(saleId) ?? null;
 
   async function printOriginal(saleId, folio, { force = false } = {}) {
     if (!force && marks.printed(folio)) return { phase: PHASE.PRINTED, folio, alreadyPrinted: true };
@@ -101,7 +109,7 @@ export function createFiscalSaleFlow({ businessId, emitter, print, marks = creat
     } catch (err) {
       return { phase: PHASE.PRINT_FAILED, folio, code: err?.code || 'XML_DOWNLOAD_FAILED', message: err?.message };
     }
-    const r = await print({ bytes, reprint: false, idempotencyKey: originalPrintKey(businessId, folio) });
+    const r = await print({ bytes, reprint: false, idempotencyKey: originalPrintKey(businessId, folio), saleNumber: saleNumberOf(saleId) });
     if (!r?.ok) return { phase: PHASE.PRINT_FAILED, folio, code: r?.code || 'PRINT_FAILED', message: r?.message };
     marks.markPrinted(folio);
     return { phase: PHASE.PRINTED, folio, simulation: Boolean(r.simulation) };
@@ -164,17 +172,17 @@ export function createFiscalSaleFlow({ businessId, emitter, print, marks = creat
 
   return Object.freeze({
     /** Al confirmar la venta cobrada: emite si corresponde e imprime. */
-    start: (saleId, sale) => once(saleId, () => fromStatus(saleId, sale, { allowEmit: { auto: true } })),
+    start: (saleId, sale) => { remember(saleId, sale); return once(saleId, () => fromStatus(saleId, sale, { allowEmit: { auto: true } })); },
     /** Vuelve a consultar el estado (p. ej. tras conciliar). Nunca reenvía una emisión ya enviada. */
-    refresh: (saleId, sale) => once(saleId, () => fromStatus(saleId, sale, { allowEmit: {} })),
+    refresh: (saleId, sale) => { remember(saleId, sale); return once(saleId, () => fromStatus(saleId, sale, { allowEmit: {} })); },
     /** Acción explícita del cajero cuando el envío anterior no llegó al servidor (estado sin fila). */
-    emitAgain: (saleId, sale) => once(saleId, () => fromStatus(saleId, sale, { allowEmit: { manual: true } })),
+    emitAgain: (saleId, sale) => { remember(saleId, sale); return once(saleId, () => fromStatus(saleId, sale, { allowEmit: { manual: true } })); },
     /** Reintenta el papel del original (misma clave): nunca emite. */
     retryPrint: (saleId, folio) => once(saleId, () => printOriginal(saleId, folio, { force: true })),
     /** Copia rotulada REIMPRESION con clave nueva: nunca emite ni consume folio. */
     reprint: (saleId, folio) => once(saleId, async () => {
       const bytes = await emitter.loadDte(saleId);
-      const r = await print({ bytes, reprint: true, idempotencyKey: reprintKey(businessId, folio) });
+      const r = await print({ bytes, reprint: true, idempotencyKey: reprintKey(businessId, folio), saleNumber: saleNumberOf(saleId) });
       return r?.ok ? { phase: PHASE.PRINTED, folio, reprinted: true, simulation: Boolean(r.simulation) }
         : { phase: PHASE.PRINT_FAILED, folio, code: r?.code || 'PRINT_FAILED', message: r?.message, reprint: true };
     }),

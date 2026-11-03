@@ -28,7 +28,7 @@ export function buildFlowForMode(mode, businessId) {
   const flow = createFiscalSaleFlow({
     businessId,
     emitter,
-    print: ({ bytes, reprint, idempotencyKey }) => printIssuedBoleta({ businessId, bytes, reprint, idempotencyKey }),
+    print: ({ bytes, reprint, idempotencyKey, saleNumber }) => printIssuedBoleta({ businessId, bytes, reprint, idempotencyKey, saleNumber }),
     // Una boleta nueva no se emite si este equipo no puede imprimirla: conector
     // activo con impresora y, en modo real, resolución SII.
     printBlocker: () => fiscalPrintBlocker(businessId, { requireResolucion: mode === 'live' }),

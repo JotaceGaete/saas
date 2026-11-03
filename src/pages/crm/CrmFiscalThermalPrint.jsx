@@ -39,7 +39,7 @@ function readSavedStrategy() {
   return MANUAL_TIMBRE_STRATEGY_IDS.includes(id) ? id : AUTO_TIMBRE_STRATEGY_ID;
 }
 
-export default function CrmFiscalThermalPrint({ businessId, invoiceId }) {
+export default function CrmFiscalThermalPrint({ businessId, invoiceId, saleNumber = null }) {
   const [resolucion, setResolucion] = useState(readSavedResolucion);
   const [strategyId, setStrategyId] = useState(readSavedStrategy);
   const [file, setFile] = useState(null);
@@ -69,7 +69,7 @@ export default function CrmFiscalThermalPrint({ businessId, invoiceId }) {
     const source = fileMode ? { file } : { invoiceId };
     let r;
     try {
-      r = await printBoletaThermal({ businessId, ...source, resolucion, timbreStrategyId: strategyId });
+      r = await printBoletaThermal({ businessId, ...source, resolucion, timbreStrategyId: strategyId, saleNumber });
     } catch {
       r = { ok: false, message: 'No se pudo completar la impresión. Revisa la conexión con la impresora.' };
     } finally {

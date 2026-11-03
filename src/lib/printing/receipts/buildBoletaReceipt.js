@@ -18,6 +18,7 @@
 // moneda, el wrap y los comandos ESC/POS son de renderEscPosReceipt.
 
 import { stripDiacritics } from './renderEscPosReceipt';
+import { saleNumberFooterLine } from './saleNumber';
 import {
   buildRasterCommand, buildTiledColumnBitImageCommand, buildDoubleDensity24BitImageCommand, buildStarSafe24DotImageCommand,
 } from './escPosImage';
@@ -251,6 +252,7 @@ export async function buildTimbreImage(tedXml, strategyId = DEFAULT_TIMBRE_STRAT
  * @param {string} [params.nombreFantasia]
  * @param {string} [params.copyLabel] - leyenda superior opcional (p. ej. "PRUEBA DE IMPRESION")
  * @param {boolean} [params.reprint] - agrega las leyendas de reimpresión arriba y abajo (buildReprintNotice)
+ * @param {number|string} [params.saleNumber] - número interno de la venta (invoice_number del servidor); va al pie, discreto. No reemplaza el folio
  * @param {boolean} [params.simulation] - boleta SIMULADA (Preview): leyendas SIN VALOR TRIBUTARIO arriba y abajo; admite resolución vacía
  * @param {string} [params.timbreStrategyId]
  * @param {number} [params.paperWidthMm]
@@ -268,6 +270,7 @@ export async function buildBoletaReceipt({
   copyLabel,
   reprint = false,
   simulation = false,
+  saleNumber = null,
   timbreStrategyId = DEFAULT_TIMBRE_STRATEGY_ID,
   paperWidthMm = 80,
   autoCut = true,
@@ -335,6 +338,10 @@ export async function buildBoletaReceipt({
   lines.push({ type: 'text', text: 'Verifique documento: www.sii.cl', align: 'center' });
   if (notice) lines.push(...notice.footer);
   if (simulation) lines.push({ type: 'text', text: '' }, ...SIMULATION_NOTICE);
+  // Número interno de la venta, al pie y discreto. El folio SII sigue siendo
+  // el de arriba ("Nro."); este número no lo reemplaza ni lo modifica.
+  const saleFooter = saleNumberFooterLine(saleNumber);
+  if (saleFooter) lines.push(saleFooter);
 
   return {
     receipt: {

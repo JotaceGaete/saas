@@ -67,6 +67,16 @@ describe('fiscalSaleFlow', () => {
     expect(emitter.providerCalls).toBe(1);
   });
 
+  it('pasa el número interno de la venta al original y a la reimpresión', async () => {
+    const { flow, print } = setup();
+    await flow.start('s1', { ...sale, saleNumber: 7 });
+    await flow.reprint('s1', 900001);
+    expect(print.mock.calls.map((c) => c[0].saleNumber)).toEqual([7, 7]);
+    const other = setup();
+    await other.flow.start('s9', sale);
+    expect(other.print.mock.calls[0][0].saleNumber).toBeNull();
+  });
+
   it('reimpresión: clave nueva, rotulada, mismo folio, sin emitir', async () => {
     const { flow, print, emitter } = setup();
     await flow.start('s1', sale);

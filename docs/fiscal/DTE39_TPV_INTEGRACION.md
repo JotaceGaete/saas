@@ -166,3 +166,14 @@ solo dentro de `crm_fiscal_claim_with_credentials`. Nunca llega al navegador ni 
 
 Pruebas: `test/unit/late-and-double.test.mjs` (respuestas tardías, doble clic, corte de conexión,
 reintento del cliente, consulta y reimpresión), contra un DTE Core simulado en 127.0.0.1.
+
+## Número interno de venta (NV-0001)
+
+- Fuente única: `crm_invoices.invoice_number`, asignado en el servidor por `crm_take_document_number` (contador por comercio en `crm_document_sequences`, fila bloqueada en la misma transacción, `UNIQUE(business_id, invoice_number)`). Se verificó en producción (SELECT de solo lectura, 2026-11-03) que las funciones coinciden con el repositorio y que ninguna actualiza el número.
+- No reemplaza al folio SII: la boleta muestra su folio y, al pie, `Ref. interna NV-xxxx`. También lo llevan el ticket de venta, el comprobante interno y las reimpresiones (`src/lib/printing/receipts/saleNumber.js`).
+- El navegador ya no inventa números (`T-<hora>` eliminado). Si el servidor aún no entregó el número, se consulta antes de imprimir; si no hay, el papel sale sin referencia.
+- Un valor que ya trae su forma (p. ej. `NV-0042`) se imprime tal cual; solo el entero se formatea como `NV-` + 4 dígitos.
+- Migración propuesta, **no aplicada en producción**: `supabase/fiscal-recovery/proposed/20261103_sale_number_guard_and_references.sql`.
+  - Trigger `crm_invoices_number_immutable`: un número ya asignado no cambia (`INVOICE_NUMBER_IMMUTABLE`). Cambiar estado, `paid_at` y la cola DTE 39 sigue funcionando.
+  - Vista `crm_sale_references`: venta ↔ operación Point (`mp_order_id`, `mp_payment_id`) ↔ folio DTE 39. Cada dueño ve solo su comercio; anon sin acceso.
+  - Probada en base local: 40 ventas concurrentes = 40 números distintos (1..40); aislamiento A/B; anon denegado; service_role ve todo.
