@@ -18,6 +18,26 @@ const btn = (primary = false) => ({
   border: primary ? 'none' : '1px solid #d1d5db', background: primary ? '#0369a1' : '#fff', color: primary ? '#fff' : '#374151',
 });
 
+// Reintento automático, sin el cajero, de lo que suele resolverse solo al
+// poco rato en un equipo real: el conector todavía no autoriza el sitio, el
+// navegador está pidiendo el permiso de red local, la impresora está ocupada
+// o el conector aún no está configurado en esta dirección. Nunca emite otra
+// boleta: el papel reusa la misma clave del original (el conector descarta
+// duplicados) y una boleta bloqueada antes de emitir vuelve a pasar por las
+// mismas reglas del flujo.
+export const AUTO_PRINT_RETRY_DELAYS_MS = Object.freeze([2000, 3000, 5000, 8000, 10000, 15000, 20000, 30000, 30000, 30000]);
+export const AUTO_BLOCKED_RETRY_MS = 3000;
+export const AUTO_BLOCKED_MAX_TRIES = 100; // ~5 minutos
+const TRANSIENT_PRINT_CODES = new Set([
+  'connector_unreachable', 'printer_unavailable', 'rate_limited', 'spooler_unavailable', 'print_failed',
+  'PRINT_FAILED', 'origin_not_allowed', 'not_paired', 'unauthorized', 'MISSING_PRINTER', 'CONNECTOR_REQUIRED',
+  'missing_printer',
+]);
+
+export function isTransientPrintFailure(code) {
+  return TRANSIENT_PRINT_CODES.has(code) || /^http_5\d\d$/.test(String(code || ''));
+}
+
 function readScenario() {
   try { return JSON.parse(window.localStorage.getItem(SIM_SCENARIO_STORAGE_KEY)) || 'ok'; } catch { return 'ok'; }
 }
@@ -25,15 +45,16 @@ function readScenario() {
 export function buildFlowForMode(mode, businessId) {
   if (mode === 'off' || !businessId) return null;
   const emitter = mode === 'live' ? createLiveEmitter({ businessId }) : createSimulatedEmitter({ businessId });
+  const printBlocker = () => fiscalPrintBlocker(businessId, { requireResolucion: mode === 'live' });
   const flow = createFiscalSaleFlow({
     businessId,
     emitter,
     print: ({ bytes, reprint, idempotencyKey, saleNumber }) => printIssuedBoleta({ businessId, bytes, reprint, idempotencyKey, saleNumber }),
     // Una boleta nueva no se emite si este equipo no puede imprimirla: conector
     // activo con impresora y, en modo real, resolución SII.
-    printBlocker: () => fiscalPrintBlocker(businessId, { requireResolucion: mode === 'live' }),
+    printBlocker,
   });
-  return { emitter, flow };
+  return { emitter, flow, printBlocker };
 }
 
 export default function TpvFiscalAutoBoleta({ businessId, sale, saleContext, onPlainTicket, onSettled, mode = FISCAL_AUTO_MODE, deps }) {
@@ -56,10 +77,10 @@ export default function TpvFiscalAutoBoleta({ businessId, sale, saleContext, onP
     }
   }, [onPlainTicket, onSettled, saleId]);
 
-  const run = useCallback(async (action) => {
+  const run = useCallback(async (action, { auto = false } = {}) => {
     if (!built || !saleId) return;
     setBusy(true);
-    if (action === 'start') setState({ phase: PHASE.EMITTING });
+    if (action === 'start' && !auto) setState({ phase: PHASE.EMITTING });
     try {
       let r;
       if (action === 'start') r = await built.flow.start(saleId, saleContext);
@@ -82,6 +103,34 @@ export default function TpvFiscalAutoBoleta({ businessId, sale, saleContext, onP
       setBusy(false);
     }
   }, [built, saleId, saleContext, state.folio, apply]);
+
+  // Reintentos automáticos (ver AUTO_PRINT_RETRY_DELAYS_MS).
+  const autoRef = useRef({ saleId: null, print: 0, blocked: 0 });
+  const [autoRetrying, setAutoRetrying] = useState(false);
+  useEffect(() => {
+    if (!built || !saleId) return undefined;
+    const a = autoRef.current;
+    if (a.saleId !== saleId) Object.assign(a, { saleId, print: 0, blocked: 0 });
+    const printRetry = state.phase === PHASE.PRINT_FAILED && !state.reprint && state.folio != null && isTransientPrintFailure(state.code);
+    const blockedRetry = state.phase === PHASE.BLOCKED && state.retryable;
+    if (busy || (!printRetry && !blockedRetry)) { setAutoRetrying(false); return undefined; }
+    if (printRetry && a.print >= AUTO_PRINT_RETRY_DELAYS_MS.length) { setAutoRetrying(false); return undefined; }
+    if (blockedRetry && a.blocked >= AUTO_BLOCKED_MAX_TRIES) { setAutoRetrying(false); return undefined; }
+    setAutoRetrying(true);
+    const delay = printRetry ? AUTO_PRINT_RETRY_DELAYS_MS[a.print] : AUTO_BLOCKED_RETRY_MS;
+    const timer = setTimeout(() => {
+      if (printRetry) {
+        a.print += 1;
+        run('retryPrint', { auto: true });
+        return;
+      }
+      a.blocked += 1;
+      // Mientras siga faltando el conector no se llama al flujo: solo se mira la configuración.
+      if (built.printBlocker && built.printBlocker()) { setState((st) => ({ ...st })); return; }
+      run('start', { auto: true });
+    }, delay);
+    return () => clearTimeout(timer);
+  }, [built, saleId, state, busy, run]);
 
   // Al montar (venta recién cobrada o reabierta): una vez por venta.
   const startedRef = useRef(null);
@@ -137,6 +186,13 @@ export default function TpvFiscalAutoBoleta({ businessId, sale, saleContext, onP
         Boleta electrónica · SII{simulated ? ' · SIMULACIÓN (sin valor tributario)' : ''}
       </strong>
       <div role={tone === '#374151' || tone === '#065f46' ? 'status' : 'alert'} style={{ color: tone }}>{body}</div>
+      {autoRetrying && (
+        <div role="status" data-testid="fiscal-auto-retry" style={{ marginTop: 4, color: '#6b7280' }}>
+          {phase === PHASE.BLOCKED
+            ? 'Se emitirá e imprimirá sola en cuanto el conector esté listo en este equipo.'
+            : 'Reintentando la impresión automáticamente (misma boleta, mismo folio).'}
+        </div>
+      )}
       {state.reprinted && !state.reprintError && (
         <div role="status" style={{ marginTop: 4, color: '#065f46' }}>Reimpresión de la boleta {folio} enviada (rotulada REIMPRESION, mismo folio).</div>
       )}

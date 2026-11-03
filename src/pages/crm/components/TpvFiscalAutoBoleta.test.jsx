@@ -4,7 +4,7 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 
 vi.mock('../../../lib/supabase', () => ({ supabase: { functions: { invoke: vi.fn() }, auth: { getSession: vi.fn() } } }));
 
-import TpvFiscalAutoBoleta from './TpvFiscalAutoBoleta';
+import TpvFiscalAutoBoleta, { AUTO_PRINT_RETRY_DELAYS_MS, isTransientPrintFailure } from './TpvFiscalAutoBoleta';
 import { createSimulatedEmitter } from '../../../services/fiscalEmitters';
 import { createFiscalSaleFlow, createFlowMarks } from '../../../services/fiscalSaleFlow';
 
@@ -78,3 +78,48 @@ describe('TpvFiscalAutoBoleta', () => {
     expect(onPlainTicket).not.toHaveBeenCalled();
   });
 });
+
+describe('TpvFiscalAutoBoleta — sin intervención del cajero', () => {
+  beforeEach(() => localStorage.clear());
+
+  it('el conector todavía no responde: reintenta solo con la misma clave y no emite otra boleta', async () => {
+    let fails = 2;
+    const emitter = createSimulatedEmitter({ businessId: BIZ, storage: localStorage, scenario: () => 'ok' });
+    const print = vi.fn(async () => (fails-- > 0 ? { ok: false, code: 'connector_unreachable', message: 'No se encontró el conector.' } : { ok: true, simulation: true }));
+    const flow = createFiscalSaleFlow({ businessId: BIZ, emitter, print, marks: createFlowMarks({ businessId: BIZ, storage: localStorage }) });
+    const onPlainTicket = vi.fn();
+    render(<TpvFiscalAutoBoleta businessId={BIZ} sale={{ id: 'auto-1' }} saleContext={ctx} deps={{ emitter, flow }} onPlainTicket={onPlainTicket} />);
+    await screen.findByText(/no se imprimió/);
+    expect(screen.getByTestId('fiscal-auto-retry')).toBeInTheDocument();
+    await screen.findByText(/Boleta 900001 emitida y enviada a la impresora/, {}, { timeout: AUTO_PRINT_RETRY_DELAYS_MS[0] + AUTO_PRINT_RETRY_DELAYS_MS[1] + 3000 });
+    expect(print).toHaveBeenCalledTimes(3);
+    expect(new Set(print.mock.calls.map(([p]) => p.idempotencyKey)).size).toBe(1);
+    expect(print.mock.calls.every(([p]) => p.reprint === false)).toBe(true);
+    expect(emitter.providerCalls).toBe(1);
+    expect(onPlainTicket).not.toHaveBeenCalled();
+  }, 15000);
+
+  it('sin conector configurado al cobrar: emite e imprime sola en cuanto queda listo', async () => {
+    let blocker = 'CONNECTOR_REQUIRED';
+    const emitter = createSimulatedEmitter({ businessId: BIZ, storage: localStorage, scenario: () => 'ok' });
+    const print = vi.fn(async () => ({ ok: true, simulation: true }));
+    const printBlocker = () => blocker;
+    const flow = createFiscalSaleFlow({ businessId: BIZ, emitter, print, printBlocker, marks: createFlowMarks({ businessId: BIZ, storage: localStorage }) });
+    render(<TpvFiscalAutoBoleta businessId={BIZ} sale={{ id: 'auto-2' }} saleContext={ctx} deps={{ emitter, flow, printBlocker }} />);
+    await screen.findByText(/no está activo y emparejado/);
+    expect(emitter.providerCalls).toBe(0);
+    blocker = null; // el cajero empareja el conector en Impresión
+    await screen.findByText(/Boleta 900001 emitida y enviada a la impresora/, {}, { timeout: 6000 });
+    expect(emitter.providerCalls).toBe(1);
+    expect(print).toHaveBeenCalledTimes(1);
+  }, 10000);
+
+  it('un error que no se arregla solo no reintenta en bucle', async () => {
+    expect(isTransientPrintFailure('connector_unreachable')).toBe(true);
+    expect(isTransientPrintFailure('http_503')).toBe(true);
+    expect(isTransientPrintFailure('TED_NOT_VERIFIED')).toBe(false);
+    expect(isTransientPrintFailure('escpos_drawer_blocked')).toBe(false);
+    expect(isTransientPrintFailure('printer_not_found')).toBe(false);
+  });
+});
+
