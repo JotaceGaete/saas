@@ -93,3 +93,35 @@ describe('comercio CON token', () => {
     await waitFor(() => expect(calls(fetchMock, '/v1/printers').length).toBeGreaterThan(p));
   });
 });
+
+describe('Preview no autorizada', () => {
+  it('«Autorizar este sitio» pide confirmación al conector y espera a que la acepte', async () => {
+    let approved = false;
+    fetchMock.mockImplementation(async (url, init = {}) => {
+      const u = urlOf(url);
+      if (u.endsWith('/v1/origin-approval')) {
+        // El usuario pulsa «Sí» en Windows.
+        approved = true;
+        return new Response(null, { status: 202 });
+      }
+      if (u.endsWith('/v1/health')) {
+        if (init.mode === 'no-cors') return new Response(null, { status: 200 });
+        return approved ? healthOk() : networkFail(); // CORS bloquea hasta que se autoriza.
+      }
+      return json(404, {});
+    });
+
+    render(<Harness businessId={BIZ} />);
+    const button = await screen.findByRole('button', { name: /autorizar este sitio/i });
+    fireEvent.click(button);
+
+    expect(await screen.findByText(/pulsa «sí» en esa ventana/i)).toBeTruthy();
+    const approvals = calls(fetchMock, '/v1/origin-approval');
+    expect(approvals.length).toBe(1);
+    expect(approvals[0][1]).toMatchObject({ method: 'POST', mode: 'no-cors', credentials: 'omit' });
+    expect(approvals[0][1].headers).toBeUndefined();
+
+    expect(await screen.findByText(/sitio autorizado/i, {}, { timeout: 6000 })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /autorizar este sitio/i })).toBeNull();
+  }, 10000);
+});
