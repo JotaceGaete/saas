@@ -75,6 +75,7 @@ export default function CrmThermalTicket({
   // apagado no se monta y el ticket se comporta igual que antes.
   fiscalAutoMode = FISCAL_AUTO_MODE,
   fiscalSaleContext = null,
+  onFiscalSettled,
   onPlainTicket,
 }) {
   const fiscalAuto = fiscalAutoMode !== 'off' && Boolean(sale?.id);
@@ -592,7 +593,7 @@ export default function CrmThermalTicket({
 
           {fiscalAuto && (
             <TpvFiscalAutoBoleta businessId={business?.id} sale={sale} saleContext={fiscalSaleContext}
-              onPlainTicket={onPlainTicket} mode={fiscalAutoMode} />
+              onPlainTicket={onPlainTicket} onSettled={onFiscalSettled} mode={fiscalAutoMode} />
           )}
 
           {!fiscalAuto && FISCAL_EMIT_ENABLED && sale?.id && (

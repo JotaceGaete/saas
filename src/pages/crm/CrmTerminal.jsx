@@ -5,7 +5,10 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, holdPosSale, listHeldPosSales, claimHeldPosSale, releaseClaimedPosSale, consumeClaimedPosSale, discardHeldPosSale, getPointTerminals, getPointTerminalPreference, selectPointTerminal, unlinkPointTerminal, verifyPointTerminal, startPointOauth, getPointConnection, disconnectPointConnection, setupPointTerminal, createPointOrder, getPointOrder, cancelPointOrder, getSaleNumber } from '../../services/crmService';
+import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, holdPosSale, listHeldPosSales, claimHeldPosSale, releaseClaimedPosSale, consumeClaimedPosSale, discardHeldPosSale, getSaleNumber } from '../../services/crmService';
+import { pointClient } from '../../services/pointClient';
+import { POINT_SIM_SCENARIO_KEY, POINT_SIM_SCENARIOS, POINT_SIM_SCENARIO_LABELS } from '../../services/pointSimulator';
+import { clearPendingFiscalSale, listPendingFiscalSales, savePendingFiscalSale, SETTLED_PHASES } from '../../services/fiscalPendingSales';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { canUseFeature } from '../../config/planFeatures';
 import CrmThermalTicket from './components/CrmThermalTicket';
@@ -312,6 +315,12 @@ function CrmTerminalUI() {
 
   // Ticket modal state — set after successful (or locally-fallback) sale
   const [ticketData, setTicketData] = useState(null);
+  // Boletas que no terminaron en este equipo (TPV cerrado o recargado a mitad
+  // del flujo). Se recuperan reabriendo la venta: el flujo fiscal decide qué falta.
+  const [pendingFiscal, setPendingFiscal] = useState([]);
+  const [pointSimScenario, setPointSimScenario] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(POINT_SIM_SCENARIO_KEY)) || 'approved'; } catch { return 'approved'; }
+  });
 
   const searchRef = useRef(null);
   const printedTicketRef = useRef(null);
@@ -413,6 +422,18 @@ function CrmTerminalUI() {
     if (FISCAL_AUTO_MODE !== 'off' && ticketData.sale?.id) return;
     printCurrentTicket();
   }, [ticketData, printCurrentTicket]);
+
+  useEffect(() => {
+    if (!business?.id || FISCAL_AUTO_MODE === 'off') return;
+    if (ticketData?.sale?.id) savePendingFiscalSale(business.id, ticketData);
+    setPendingFiscal(listPendingFiscalSales(business.id));
+  }, [business?.id, ticketData]);
+
+  const handleFiscalSettled = useCallback((saleId, phase) => {
+    if (!business?.id || !saleId || !SETTLED_PHASES.has(phase)) return;
+    clearPendingFiscalSale(business.id, saleId);
+    setPendingFiscal(listPendingFiscalSales(business.id));
+  }, [business?.id]);
 
   const fiscalSaleContext = useMemo(() => (ticketData ? {
     items: ticketData.items,
@@ -1018,9 +1039,9 @@ function CrmTerminalUI() {
   const loadPointTerminals = useCallback(async () => {
     setPointLoading(true); setPointError(null); setPointErrorReason(null);
     const [terminalsResult, preferenceResult, connectionResult] = await Promise.all([
-      getPointTerminals(),
-      getPointTerminalPreference(),
-      getPointConnection(),
+      pointClient.getPointTerminals(),
+      pointClient.getPointTerminalPreference(),
+      pointClient.getPointConnection(),
     ]);
     setPointLoading(false);
     if (terminalsResult.error) {
@@ -1055,7 +1076,7 @@ function CrmTerminalUI() {
   const handleSelectPointTerminal = async (terminalId) => {
     if (pointOperation?.operation_id) return;
     setPointLoading(true); setPointError(null); setPointErrorReason(null);
-    const { data, error } = await selectPointTerminal(terminalId);
+    const { data, error } = await pointClient.selectPointTerminal(terminalId);
     setPointLoading(false);
     if (error) {
       setPointError(error.message);
@@ -1069,7 +1090,7 @@ function CrmTerminalUI() {
   const handleVerifyPointTerminal = async () => {
     if (!pointTerminalId || pointOperation?.operation_id) return;
     setPointLoading(true); setPointError(null); setPointErrorReason(null);
-    const { data, error } = await verifyPointTerminal(pointTerminalId);
+    const { data, error } = await pointClient.verifyPointTerminal(pointTerminalId);
     setPointLoading(false);
     if (error) {
       setPointError(error.message);
@@ -1082,7 +1103,7 @@ function CrmTerminalUI() {
   const handleUnlinkPointTerminal = async () => {
     if (pointOperation?.operation_id) return;
     setPointLoading(true); setPointError(null); setPointErrorReason(null);
-    const { error } = await unlinkPointTerminal();
+    const { error } = await pointClient.unlinkPointTerminal();
     setPointLoading(false);
     if (error) {
       setPointError(error.message);
@@ -1095,7 +1116,7 @@ function CrmTerminalUI() {
 
   const handleConnectPoint = useCallback(async () => {
     setPointLoading(true); setPointError(null); setPointErrorReason(null);
-    const { data, error } = await startPointOauth();
+    const { data, error } = await pointClient.startPointOauth();
     setPointLoading(false);
     if (error || !data?.authorizationUrl) {
       setPointError(error?.message || 'No pudimos iniciar la conexión con Mercado Pago Point.');
@@ -1107,7 +1128,7 @@ function CrmTerminalUI() {
   const handleDisconnectPointConnection = useCallback(async () => {
     if (pointOperation?.operation_id) return;
     setPointLoading(true); setPointError(null); setPointErrorReason(null);
-    const { error } = await disconnectPointConnection();
+    const { error } = await pointClient.disconnectPointConnection();
     setPointLoading(false);
     if (error) {
       setPointError(error.message);
@@ -1161,7 +1182,7 @@ function CrmTerminalUI() {
   const pollPointOnce = useCallback(async () => {
     const operationId = pointOperation?.operation_id;
     if (!operationId) return;
-    const { data, error } = await getPointOrder(operationId);
+    const { data, error } = await pointClient.getPointOrder(operationId);
     if (error && !data) { setPointError(error.message); return; }
     const next = data || {};
     setPointOperation(prev => ({ ...prev, ...next }));
@@ -1237,7 +1258,7 @@ function CrmTerminalUI() {
   const handleSetupPoint = async () => {
     if (!pointTerminalId) return;
     setPointLoading(true); setPointError(null);
-    const { data, error } = await setupPointTerminal(pointTerminalId);
+    const { data, error } = await pointClient.setupPointTerminal(pointTerminalId);
     setPointLoading(false);
     if (error) { setPointError(error.message); return; }
     await loadPointTerminals();
@@ -1272,7 +1293,7 @@ function CrmTerminalUI() {
         pointCreateKeyRef.current = crypto.randomUUID();
         saleIdempotencyKeyRef.current = crypto.randomUUID();
       }
-      const { data, error } = await createPointOrder({
+      const { data, error } = await pointClient.createPointOrder({
         terminalId: pointTerminalId, items: cart, customerId: customerId || null,
         discount: discountAmount, notes: notes || null,
         createIdempotencyKey: pointCreateKeyRef.current,
@@ -1296,7 +1317,7 @@ function CrmTerminalUI() {
     // consulta se solapa, el cajero igual debe poder solicitar la cancelación.
     setPointCanceling(true); setPointError(null);
     try {
-      const { data, error } = await cancelPointOrder(operationId);
+      const { data, error } = await pointClient.cancelPointOrder(operationId);
       if (error) {
         setPointError(error.message || 'No pudimos confirmar la cancelación. Walinka seguirá consultando el mismo cobro.');
         return;
@@ -2376,6 +2397,23 @@ function CrmTerminalUI() {
                               </div>
                             </div>
                           )}
+                          {pointClient.mode === 'simulated' && (
+                            <div data-testid="point-sim-banner" className="rounded-xl border border-sky-300 bg-sky-50 px-3 py-2.5 text-[11px] text-sky-900">
+                              <p className="font-black">Point SIMULADA · Preview · sin cobro real</p>
+                              <p className="mt-0.5">No se contacta a Mercado Pago ni a ninguna terminal. La venta queda solo en este navegador.</p>
+                              <label className="mt-1.5 flex items-center gap-1.5">
+                                Resultado del próximo cobro:
+                                <select value={pointSimScenario} disabled={Boolean(pointOperation?.operation_id)}
+                                  onChange={(e) => {
+                                    setPointSimScenario(e.target.value);
+                                    try { localStorage.setItem(POINT_SIM_SCENARIO_KEY, JSON.stringify(e.target.value)); } catch { /* sin almacenamiento */ }
+                                  }}
+                                  className="rounded border border-sky-300 bg-white px-1 py-0.5">
+                                  {POINT_SIM_SCENARIOS.map((sc) => <option key={sc} value={sc}>{POINT_SIM_SCENARIO_LABELS[sc]}</option>)}
+                                </select>
+                              </label>
+                            </div>
+                          )}
                           {pointConnection && !pointOperation?.operation_id && (
                             <div className="rounded-xl border border-gray-200 bg-white/70 px-3 py-2.5 flex items-center justify-between gap-3">
                               <div className="min-w-0">
@@ -2841,7 +2879,25 @@ function CrmTerminalUI() {
           onConfigurePrinter={handleGoToPrintSettings}
           fiscalSaleContext={fiscalSaleContext}
           onPlainTicket={printCurrentTicket}
+          onFiscalSettled={handleFiscalSettled}
         />
+      )}
+
+      {!ticketData && pendingFiscal.length > 0 && (
+        <div role="alert" data-testid="fiscal-pending-banner"
+          className="fixed bottom-4 left-4 z-40 max-w-sm rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 shadow-lg">
+          <p className="font-black">Boleta pendiente en este equipo</p>
+          <p className="mt-1">El pago ya está registrado. Recuperar no cobra de nuevo ni emite otra boleta: revisa el estado y termina lo que falte.</p>
+          <div className="mt-2 flex flex-col gap-1.5">
+            {pendingFiscal.slice(-5).reverse().map((p) => (
+              <button key={p.saleId} type="button"
+                onClick={() => { printedTicketRef.current = String(p.saleId); setTicketData(p.ticketData); }}
+                className="rounded-lg bg-amber-600 px-3 py-1.5 text-left font-bold text-white hover:bg-amber-700">
+                Recuperar boleta · venta {p.ticketData?.sale?.invoice_number ?? p.saleId}
+              </button>
+            ))}
+          </div>
+        </div>
       )}
 
       {showNewCustomer && (

@@ -36,8 +36,10 @@ export function buildFlowForMode(mode, businessId) {
   return { emitter, flow };
 }
 
-export default function TpvFiscalAutoBoleta({ businessId, sale, saleContext, onPlainTicket, mode = FISCAL_AUTO_MODE, deps }) {
-  const built = useMemo(() => deps || buildFlowForMode(mode, businessId), [deps, mode, businessId]);
+export default function TpvFiscalAutoBoleta({ businessId, sale, saleContext, onPlainTicket, onSettled, mode = FISCAL_AUTO_MODE, deps }) {
+  // Una venta simulada (Point simulada de Preview) nunca llega a DTE Core.
+  const effectiveMode = sale?.simulated && mode === 'live' ? 'simulated' : mode;
+  const built = useMemo(() => deps || buildFlowForMode(effectiveMode, businessId), [deps, effectiveMode, businessId]);
   const [state, setState] = useState({ phase: PHASE.CHECKING });
   const [busy, setBusy] = useState(false);
   const [scenario, setScenario] = useState(readScenario);
@@ -46,11 +48,13 @@ export default function TpvFiscalAutoBoleta({ businessId, sale, saleContext, onP
 
   const apply = useCallback((r) => {
     setState(r);
+    // Avisa al TPV en qué terminó (p. ej. para quitar la venta de «boletas pendientes»).
+    onSettled?.(saleId, r.phase);
     if (r.phase === PHASE.NOT_ELIGIBLE && !plainPrintedRef.current) {
       plainPrintedRef.current = true;
       onPlainTicket?.();
     }
-  }, [onPlainTicket]);
+  }, [onPlainTicket, onSettled, saleId]);
 
   const run = useCallback(async (action) => {
     if (!built || !saleId) return;
