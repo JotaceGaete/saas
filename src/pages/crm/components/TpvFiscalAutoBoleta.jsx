@@ -3,6 +3,7 @@ import { FISCAL_AUTO_MODE } from '../../../services/fiscalAutoMode';
 import { createLiveEmitter, createSimulatedEmitter, SIM_SCENARIO_STORAGE_KEY, SIM_SCENARIOS } from '../../../services/fiscalEmitters';
 import { createFiscalSaleFlow, describeFlowCode, PHASE } from '../../../services/fiscalSaleFlow';
 import { fiscalPrintBlocker, printIssuedBoleta } from '../../../services/fiscalThermalPrintService';
+import { POINT_PREVIEW, previewRealPoint } from '../../../services/pointClient';
 
 // Boleta electrónica automática al confirmar una venta cobrada en el TPV.
 // Emite (DTE Core o simulación) y envía la boleta con su timbre PDF417 a la
@@ -42,6 +43,13 @@ function readScenario() {
   try { return JSON.parse(window.localStorage.getItem(SIM_SCENARIO_STORAGE_KEY)) || 'ok'; } catch { return 'ok'; }
 }
 
+/** Modo fiscal efectivo de una venta: nunca 'live' para una venta simulada ni con Point real de Preview. */
+export function fiscalModeForSale(mode, sale, { previewRealPointActive = POINT_PREVIEW && Boolean(previewRealPoint.get()) } = {}) {
+  if (mode !== 'live') return mode;
+  if (sale?.simulated || previewRealPointActive) return 'simulated';
+  return mode;
+}
+
 export function buildFlowForMode(mode, businessId) {
   if (mode === 'off' || !businessId) return null;
   const emitter = mode === 'live' ? createLiveEmitter({ businessId }) : createSimulatedEmitter({ businessId });
@@ -58,8 +66,9 @@ export function buildFlowForMode(mode, businessId) {
 }
 
 export default function TpvFiscalAutoBoleta({ businessId, sale, saleContext, onPlainTicket, onSettled, mode = FISCAL_AUTO_MODE, deps }) {
-  // Una venta simulada (Point simulada de Preview) nunca llega a DTE Core.
-  const effectiveMode = sale?.simulated && mode === 'live' ? 'simulated' : mode;
+  // Una venta simulada (Point simulada de Preview) nunca llega a DTE Core, y
+  // con Point REAL activado en una Preview la boleta sigue siendo simulada.
+  const effectiveMode = fiscalModeForSale(mode, sale);
   const built = useMemo(() => deps || buildFlowForMode(effectiveMode, businessId), [deps, effectiveMode, businessId]);
   const [state, setState] = useState({ phase: PHASE.CHECKING });
   const [busy, setBusy] = useState(false);
