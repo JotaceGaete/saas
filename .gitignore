@@ -1,7 +1,6 @@
 .DS_Store
 node_modules
 .idea
-package-lock.json
 /build
 .vscode/
 .idea/
@@ -29,3 +28,5 @@ dist/
 *.bak
 *.sql.bak
 *.sql.dump
+
+supabase/functions/fiscal-emit/scripts/postgrest-contract/.postgrest.log

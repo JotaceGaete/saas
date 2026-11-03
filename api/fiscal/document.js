@@ -1,11 +1,12 @@
 // Read-only fiscal document metadata for an existing CRM invoice.
 // This endpoint never issues a DTE or retrieves provider credentials.
+// Access: active fiscal role on the business (see siisolutions-fiscal-role-guard.js).
 import { createClient } from '@supabase/supabase-js';
-import { createBusinessOwnerGuard } from '../_lib/siisolutions-owner-guard.js';
+import { createFiscalRoleGuard } from '../_lib/siisolutions-fiscal-role-guard.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
-export function createFiscalDocumentHandler({ admin, assertOwner, getAuthFailure }) {
+export function createFiscalDocumentHandler({ admin, assertAccess, getAuthFailure }) {
   return async function handle(req, res) {
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('Allow', 'GET');
@@ -19,7 +20,7 @@ export function createFiscalDocumentHandler({ admin, assertOwner, getAuthFailure
     if (!/^Bearer [^\s]+$/.test(authorization)) {
       return res.status(401).json({ error: 'AUTH_HEADER_INVALID_FORMAT' });
     }
-    const guard = await assertOwner({ bearer: authorization, businessId });
+    const guard = await assertAccess({ bearer: authorization, businessId });
     if (!guard.ok) return res.status(guard.status).json({ error: guard.status === 401 ? (getAuthFailure?.() || 'AUTH_IDENTITY_INVALID') : guard.error });
 
     const { data: invoice, error: invoiceError } = await admin.from('crm_invoices')
@@ -89,8 +90,8 @@ export default async function handler(req, res) {
     }
     return data.user.id;
   };
-  const assertOwner = createBusinessOwnerGuard({ authenticate, admin });
-  return createFiscalDocumentHandler({ admin, assertOwner, getAuthFailure: () => authFailure })(
+  const assertAccess = createFiscalRoleGuard({ authenticate, admin });
+  return createFiscalDocumentHandler({ admin, assertAccess, getAuthFailure: () => authFailure })(
     Object.assign(req, { query: req.query || Object.fromEntries(new URL(req.url, 'http://x').searchParams) }),
     res,
   );
