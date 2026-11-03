@@ -131,6 +131,7 @@ export default function CrmFiscalThermalPrint({ businessId, invoiceId }) {
       </div>
       <p className="mt-1 text-xs text-amber-800">
         La resolución es opcional en una reimpresión: si la dejas vacía, el ticket dice «Res. SII: por confirmar».
+        Con la emisión real activada, el TPV no emite boletas nuevas en este equipo hasta que la resolución esté ingresada.
       </p>
 
       <div className="mt-3 flex flex-wrap gap-2">

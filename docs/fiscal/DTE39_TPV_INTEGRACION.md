@@ -25,6 +25,55 @@ desplegado, ninguna boleta emitida.** La emisión sigue apagada en todas las cap
 8. Descarga de PDF/XML: `api/fiscal/download` (rol fiscal activo). Impresión térmica: PR #112,
    independiente.
 
+## Flujo automático: venta cobrada -> boleta -> impresora (2026-11-03)
+
+Un solo flujo, sin pasos manuales: al confirmar una venta cobrada, el TPV emite la boleta DTE 39 y
+envía la representación 80 mm con el timbre PDF417 a la impresora configurada, por la misma ruta del
+ticket (Walinka Print Connector de PR #111, o QZ Tray). No hay otro sistema de impresión.
+
+| Pieza | Archivo |
+|---|---|
+| Orquestador (sin React) | `src/services/fiscalSaleFlow.js` |
+| Emisores: real (fiscal-emit + `/api/fiscal/download`) y simulado | `src/services/fiscalEmitters.js` |
+| Boleta simulada (emisor ficticio 11.111.111-1, folios 900001+) | `src/lib/fiscal/dte/simulatedDte.js` |
+| Impresión desde el XML (PR #118, Star con ESC * 32) | `printIssuedBoleta` en `src/services/fiscalThermalPrintService.js` |
+| UI en el ticket del TPV | `src/pages/crm/components/TpvFiscalAutoBoleta.jsx` |
+| Modo | `src/services/fiscalAutoMode.js` (`VITE_FISCAL_AUTO_EMIT`) |
+
+Modo (`VITE_FISCAL_AUTO_EMIT`): `off` por defecto en producción (el TPV imprime el ticket de siempre);
+`simulated` por defecto en el alias de rama de una Preview (nunca en un dominio de producción);
+`live` solo si se pone a mano. Con el modo encendido, la boleta reemplaza al ticket; si la venta no
+lleva boleta (no pagada por completo, Point sin confirmar, otra fecha) se imprime el ticket normal.
+
+Garantías:
+
+- **Una emisión por venta.** El servidor reclama la venta de forma atómica (una fila por venta). En
+  el navegador, dos inicios simultáneos comparten un solo envío, y una marca local "ya se envió"
+  impide reenviar solo tras una recarga si no hubo confirmación (`ATTEMPT_ALREADY_SENT`); reenviar
+  es una acción explícita y solo procede si el servidor no tiene fila de esa venta.
+- **Sin reintentos de resultados inciertos.** `unknown`, `sending` o respuesta perdida bloquean; se
+  concilia. Al conciliar, la boleta se imprime con el folio recuperado.
+- **Reimpresión sin folio nuevo.** El original se imprime con clave fija `fiscal:<negocio>:<folio>:boleta`
+  (el conector descarta duplicados; reintentar tras un fallo usa la misma clave). Reimprimir usa
+  una clave nueva y sale rotulada REIMPRESION. Imprimir nunca llama a DTE Core.
+- **Venta reabierta.** Se parte del estado del servidor: si ya hay boleta no se emite; si ya se
+  imprimió en este equipo no se imprime sola de nuevo.
+- **Resolución SII.** En modo real, si falta la resolución en el equipo (Impresión > boleta), no se
+  emite (`RESOLUCION_REQUIRED`): no se emite una boleta que no se pueda imprimir completa.
+- La simulación sale rotulada SIMULACION / SIN VALOR TRIBUTARIO arriba y abajo, con emisor ficticio
+  y folios fuera del CAF de producción (51104-52103). El rótulo lo decide el XML, no quien llama.
+
+Prueba en Preview (simulado): el panel de la boleta permite elegir el escenario de la próxima venta
+(emisión correcta, respuesta perdida, rechazo) y conciliar una respuesta perdida.
+
+Pruebas: `src/services/fiscalSaleFlow.test.js`, `src/services/fiscalSaleFlow.e2e.test.js` (hasta los
+bytes que recibe el conector), `src/pages/crm/components/TpvFiscalAutoBoleta.test.jsx`,
+`src/lib/fiscal/dte/simulatedDte.test.js`, `src/services/fiscalAutoMode.test.js`.
+
+Para pasar a `live` (requiere autorización de Juan): migraciones P0-E aplicadas, función
+`fiscal-emit` desplegada con `FISCAL_PROVIDER=dtecore`, credencial DTE Core del comercio, emisor
+verificado, control global encendido, resolución SII ingresada y `VITE_FISCAL_AUTO_EMIT=live`.
+
 ## Contrato DTE Core verificado
 
 | Punto | Evidencia | Decisión |

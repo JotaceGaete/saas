@@ -21,6 +21,8 @@ import { printService } from '../lib/printing/printService';
 import { buildPrinterConfigKey, readPrinterConfig } from '../lib/printing/printerConfigStorage';
 import { buildConnectorConfigKey, readConnectorConfig } from '../lib/printing/connectorConfigStorage';
 import { buildPrintTarget, buildPrintKey } from '../lib/printing/printRouting';
+import { isSimulatedDte } from '../lib/fiscal/dte/simulatedDte';
+import { AUTO_TIMBRE_STRATEGY_ID, MANUAL_TIMBRE_STRATEGY_IDS } from '../lib/printing/receipts/buildBoletaReceipt';
 
 // Alias de rama de Vercel (saas-git-<rama>-<equipo>.vercel.app), salvo el de
 // main, que sirve lo mismo que producción. Los dominios propios
@@ -92,12 +94,12 @@ function loadSource({ businessId, invoiceId, file }) {
   return file ? loadVerifiedDteFromFile(file) : loadVerifiedDte({ businessId, invoiceId });
 }
 
-function resolveTarget(businessId, kind, folio) {
+function resolveTarget(businessId, kind, folio, idempotencyKey) {
   const printerConfig = readPrinterConfig(buildPrinterConfigKey(businessId));
   const target = buildPrintTarget({
     connectorConfig: readConnectorConfig(buildConnectorConfigKey(businessId)),
     qzPrinterName: printerConfig.printerName,
-    idempotencyKey: buildPrintKey(kind, `${businessId}:${folio}`),
+    idempotencyKey: idempotencyKey || buildPrintKey(kind, `${businessId}:${folio}`),
   });
   if (target.error) throw Object.assign(new Error(MESSAGES.MISSING_PRINTER), { code: 'MISSING_PRINTER' });
   return { printerConfig, target };
@@ -151,6 +153,69 @@ export async function printTimbreDiagnostic({ businessId, invoiceId, file }) {
     });
     await send(receipt, target);
     return { ok: true, folio: dte.folio, timbres: timbres.map(({ strategyId, widthMm, heightMm, widthDots }) => ({ strategyId, widthMm, heightMm, widthDots })) };
+  } catch (err) {
+    return toFailure(err);
+  }
+}
+
+// Ajustes de la representación guardados en este equipo desde /crm/impresion
+// (CrmFiscalThermalPrint): resolución SII y modo del timbre. La resolución
+// es un dato del emisor; vive aquí hasta que la configuración del emisor la
+// guarde en el servidor.
+export const FISCAL_RESOLUCION_STORAGE_KEY = 'walinka:fiscal:resolucion-prueba';
+export const FISCAL_TIMBRE_STRATEGY_STORAGE_KEY = 'walinka:fiscal:timbre-strategy:v2';
+
+function readStoredJson(key, fallback) {
+  try {
+    const raw = globalThis.localStorage?.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+export function readFiscalPrintSettings() {
+  const res = readStoredJson(FISCAL_RESOLUCION_STORAGE_KEY, null);
+  const strategy = readStoredJson(FISCAL_TIMBRE_STRATEGY_STORAGE_KEY, AUTO_TIMBRE_STRATEGY_ID);
+  return {
+    resolucion: { numero: String(res?.numero ?? '').trim(), anio: String(res?.anio ?? '').trim() },
+    timbreStrategyId: MANUAL_TIMBRE_STRATEGY_IDS.includes(strategy) ? strategy : AUTO_TIMBRE_STRATEGY_ID,
+  };
+}
+
+export function hasValidResolucion(resolucion) {
+  return /^\d{1,6}$/.test(String(resolucion?.numero ?? '')) && /^\d{4}$/.test(String(resolucion?.anio ?? ''));
+}
+
+/**
+ * Imprime la boleta recién emitida (original) o una reimpresión, desde los
+ * bytes del XML. Usado por el flujo automático del TPV (fiscalSaleFlow).
+ * Nunca emite ni llama al proveedor. Si el XML es una simulación, el papel
+ * sale rotulado SIMULACION / SIN VALOR TRIBUTARIO: lo decide el documento,
+ * no quien llama.
+ * @param {{ businessId: string, bytes: ArrayBuffer|Uint8Array, reprint?: boolean, idempotencyKey?: string, settings?: ReturnType<typeof readFiscalPrintSettings>, sender?: Function }} params
+ */
+export async function printIssuedBoleta({ businessId, bytes, reprint = false, idempotencyKey, settings = readFiscalPrintSettings(), sender = send }) {
+  try {
+    const { dte, tedVerified } = await verifyDteBytes(bytes);
+    const simulation = isSimulatedDte(dte);
+    const { printerConfig, target } = resolveTarget(businessId, reprint ? 'fiscal-reprint' : 'fiscal', dte.folio, idempotencyKey);
+    const { receipt, timbre } = await buildBoletaReceipt({
+      dte,
+      tedVerified,
+      resolucion: settings.resolucion,
+      timbreStrategyId: resolveTimbreStrategyId(
+        { printerName: target.printerName, imageMode: printerConfig.imageMode },
+        settings.timbreStrategyId,
+      ),
+      reprint,
+      simulation,
+      paperWidthMm: printerConfig.paperWidthMm,
+      autoCut: printerConfig.autoCut,
+      cutStrategyId: printerConfig.cutStrategyId,
+    });
+    await sender(receipt, target);
+    return { ok: true, folio: dte.folio, simulation, printerName: target.printerName, timbre };
   } catch (err) {
     return toFailure(err);
   }

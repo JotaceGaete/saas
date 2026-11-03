@@ -26,6 +26,7 @@ import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
 import { buildConnectorConfigKey, readConnectorConfig } from 'lib/printing/connectorConfigStorage';
 import { buildPrintTarget, resolvePrintRoute, ROUTE } from 'lib/printing/printRouting';
+import { FISCAL_AUTO_MODE } from 'services/fiscalAutoMode';
 
 // CAJA-CIERRE-CONCILIACION-1 -- 'card' genérico se reemplaza por
 // debit_card/credit_card para ventas NUEVAS (permite conciliar cada
@@ -406,8 +407,20 @@ function CrmTerminalUI() {
     const ticketId = String(ticketData.sale?.id ?? ticketData.sale?.invoice_number);
     if (!ticketId || printedTicketRef.current === ticketId) return;
     printedTicketRef.current = ticketId;
+    // Con el flujo de boleta activo, la boleta (con timbre) reemplaza al
+    // ticket: lo decide TpvFiscalAutoBoleta, que pide el ticket normal solo
+    // si la venta no lleva boleta (onPlainTicket).
+    if (FISCAL_AUTO_MODE !== 'off' && ticketData.sale?.id) return;
     printCurrentTicket();
   }, [ticketData, printCurrentTicket]);
+
+  const fiscalSaleContext = useMemo(() => (ticketData ? {
+    items: ticketData.items,
+    payments: ticketData.payments,
+    total: ticketData.total,
+    discountAmount: ticketData.discountAmount,
+    pendingBalance: ticketData.pendingBalance,
+  } : null), [ticketData]);
 
   // Debounce search → debouncedSearch
   useEffect(() => {
@@ -2817,6 +2830,8 @@ function CrmTerminalUI() {
           printStatus={printStatus}
           printErrorMessage={printErrorMessage}
           onConfigurePrinter={handleGoToPrintSettings}
+          fiscalSaleContext={fiscalSaleContext}
+          onPlainTicket={printCurrentTicket}
         />
       )}
 

@@ -4,6 +4,8 @@ import ReactDOM from 'react-dom';
 import Icon from 'components/AppIcon';
 import { formatMoney } from '../../../utils/formatMoney';
 import TpvFiscalEmitPanel, { FISCAL_EMIT_ENABLED } from './TpvFiscalEmitPanel';
+import TpvFiscalAutoBoleta from './TpvFiscalAutoBoleta';
+import { FISCAL_AUTO_MODE } from '../../../services/fiscalAutoMode';
 
 const PAYMENT_LABELS = {
   cash: 'Efectivo',
@@ -69,12 +71,18 @@ export default function CrmThermalTicket({
   printStatus = 'idle',
   printErrorMessage = null,
   onConfigurePrinter,
+  // Flujo automático de boleta (services/fiscalSaleFlow.js). Con el modo
+  // apagado no se monta y el ticket se comporta igual que antes.
+  fiscalAutoMode = FISCAL_AUTO_MODE,
+  fiscalSaleContext = null,
+  onPlainTicket,
 }) {
+  const fiscalAuto = fiscalAutoMode !== 'off' && Boolean(sale?.id);
   // Pilot-only fiscal status. This never issues a DTE or allocates a folio.
   const fiscalPilotBusinessId = 'cda904a1-e331-4bd4-9f33-a6715687d3dd';
   // Con la emisión DTE 39 activada (VITE_FISCAL_EMIT_ENABLED), el panel piloto antiguo se oculta:
   // sus acciones escriben en el pipeline fiscal.operations, que bloquea la emisión nueva de la venta.
-  const showFiscalPilot = business?.id === fiscalPilotBusinessId && !FISCAL_EMIT_ENABLED;
+  const showFiscalPilot = business?.id === fiscalPilotBusinessId && !FISCAL_EMIT_ENABLED && fiscalAutoMode === 'off';
   const [fiscalCheck, setFiscalCheck] = useState({ status: 'idle', data: null });
   useEffect(() => {
     if (!showFiscalPilot || !sale?.id) return;
@@ -580,7 +588,12 @@ export default function CrmThermalTicket({
             </section>
           )}
 
-          {FISCAL_EMIT_ENABLED && sale?.id && (
+          {fiscalAuto && (
+            <TpvFiscalAutoBoleta businessId={business?.id} sale={sale} saleContext={fiscalSaleContext}
+              onPlainTicket={onPlainTicket} mode={fiscalAutoMode} />
+          )}
+
+          {!fiscalAuto && FISCAL_EMIT_ENABLED && sale?.id && (
             <TpvFiscalEmitPanel saleId={sale.id} businessId={business?.id} total={total} />
           )}
 
@@ -601,7 +614,7 @@ export default function CrmThermalTicket({
               }}
             >
               <Icon name="Printer" size={15} color="currentColor" />
-              Reimprimir
+              {fiscalAuto ? 'Ticket de venta' : 'Reimprimir'}
             </button>
             <button
               onClick={onNewSale}

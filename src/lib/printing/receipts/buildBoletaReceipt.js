@@ -184,6 +184,13 @@ export function buildReprintNotice(dte) {
   };
 }
 
+/** Leyenda de una boleta simulada (flujo de prueba en Preview, sin DTE Core). */
+export const SIMULATION_NOTICE = Object.freeze([
+  Object.freeze({ type: 'text', text: 'SIMULACION', align: 'center', bold: true, double: true }),
+  Object.freeze({ type: 'text', text: 'SIN VALOR TRIBUTARIO', align: 'center', bold: true }),
+  Object.freeze({ type: 'text', text: 'No fue enviada al SII', align: 'center' }),
+]);
+
 /** "77804207-K" -> "77.804.207-K" */
 export function formatRut(rut) {
   const m = /^(\d{1,8})-([\dK])$/i.exec(String(rut || '').trim());
@@ -244,6 +251,7 @@ export async function buildTimbreImage(tedXml, strategyId = DEFAULT_TIMBRE_STRAT
  * @param {string} [params.nombreFantasia]
  * @param {string} [params.copyLabel] - leyenda superior opcional (p. ej. "PRUEBA DE IMPRESION")
  * @param {boolean} [params.reprint] - agrega las leyendas de reimpresión arriba y abajo (buildReprintNotice)
+ * @param {boolean} [params.simulation] - boleta SIMULADA (Preview): leyendas SIN VALOR TRIBUTARIO arriba y abajo; admite resolución vacía
  * @param {string} [params.timbreStrategyId]
  * @param {number} [params.paperWidthMm]
  * @param {boolean} [params.autoCut]
@@ -259,6 +267,7 @@ export async function buildBoletaReceipt({
   nombreFantasia,
   copyLabel,
   reprint = false,
+  simulation = false,
   timbreStrategyId = DEFAULT_TIMBRE_STRATEGY_ID,
   paperWidthMm = 80,
   autoCut = true,
@@ -273,7 +282,8 @@ export async function buildBoletaReceipt({
   // Una boleta nueva nunca sale sin resolución. Una REIMPRESIÓN de un
   // documento ya aceptado puede salir mientras el contador confirma el dato,
   // y lo dice en el papel en vez de inventarlo.
-  if (!hasResolucion && (!reprint || resNumero || resAnio)) {
+  // Una SIMULACIÓN tampoco la exige: no es un documento tributario.
+  if (!hasResolucion && (!(reprint || simulation) || resNumero || resAnio)) {
     throw new BoletaReceiptError('RESOLUCION_REQUIRED');
   }
   if (paperWidthMm !== 80) throw new BoletaReceiptError('PAPER_WIDTH_UNSUPPORTED');
@@ -283,6 +293,7 @@ export async function buildBoletaReceipt({
   const { emisor, totales } = dte;
   const notice = reprint ? buildReprintNotice(dte) : null;
   const lines = [];
+  if (simulation) lines.push(...SIMULATION_NOTICE, { type: 'divider' });
   if (notice) lines.push(...notice.header, { type: 'divider' });
   if (copyLabel) lines.push({ type: 'text', text: clean(copyLabel), align: 'center', bold: true });
   if (nombreFantasia) lines.push({ type: 'text', text: clean(nombreFantasia), align: 'center', bold: true, double: true });
@@ -323,6 +334,7 @@ export async function buildBoletaReceipt({
   lines.push({ type: 'text', text: hasResolucion ? `Res. ${resNumero} de ${resAnio}` : 'Res. SII: por confirmar', align: 'center' });
   lines.push({ type: 'text', text: 'Verifique documento: www.sii.cl', align: 'center' });
   if (notice) lines.push(...notice.footer);
+  if (simulation) lines.push({ type: 'text', text: '' }, ...SIMULATION_NOTICE);
 
   return {
     receipt: {
