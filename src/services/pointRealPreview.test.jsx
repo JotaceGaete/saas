@@ -9,7 +9,7 @@ const invoke = vi.fn();
 vi.mock('../lib/supabase', () => ({ supabase: { functions: { invoke: (...a) => invoke(...a) }, auth: { getSession: vi.fn() }, from: vi.fn() } }));
 
 const {
-  createPointClient, createPreviewRealPoint, resolvePointMode, PREVIEW_REAL_POINT_KEY, PREVIEW_REAL_POINT_MAX_AMOUNT, PREVIEW_REAL_POINT_TTL_MS,
+  createPointClient, createPreviewPointDemo, resolvePointMode, PREVIEW_POINT_DEMO_KEY, PREVIEW_REAL_POINT_MAX_AMOUNT, PREVIEW_POINT_DEMO_TTL_MS,
 } = await import('./pointClient');
 const { default: TpvFiscalAutoBoleta, fiscalModeForSale } = await import('../pages/crm/components/TpvFiscalAutoBoleta');
 const { buildConnectorConfigKey, writeConnectorConfig } = await import('../lib/printing/connectorConfigStorage');
@@ -29,29 +29,31 @@ beforeEach(() => { localStorage.clear(); invoke.mockReset(); });
 afterEach(() => cleanup());
 
 describe('modo Point', () => {
-  it('Preview: simulado salvo que el cajero active Point real; producción siempre real', () => {
-    expect(resolvePointMode({}, PREVIEW_HOST)).toBe('simulated');
-    expect(resolvePointMode({}, PREVIEW_HOST, { realOptIn: true })).toBe('live');
-    expect(resolvePointMode({ VITE_VERCEL_ENV: 'preview' }, 'saas-abc123-juan-s-projects-afd7e18e.vercel.app', { realOptIn: true })).toBe('live');
+  it('Preview: Point REAL por defecto, simulada solo en modo DEMO; producción siempre real', () => {
+    expect(resolvePointMode({}, PREVIEW_HOST)).toBe('live');
+    expect(resolvePointMode({ VITE_VERCEL_ENV: 'preview' }, 'saas-abc123-juan-s-projects-afd7e18e.vercel.app')).toBe('live');
+    expect(resolvePointMode({}, PREVIEW_HOST, { demoOptIn: true })).toBe('simulated');
     expect(resolvePointMode({ VITE_VERCEL_ENV: 'production' }, 'go.walinka.com')).toBe('live');
-    expect(resolvePointMode({ VITE_VERCEL_ENV: 'production' }, 'go.walinka.com', { realOptIn: false })).toBe('live');
+    expect(resolvePointMode({ VITE_VERCEL_ENV: 'production' }, 'go.walinka.com', { demoOptIn: true })).toBe('live');
   });
 
-  it('la activación de Point real caduca sola y se renueva con el uso', () => {
+  it('el modo DEMO caduca solo, se renueva con el uso y borra la opción antigua', () => {
+    localStorage.setItem('walinka:point-preview-real', '{"enabledAt":1}');
     let t = 1_000_000;
-    const opt = createPreviewRealPoint({ storage: localStorage, now: () => t });
+    const opt = createPreviewPointDemo({ storage: localStorage, now: () => t });
+    expect(localStorage.getItem('walinka:point-preview-real')).toBeNull();
     expect(opt.get()).toBeNull();
     opt.enable();
     expect(opt.get()).not.toBeNull();
-    t += PREVIEW_REAL_POINT_TTL_MS - 1;
+    t += PREVIEW_POINT_DEMO_TTL_MS - 1;
     opt.touch();
-    t += PREVIEW_REAL_POINT_TTL_MS - 1;
+    t += PREVIEW_POINT_DEMO_TTL_MS - 1;
     expect(opt.get()).not.toBeNull();
     t += 2;
     expect(opt.get()).toBeNull();
     opt.enable();
     opt.disable();
-    expect(localStorage.getItem(PREVIEW_REAL_POINT_KEY)).toBeNull();
+    expect(localStorage.getItem(PREVIEW_POINT_DEMO_KEY)).toBeNull();
   });
 
   it('con Point real activo, el cobro va a la integración real de Mercado Pago', async () => {
@@ -86,16 +88,15 @@ describe('modo Point', () => {
 });
 
 describe('boleta con Point real en Preview', () => {
-  it('el modo fiscal nunca es real con Point real de Preview ni con una venta simulada', () => {
-    expect(fiscalModeForSale('live', { id: 'x' }, { previewRealPointActive: true })).toBe('simulated');
-    expect(fiscalModeForSale('live', { id: 'x', simulated: true }, { previewRealPointActive: false })).toBe('simulated');
-    expect(fiscalModeForSale('simulated', { id: 'x' }, { previewRealPointActive: true })).toBe('simulated');
-    expect(fiscalModeForSale('off', { id: 'x' }, { previewRealPointActive: true })).toBe('off');
-    expect(fiscalModeForSale('live', { id: 'x' }, { previewRealPointActive: false })).toBe('live');
+  it('en una Preview el modo fiscal nunca es real (DTE Core y SII desactivados), ni para una venta simulada', () => {
+    expect(fiscalModeForSale('live', { id: 'x' }, { preview: true })).toBe('simulated');
+    expect(fiscalModeForSale('live', { id: 'x', simulated: true }, { preview: false })).toBe('simulated');
+    expect(fiscalModeForSale('simulated', { id: 'x' }, { preview: true })).toBe('simulated');
+    expect(fiscalModeForSale('off', { id: 'x' }, { preview: true })).toBe('off');
+    expect(fiscalModeForSale('live', { id: 'x' }, { preview: false })).toBe('live');
   });
 
   it('venta pagada con Point real: boleta SIMULADA impresa sola, sin llamar a DTE Core (fiscal-emit)', async () => {
-    createPreviewRealPoint({ storage: localStorage }).enable();
     writeConnectorConfig(buildConnectorConfigKey(BIZ), {
       enabled: true, token: 't'.repeat(40), baseUrl: 'http://127.0.0.1:47801', printerName: 'Star TSP100 Cutter (TSP143)',
     });
@@ -110,7 +111,7 @@ describe('boleta con Point real en Preview', () => {
       items: [{ product_id: 'p1', name: 'Prueba', unit_price: 500, quantity: 2 }],
       payments: [{ method: 'mercado_pago', amount: 1000 }], total: 1000, discountAmount: 0, pendingBalance: 0, saleNumber: 60,
     };
-    // mode="live" a propósito: aun así, con Point real de Preview la boleta queda simulada.
+    // mode="live" a propósito: en una Preview (jsdom = localhost) la boleta queda simulada igual.
     render(<TpvFiscalAutoBoleta businessId={BIZ} sale={{ id: 'real-point-sale', invoice_number: 60 }} saleContext={ctx} mode="live" />);
     await screen.findByText(/Boleta 900001 emitida y enviada a la impresora/);
     expect(screen.getByText(/SIMULACIÓN \(sin valor tributario\)/)).toBeInTheDocument();

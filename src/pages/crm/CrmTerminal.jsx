@@ -6,7 +6,7 @@ import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
 import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, holdPosSale, listHeldPosSales, claimHeldPosSale, releaseClaimedPosSale, consumeClaimedPosSale, discardHeldPosSale, getSaleNumber } from '../../services/crmService';
-import { pointClient, previewRealPoint, POINT_PREVIEW, PREVIEW_REAL_POINT_MAX_AMOUNT } from '../../services/pointClient';
+import { pointClient, previewPointDemo, POINT_PREVIEW, PREVIEW_REAL_POINT_MAX_AMOUNT } from '../../services/pointClient';
 import { POINT_SIM_SCENARIO_KEY, POINT_SIM_SCENARIOS, POINT_SIM_SCENARIO_LABELS } from '../../services/pointSimulator';
 import { clearPendingFiscalSale, listPendingFiscalSales, savePendingFiscalSale, SETTLED_PHASES } from '../../services/fiscalPendingSales';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
@@ -318,7 +318,8 @@ function CrmTerminalUI() {
   // Boletas que no terminaron en este equipo (TPV cerrado o recargado a mitad
   // del flujo). Se recuperan reabriendo la venta: el flujo fiscal decide qué falta.
   const [pendingFiscal, setPendingFiscal] = useState([]);
-  // Preview: Point simulada por defecto; Point REAL solo si el cajero lo activa aquí.
+  // Preview: Point REAL por defecto (cobro limitado, boleta simulada); el
+  // simulador solo con el modo DEMO, que el cajero activa aquí.
   const [pointModeView, setPointModeView] = useState(() => pointClient.mode);
   const [pointSimScenario, setPointSimScenario] = useState(() => {
     try { return JSON.parse(localStorage.getItem(POINT_SIM_SCENARIO_KEY)) || 'approved'; } catch { return 'approved'; }
@@ -1261,20 +1262,8 @@ function CrmTerminalUI() {
   // deshabilitado) y deja una venta nueva con claves nuevas.
   const switchPointMode = useCallback((toReal) => {
     if (!POINT_PREVIEW || pointOperation?.operation_id) return;
-    if (toReal) {
-      const ok = window.confirm(
-        'Activar Point REAL en este navegador\n\n'
-        + '• El cobro se envía a tu máquina Mercado Pago Point y se carga de verdad a la tarjeta.\n'
-        + `• Máximo $${PREVIEW_REAL_POINT_MAX_AMOUNT.toLocaleString('es-CL')} por cobro.\n`
-        + '• La boleta sigue SIMULADA: no se usa DTE Core ni se envía nada al SII.\n'
-        + '• Se desactiva sola tras 2 horas sin uso.\n\n'
-        + '¿Activar Point REAL?',
-      );
-      if (!ok) return;
-      previewRealPoint.enable();
-    } else {
-      previewRealPoint.disable();
-    }
+    if (toReal) previewPointDemo.disable();
+    else previewPointDemo.enable();
     setPointModeView(pointClient.mode);
     pointCreateKeyRef.current = null;
     setPointLastResult(null);
@@ -2383,7 +2372,9 @@ function CrmTerminalUI() {
                                 disabled={pointLoading || !pointTerminalId || pointPreference?.verification_status !== 'verified' || pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode !== 'PDV' || total <= 0}
                                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-300 px-3 py-2.5 text-sm font-black text-gray-950 hover:bg-yellow-200 disabled:bg-yellow-100 disabled:text-gray-400">
                                 {pointLoading ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Zap" size={15} />}
-                                Enviar {fmt(total, business?.currency)} a la Point
+                                {pointClient.mode === 'simulated'
+                                  ? `DEMO: simular cobro de ${fmt(total, business?.currency)} (no usa la Point)`
+                                  : `Enviar ${fmt(total, business?.currency)} a la Point`}
                               </button>
                             </>
                           ) : (
@@ -2430,20 +2421,20 @@ function CrmTerminalUI() {
                           )}
                           {POINT_PREVIEW && pointModeView === 'live' && pointClient.mode === 'live' && (
                             <div data-testid="point-real-banner" className="rounded-xl border border-red-300 bg-red-50 px-3 py-2.5 text-[11px] text-red-900">
-                              <p className="font-black">Point REAL · cobro real con tarjeta · Preview</p>
+                              <p className="font-black">Point REAL · Mercado Pago · cobro real con tarjeta</p>
                               <p className="mt-0.5">
-                                Máximo ${PREVIEW_REAL_POINT_MAX_AMOUNT.toLocaleString('es-CL')} por cobro. La boleta es SIMULADA: sin DTE Core ni SII.
+                                Preview: máximo ${PREVIEW_REAL_POINT_MAX_AMOUNT.toLocaleString('es-CL')} por cobro. La boleta es SIMULADA: sin DTE Core ni SII.
                               </p>
-                              <button type="button" onClick={() => switchPointMode(false)} disabled={Boolean(pointOperation?.operation_id)}
+                              <button type="button" data-testid="point-demo-enable" onClick={() => switchPointMode(false)} disabled={Boolean(pointOperation?.operation_id)}
                                 className="mt-1.5 rounded-lg border border-red-300 bg-white px-2.5 py-1 text-[10px] font-bold text-red-700 hover:bg-red-100 disabled:opacity-40">
-                                Volver a Point simulada
+                                Usar modo DEMO (Point simulada, sin cobro)
                               </button>
                             </div>
                           )}
                           {pointClient.mode === 'simulated' && (
                             <div data-testid="point-sim-banner" className="rounded-xl border border-sky-300 bg-sky-50 px-3 py-2.5 text-[11px] text-sky-900">
-                              <p className="font-black">Point SIMULADA · Preview · sin cobro real</p>
-                              <p className="mt-0.5">No se contacta a Mercado Pago ni a ninguna terminal. La venta queda solo en este navegador.</p>
+                              <p className="font-black">MODO DEMO · Point SIMULADA · no es una prueba real</p>
+                              <p className="mt-0.5">No se contacta a Mercado Pago ni a tu máquina. La venta queda solo en este navegador.</p>
                               <label className="mt-1.5 flex items-center gap-1.5">
                                 Resultado del próximo cobro:
                                 <select value={pointSimScenario} disabled={Boolean(pointOperation?.operation_id)}
@@ -2458,7 +2449,7 @@ function CrmTerminalUI() {
                               {POINT_PREVIEW && (
                                 <button type="button" data-testid="point-real-enable" onClick={() => switchPointMode(true)} disabled={Boolean(pointOperation?.operation_id)}
                                   className="mt-1.5 rounded-lg border border-sky-400 bg-white px-2.5 py-1 text-[10px] font-bold text-sky-800 hover:bg-sky-100 disabled:opacity-40">
-                                  Usar Point REAL (cobro con tarjeta, boleta simulada)
+                                  Volver a Point REAL (Mercado Pago)
                                 </button>
                               )}
                             </div>
