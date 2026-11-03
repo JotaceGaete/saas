@@ -135,6 +135,22 @@ export function createLocalConnectorProvider({
       return body;
     },
 
+    /**
+     * ¿Hay algo escuchando en el puerto del conector, aunque no autorice este
+     * origen? Petición `no-cors` sin credenciales ni token: el navegador no
+     * deja leer la respuesta (opaca), solo saber si llegó. Sirve para
+     * distinguir «conector cerrado» de «conector abierto que no autoriza este
+     * sitio» (p. ej. una Preview que falta en AllowedOrigins).
+     */
+    async probeListening() {
+      try {
+        await fetchImpl(`${base}/v1/health`, { method: 'GET', mode: 'no-cors', credentials: 'omit', cache: 'no-store' });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+
     async disconnect() {
       connected = false;
     },

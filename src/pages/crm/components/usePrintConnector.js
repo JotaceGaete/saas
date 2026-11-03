@@ -47,7 +47,11 @@ export function usePrintConnector(businessId) {
   const paired = Boolean(config.token);
 
   const refresh = useCallback(async () => {
-    const state = await checkConnector({ provider, hasToken: Boolean(config.token) });
+    const state = await checkConnector({
+      provider,
+      hasToken: Boolean(config.token),
+      pageOrigin: typeof window !== 'undefined' ? window.location?.origin : null,
+    });
     setHealth(state.health);
     setHealthError(state.healthError);
     setPrinters(state.printers);

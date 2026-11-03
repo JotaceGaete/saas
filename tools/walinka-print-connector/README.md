@@ -179,6 +179,29 @@ y selftest del conector (53). No se ejecutó vitest ni `vite build` en este ento
   (solo desarrollo). **Un equipo de desarrollo con `localhost:5173` debe agregar ese flag**
   en `%LOCALAPPDATA%\WalinkaPrintConnector\config.json`, o `serve` no arrancará.
 
+## Previews de Vercel (pruebas)
+
+Una Preview (`https://saas-git-<rama>-juan-s-projects-afd7e18e.vercel.app`) no
+está en los orígenes de fábrica: el conector responde a `/v1/health` sin
+cabeceras CORS y el navegador bloquea la respuesta, así que Walinka dice que no
+encuentra el conector. Desde el PR #118, la pantalla de impresión lo distingue
+con una sonda `no-cors` (sin token) y muestra el origen exacto que falta.
+
+Para autorizar una Preview concreta, sin abrir CORS a otros dominios y sin
+recompilar el conector:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File tools\walinka-print-connector\scripts\autorizar-origen.ps1 -Origen "https://saas-git-<rama>-juan-s-projects-afd7e18e.vercel.app"
+```
+
+El script agrega solo ese origen exacto a `AllowedOrigins`, valida la
+configuración con el propio conector (si falla, restaura la copia `.bak`),
+reinicia el conector y muestra un código de emparejamiento. El token queda
+ligado a ese origen, así que hay que emparejar en la Preview. Para revocar:
+`-Quitar`. No se aceptan comodines: el conector solo compara orígenes exactos
+(`OriginPolicy.IsAllowed`). Chrome y Edge pueden pedir el permiso de acceso a
+la red local la primera vez que la Preview llama a `127.0.0.1`: hay que aceptarlo.
+
 ## Generar el instalador
 
 Requisitos en la máquina de build: .NET 8 SDK y Inno Setup 6 (`winget install JRSoftware.InnoSetup`).

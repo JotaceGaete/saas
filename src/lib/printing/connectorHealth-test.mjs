@@ -78,3 +78,39 @@ test('describeVerify: feedback visible para cada caso', () => {
   assert.equal(err.ok, false);
   assert.match(err.message, /^El conector respondió, pero no pudo listar las impresoras/);
 });
+
+test('Preview no autorizada: el conector escucha pero no autoriza el origen', async () => {
+  const origin = 'https://saas-git-rama-juan-s-projects-afd7e18e.vercel.app';
+  const state = await checkConnector({
+    provider: { ...provider({ connect: async () => { throw networkError(); } }), probeListening: async () => true },
+    hasToken: false,
+    pageOrigin: origin,
+  });
+  assert.equal(state.health, 'unreachable');
+  assert.equal(state.originBlocked, true);
+  assert.ok(state.healthError.includes(origin));
+  assert.match(state.healthError, /AllowedOrigins/);
+});
+
+test('Preview y conector cerrado: lo dice y nombra el origen y el permiso de red local', async () => {
+  const origin = 'https://saas-git-rama-juan-s-projects-afd7e18e.vercel.app';
+  const state = await checkConnector({
+    provider: { ...provider({ connect: async () => { throw networkError(); } }), probeListening: async () => false },
+    hasToken: false,
+    pageOrigin: origin,
+  });
+  assert.equal(state.originBlocked, false);
+  assert.match(state.healthError, /No se encontró el conector/);
+  assert.match(state.healthError, /red local/);
+});
+
+test('producción: sin sonda y con el mensaje de siempre', async () => {
+  let probed = false;
+  const state = await checkConnector({
+    provider: { ...provider({ connect: async () => { throw networkError(); } }), probeListening: async () => { probed = true; return true; } },
+    hasToken: false,
+    pageOrigin: 'https://go.ventalink.app',
+  });
+  assert.equal(probed, false);
+  assert.equal(state.healthError, 'No se encontró el conector de impresión en este equipo. Revisa que esté abierto.');
+});
