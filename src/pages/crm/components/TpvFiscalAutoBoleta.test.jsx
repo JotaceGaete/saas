@@ -59,4 +59,22 @@ describe('TpvFiscalAutoBoleta', () => {
     await waitFor(() => expect(screen.getByTestId('fiscal-auto-boleta').dataset.phase).toBe('printed'));
     expect(d.emitter.providerCalls).toBe(1);
   });
+
+  it('venta Point confirmada (forma de NV-0056): emite la boleta sola y no imprime el ticket comercial', async () => {
+    // Igual que finishPointUi del TPV tras la confirmación de Mercado Pago.
+    const pointCtx = {
+      items: [{ product_id: 'p-1', name: 'Producto', quantity: 2, unit_price: 500 }],
+      payments: [{ method: 'mercado_pago', amount: 1000 }],
+      total: 1000, discountAmount: 0, pendingBalance: 0, saleNumber: 56,
+    };
+    const onPlainTicket = vi.fn();
+    const d = deps({ printOk: () => true });
+    render(<TpvFiscalAutoBoleta businessId={BIZ} sale={{ id: '452df3d4-37cc-406f-a4ea-d118ecdce2e7', invoice_number: 56 }}
+      saleContext={pointCtx} deps={d} onPlainTicket={onPlainTicket} />);
+    await screen.findByText(/Boleta 900001 emitida y enviada a la impresora/);
+    expect(d.emitter.providerCalls).toBe(1);
+    expect(d.print).toHaveBeenCalledTimes(1);
+    expect(d.print.mock.calls[0][0]).toMatchObject({ saleNumber: 56, reprint: false });
+    expect(onPlainTicket).not.toHaveBeenCalled();
+  });
 });

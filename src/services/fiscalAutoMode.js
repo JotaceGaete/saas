@@ -13,8 +13,17 @@
 const PREVIEW_BRANCH_HOST = /^saas-git-(?!main-)[a-z0-9-]+\.vercel\.app$/i;
 const LOCAL_HOST = /^(localhost|127\.0\.0\.1)$/i;
 
+// VITE_VERCEL_ENV lo fija vite.config.js con el entorno real de la compilación
+// en Vercel. Manda sobre el hostname: una compilación de producción nunca es
+// Preview (aunque se abra por un alias), y una de Preview lo es por cualquier URL.
 export function isPreviewLike(env = {}, hostname = '') {
+  if (env.VITE_VERCEL_ENV === 'production') return false;
   return env.VITE_VERCEL_ENV === 'preview' || PREVIEW_BRANCH_HOST.test(String(hostname || '')) || LOCAL_HOST.test(String(hostname || ''));
+}
+
+function isPreviewDeployment(env = {}, hostname = '') {
+  if (env.VITE_VERCEL_ENV === 'production') return false;
+  return env.VITE_VERCEL_ENV === 'preview' || PREVIEW_BRANCH_HOST.test(String(hostname || ''));
 }
 
 export function resolveFiscalAutoMode(env = {}, hostname = '') {
@@ -22,7 +31,7 @@ export function resolveFiscalAutoMode(env = {}, hostname = '') {
   if (raw === 'off') return 'off';
   if (raw === 'live') return 'live';
   if (raw === 'simulated') return isPreviewLike(env, hostname) ? 'simulated' : 'off';
-  return PREVIEW_BRANCH_HOST.test(String(hostname || '')) || env.VITE_VERCEL_ENV === 'preview' ? 'simulated' : 'off';
+  return isPreviewDeployment(env, hostname) ? 'simulated' : 'off';
 }
 
 export const FISCAL_AUTO_MODE = resolveFiscalAutoMode(

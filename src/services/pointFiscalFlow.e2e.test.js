@@ -79,6 +79,9 @@ describe('Point simulado solo en Preview', () => {
     expect(resolvePointMode({ VITE_POINT_MODE: 'simulated' }, 'go.walinka.com')).toBe('live');
     expect(resolvePointMode({}, 'saas-git-claude-project-thread-x9ut7z-juan-s-projects-afd7e18e.vercel.app')).toBe('simulated');
     expect(resolvePointMode({ VITE_POINT_MODE: 'live' }, 'saas-git-rama-juan-s-projects-afd7e18e.vercel.app')).toBe('live');
+    // URL del deployment de una Preview: decide el entorno de compilación.
+    expect(resolvePointMode({ VITE_VERCEL_ENV: 'preview' }, 'saas-7fhdnp8ph-juan-s-projects-afd7e18e.vercel.app')).toBe('simulated');
+    expect(resolvePointMode({ VITE_VERCEL_ENV: 'production' }, 'saas-git-rama-juan-s-projects-afd7e18e.vercel.app')).toBe('live');
   });
 
   it('expone una terminal PDV verificada, sin cuenta real', async () => {

@@ -31,6 +31,7 @@ const PREVIEW_BRANCH_HOST = /^saas-git-(?!main-)[a-z0-9-]+\.vercel\.app$/i;
 
 export function isFiscalThermalPrintEnabled(env = {}, hostname = '') {
   if (env.VITE_FISCAL_THERMAL_PRINT === 'off') return false;
+  if (env.VITE_VERCEL_ENV === 'production') return env.VITE_FISCAL_THERMAL_PRINT === 'preview';
   return env.VITE_FISCAL_THERMAL_PRINT === 'preview'
     || env.VITE_VERCEL_ENV === 'preview'
     || PREVIEW_BRANCH_HOST.test(String(hostname || ''));
