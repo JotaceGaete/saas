@@ -125,3 +125,13 @@ describe('Preview no autorizada', () => {
     expect(screen.queryByRole('button', { name: /autorizar este sitio/i })).toBeNull();
   }, 10000);
 });
+
+describe('descarga del instalador', () => {
+  it('fuera de una Preview ofrece la versión estable con su SHA-256', async () => {
+    render(<Harness businessId={BIZ} />);
+    const link = await screen.findByRole('link', { name: /descargar para windows/i });
+    expect(link.getAttribute('href')).toBe('https://github.com/JotaceGaete/saas/releases/download/print-connector-v0.3.0/WalinkaPrintConnector-Setup-0.3.0.exe');
+    expect(screen.getByTestId('connector-sha256').textContent).toBe('88e6fdb59ce88a2e56c223591048aead731089fd4f424bfe6df50a6d67edad1c');
+    expect(screen.getByText(/certutil -hashfile WalinkaPrintConnector-Setup-0\.3\.0\.exe SHA256/)).toBeTruthy();
+  });
+});

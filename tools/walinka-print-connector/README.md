@@ -288,7 +288,10 @@ solo garantiza la forma del flujo. El cajón no se abre desde ningún endpoint n
 ## Comerciantes: instalar, configurar y actualizar
 
 ### Instalar
-1. Descargar `WalinkaPrintConnector-Setup-<versión>.exe` desde Walinka.
+1. Descargar `WalinkaPrintConnector-Setup-<versión>.exe` desde Walinka (enlace al
+   release de GitHub). Comprobar el SHA-256 en el Símbolo del sistema, en Descargas:
+   `certutil -hashfile WalinkaPrintConnector-Setup-<versión>.exe SHA256`. Debe coincidir
+   con el que muestra Walinka y el release (`SHA256SUMS.txt`). Si no coincide, no instalar.
 2. Ejecutarlo. No pide administrador. Dejar marcada la opción de iniciar con Windows.
 3. Al terminar, el conector queda corriendo. Menú Inicio → Walinka → "Estado del conector".
 

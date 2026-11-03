@@ -1,15 +1,15 @@
 import React, { useState } from 'react';
 import Icon from 'components/AppIcon';
 import { CONNECTOR_TONE_CLASSES } from 'lib/printing/printRouting';
+import { checksumCommand, connectorDownloadFor } from 'lib/printing/connectorDownload';
 
 // Tarjeta del Walinka Print Connector. Presentacional: el estado vive en
 // usePrintConnector (ver CrmPrintSettings). La ruta de impresión la decide
 // printRouting.js, nunca esta tarjeta.
 
-const CONNECTOR_DOWNLOAD_URL = 'https://github.com/JotaceGaete/saas/releases/download/print-connector-v0.3.0/WalinkaPrintConnector-Setup-0.3.0.exe';
-
 export default function PrintConnectorSection({ connector }) {
   const [code, setCode] = useState('');
+  const download = connectorDownloadFor(typeof window !== 'undefined' ? window.location?.origin : null);
   const {
     status, health, healthError, printersError, paired, active, config, busy, result, originBlocked, approving,
   } = connector;
@@ -39,10 +39,10 @@ export default function PrintConnectorSection({ connector }) {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-semibold text-slate-800">Conector para Windows</p>
-            <p className="mt-1 text-xs text-slate-600">Versión 0.3.0 (preliminar). Instálalo una vez para imprimir directamente desde Walinka.</p>
+            <p className="mt-1 text-xs text-slate-600">Versión {download.version} (preliminar). Instálalo una vez para imprimir directamente desde Walinka.</p>
           </div>
           <a
-            href={CONNECTOR_DOWNLOAD_URL}
+            href={download.url}
             className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800"
             download
           >
@@ -51,8 +51,18 @@ export default function PrintConnectorSection({ connector }) {
           </a>
         </div>
         <p className="mt-2 text-xs text-slate-500">
-          El instalador todavía no está firmado digitalmente y Windows puede mostrar una advertencia. Descárgalo únicamente desde este enlace oficial.
+          El instalador todavía no está firmado digitalmente y Windows puede mostrar una advertencia. Descárgalo únicamente desde este enlace oficial
+          (<a href={download.releaseUrl} className="underline underline-offset-2" target="_blank" rel="noreferrer">release en GitHub</a>)
+          y comprueba que el SHA-256 coincida antes de instalarlo.
         </p>
+        <div className="mt-2 rounded-lg border border-slate-200 bg-white p-2 text-xs text-slate-600">
+          <p className="font-semibold text-slate-700">SHA-256 de {download.file}</p>
+          <code data-testid="connector-sha256" className="mt-1 block break-all font-mono text-[11px] text-slate-800">{download.sha256}</code>
+          <p className="mt-1.5">
+            Para comprobarlo, abre el Símbolo del sistema en la carpeta Descargas y ejecuta:
+          </p>
+          <code className="mt-1 block break-all font-mono text-[11px] text-slate-800">{checksumCommand(download)}</code>
+        </div>
       </div>
 
       {health === 'unreachable' && healthError && (
