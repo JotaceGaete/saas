@@ -3,7 +3,9 @@
 // por un fallo al listar impresoras.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { checkConnector, describeVerify } from './connectorHealth.js';
+import {
+  APPROVAL_DONE_MESSAGE, APPROVAL_TIMEOUT_MESSAGE, checkConnector, describeVerify, requestOriginApproval,
+} from './connectorHealth.js';
 
 function provider({ connect, listPrinters }) {
   return {
@@ -89,7 +91,8 @@ test('Preview no autorizada: el conector escucha pero no autoriza el origen', as
   assert.equal(state.health, 'unreachable');
   assert.equal(state.originBlocked, true);
   assert.ok(state.healthError.includes(origin));
-  assert.match(state.healthError, /AllowedOrigins/);
+  assert.match(state.healthError, /Autorizar este sitio/);
+  assert.doesNotMatch(state.healthError, /AllowedOrigins/);
 });
 
 test('Preview y conector cerrado: lo dice y nombra el origen y el permiso de red local', async () => {
@@ -113,4 +116,54 @@ test('producción: sin sonda y con el mensaje de siempre', async () => {
   });
   assert.equal(probed, false);
   assert.equal(state.healthError, 'No se encontró el conector de impresión en este equipo. Revisa que esté abierto.');
+});
+
+// --- Autorizar este sitio (confirmación en Windows) ---
+const noSleep = async () => {};
+
+test('requestOriginApproval: envía la solicitud y termina cuando health responde', async () => {
+  let requested = 0;
+  let checks = 0;
+  const outcome = await requestOriginApproval({
+    provider: { requestOriginApproval: async () => { requested += 1; return true; } },
+    recheck: async () => { checks += 1; return { health: checks >= 3 ? 'ok' : 'unreachable' }; },
+    sleep: noSleep,
+  });
+  assert.equal(requested, 1);
+  assert.equal(checks, 3);
+  assert.equal(outcome.ok, true);
+  assert.equal(outcome.message, APPROVAL_DONE_MESSAGE);
+});
+
+test('requestOriginApproval: sin confirmación, se rinde con un mensaje accionable', async () => {
+  const outcome = await requestOriginApproval({
+    provider: { requestOriginApproval: async () => true },
+    recheck: async () => ({ health: 'unreachable' }),
+    attempts: 4,
+    sleep: noSleep,
+  });
+  assert.equal(outcome.ok, false);
+  assert.equal(outcome.reason, 'timeout');
+  assert.equal(outcome.message, APPROVAL_TIMEOUT_MESSAGE);
+});
+
+test('requestOriginApproval: conector cerrado, no espera', async () => {
+  let checks = 0;
+  const outcome = await requestOriginApproval({
+    provider: { requestOriginApproval: async () => false },
+    recheck: async () => { checks += 1; return { health: 'ok' }; },
+    sleep: noSleep,
+  });
+  assert.equal(outcome.reason, 'unreachable');
+  assert.equal(checks, 0);
+});
+
+test('requestOriginApproval: se detiene si la pantalla se cierra', async () => {
+  const outcome = await requestOriginApproval({
+    provider: { requestOriginApproval: async () => true },
+    recheck: async () => ({ health: 'unreachable' }),
+    sleep: noSleep,
+    isCancelled: () => true,
+  });
+  assert.equal(outcome.reason, 'cancelled');
 });

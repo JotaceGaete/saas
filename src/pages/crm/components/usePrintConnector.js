@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildConnectorConfigKey, defaultConnectorConfig, readConnectorConfig, writeConnectorConfig,
 } from 'lib/printing/connectorConfigStorage';
 import { createLocalConnectorProvider } from 'lib/printing/providers/localConnectorProvider';
 import { resolvePrintRoute, ROUTE, connectorStatusView } from 'lib/printing/printRouting';
-import { checkConnector, describeVerify } from 'lib/printing/connectorHealth';
+import {
+  APPROVAL_WAITING_MESSAGE, checkConnector, describeVerify, requestOriginApproval,
+} from 'lib/printing/connectorHealth';
 
 // Estado único del Walinka Print Connector para la pantalla de impresión.
 // La pantalla no decide la ruta: solo la muestra. La ruta real la decide
@@ -22,6 +24,9 @@ export function usePrintConnector(businessId) {
   const [config, setConfig] = useState(() => defaultConnectorConfig());
   const [health, setHealth] = useState('checking'); // checking | ok | unreachable
   const [healthError, setHealthError] = useState(null);
+  const [originBlocked, setOriginBlocked] = useState(false);
+  const [approving, setApproving] = useState(false);
+  const mounted = useRef(true);
   const [printers, setPrinters] = useState([]);
   const [printersError, setPrintersError] = useState(null);
   const [version, setVersion] = useState(null);
@@ -54,6 +59,7 @@ export function usePrintConnector(businessId) {
     });
     setHealth(state.health);
     setHealthError(state.healthError);
+    setOriginBlocked(Boolean(state.originBlocked));
     setPrinters(state.printers);
     setPrintersError(state.printersError);
     setVersion(state.version);
@@ -73,6 +79,31 @@ export function usePrintConnector(businessId) {
   }, [refresh, config.token]);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
+
+  // «Autorizar este sitio»: el conector muestra una ventana en Windows y solo
+  // agrega este origen si el usuario la confirma. Aquí solo se espera.
+  const requestApproval = useCallback(async () => {
+    if (approving) return false;
+    setApproving(true);
+    setResult({ ok: true, message: APPROVAL_WAITING_MESSAGE });
+    try {
+      const outcome = await requestOriginApproval({
+        provider,
+        recheck: refresh,
+        isCancelled: () => !mounted.current,
+      });
+      if (outcome.reason === 'cancelled' || !mounted.current) return false;
+      setResult({ ok: outcome.ok, message: outcome.message });
+      return outcome.ok;
+    } finally {
+      if (mounted.current) setApproving(false);
+    }
+  }, [approving, provider, refresh]);
 
   const pair = async (code) => {
     if (!CODE_PATTERN.test(code) || busy) return false;
@@ -122,6 +153,9 @@ export function usePrintConnector(businessId) {
     paired,
     health,
     healthError,
+    originBlocked,
+    approving,
+    requestApproval,
     printers,
     printersError,
     printerName: config.printerName,

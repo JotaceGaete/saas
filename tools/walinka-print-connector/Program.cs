@@ -1,7 +1,7 @@
 using System.Net.Http;
 namespace WalinkaPrintConnector;
 
-// Walinka Print Connector — versión 0.3 (E4: instalador, vigilante, instancia única).
+// Walinka Print Connector — versión 0.4 (autorización de Previews con confirmación en Windows).
 // Servicio local en 127.0.0.1 con emparejamiento por código y token.
 // Sin apertura de cajón: ningún endpoint ni comando lo ejecuta en esta versión.
 internal static class Program

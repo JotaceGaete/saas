@@ -10,7 +10,9 @@ const CONNECTOR_DOWNLOAD_URL = 'https://github.com/JotaceGaete/saas/releases/dow
 
 export default function PrintConnectorSection({ connector }) {
   const [code, setCode] = useState('');
-  const { status, health, healthError, printersError, paired, active, config, busy, result } = connector;
+  const {
+    status, health, healthError, printersError, paired, active, config, busy, result, originBlocked, approving,
+  } = connector;
 
   const handlePair = async () => {
     const ok = await connector.pair(code);
@@ -55,6 +57,16 @@ export default function PrintConnectorSection({ connector }) {
 
       {health === 'unreachable' && healthError && (
         <p className="mt-2 text-xs text-amber-700">{healthError}</p>
+      )}
+      {health === 'unreachable' && originBlocked && (
+        <button
+          type="button"
+          onClick={connector.requestApproval}
+          disabled={approving || busy}
+          className="mt-2 inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-40"
+        >
+          {approving ? 'Esperando confirmación en Windows…' : 'Autorizar este sitio'}
+        </button>
       )}
       {health === 'ok' && printersError && (
         <p className="mt-2 text-xs text-amber-700">{printersError}</p>

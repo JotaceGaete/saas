@@ -12,8 +12,45 @@ export const DEFAULT_CONNECTOR_ORIGINS = Object.freeze(['https://go.ventalink.ap
 
 /** Mensaje cuando el conector está abierto pero no autoriza el sitio actual. */
 export function originNotAuthorizedMessage(origin) {
-  return `El conector está abierto en este equipo, pero no autoriza este sitio (${origin}). `
-    + 'Agrega exactamente esa dirección a AllowedOrigins del conector, reinícialo y vuelve a emparejar.';
+  return `El conector está abierto en este equipo, pero todavía no autoriza este sitio (${origin}). `
+    + 'Pulsa «Autorizar este sitio» y confirma en la ventana que aparecerá en Windows.';
+}
+
+export const APPROVAL_WAITING_MESSAGE = 'Revisa la pantalla de este equipo: Walinka Print Connector pide confirmar este sitio. '
+  + 'Pulsa «Sí» en esa ventana.';
+export const APPROVAL_DONE_MESSAGE = 'Sitio autorizado. Escribe el código de 6 dígitos que muestra Windows y pulsa «Emparejar».';
+export const APPROVAL_TIMEOUT_MESSAGE = 'No llegó la autorización. Si no apareció ninguna ventana en Windows, instala el conector 0.4.0 o superior. '
+  + 'Si pulsaste «No», espera 10 minutos antes de pedirlo otra vez.';
+
+const sleepMs = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+
+/**
+ * Pide al conector que autorice el sitio actual y espera a que el usuario
+ * confirme en Windows. `recheck` vuelve a consultar el estado (checkConnector);
+ * en cuanto /v1/health se puede leer, el sitio ya está autorizado.
+ * @returns {Promise<{ ok: boolean, reason?: string, message: string, state?: object }>}
+ */
+export async function requestOriginApproval({
+  provider,
+  recheck,
+  attempts = 70,
+  intervalMs = 2000,
+  sleep = sleepMs,
+  isCancelled = () => false,
+}) {
+  if (typeof provider?.requestOriginApproval !== 'function') {
+    return { ok: false, reason: 'unsupported', message: APPROVAL_TIMEOUT_MESSAGE };
+  }
+  const sent = await provider.requestOriginApproval();
+  if (!sent) return { ok: false, reason: 'unreachable', message: UNREACHABLE_MESSAGE };
+
+  for (let i = 0; i < attempts; i += 1) {
+    await sleep(intervalMs);
+    if (isCancelled()) return { ok: false, reason: 'cancelled', message: '' };
+    const state = await recheck();
+    if (state?.health === 'ok') return { ok: true, message: APPROVAL_DONE_MESSAGE, state };
+  }
+  return { ok: false, reason: 'timeout', message: APPROVAL_TIMEOUT_MESSAGE };
 }
 
 /** Mensaje cuando no hay respuesta desde un sitio que no es el de producción. */

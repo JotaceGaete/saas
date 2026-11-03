@@ -14,7 +14,7 @@ namespace WalinkaPrintConnector;
 public static class ConnectorServer
 {
     public const string ApiVersion = "1";
-    public const string AppVersion = "0.3.0";
+    public const string AppVersion = "0.4.0";
 
     public sealed record PairRequest(string Code, string? DeviceName);
     public sealed record PrintRequest(string IdempotencyKey, string PrinterName, int Copies, string DataBase64);
@@ -24,6 +24,7 @@ public static class ConnectorServer
     {
         var audit = new Audit(dataDir);
         var pairing = new PairingStore(dataDir);
+        var approvals = new OriginApprovalService(dataDir, config, new WindowsApprovalPrompt(), pairing, audit);
         var jobs = new JobStore(dataDir);
         var spoolerGate = new SemaphoreSlim(1, 1);
         var printLimiter = new SlidingWindowLimiter(60, TimeSpan.FromMinutes(1));
@@ -143,6 +144,26 @@ public static class ConnectorServer
             apiVersion = ApiVersion,
             version = AppVersion,
         }));
+
+        // Un sitio que todavía no está autorizado pide permiso. Lo llama el
+        // navegador con `no-cors` (sin token ni cuerpo), así que no puede leer la
+        // respuesta: el resultado es la ventana de confirmación en Windows. Solo
+        // las Previews de Walinka (PreviewOrigins) llegan a mostrarla.
+        app.MapPost("/v1/origin-approval", (HttpContext ctx) =>
+        {
+            var origin = ctx.Request.Headers.Origin.ToString();
+            var outcome = approvals.Request(origin, DateTime.UtcNow);
+            var status = outcome switch
+            {
+                OriginApprovalService.Outcome.Pending => StatusCodes.Status202Accepted,
+                OriginApprovalService.Outcome.AlreadyAllowed => StatusCodes.Status200OK,
+                OriginApprovalService.Outcome.Busy or OriginApprovalService.Outcome.RecentlyDenied or OriginApprovalService.Outcome.RateLimited
+                    => StatusCodes.Status429TooManyRequests,
+                _ => StatusCodes.Status403Forbidden,
+            };
+            // Los rechazos de sitios ajenos no se registran: cualquier página podría llenar el log.
+            return Results.Json(new { status = OriginApprovalService.CodeFor(outcome) }, statusCode: status);
+        });
 
         app.MapPost("/v1/pair", async (HttpContext ctx) =>
         {

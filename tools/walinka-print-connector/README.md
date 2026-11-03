@@ -181,26 +181,37 @@ y selftest del conector (53). No se ejecutó vitest ni `vite build` en este ento
 
 ## Previews de Vercel (pruebas)
 
-Una Preview (`https://saas-git-<rama>-juan-s-projects-afd7e18e.vercel.app`) no
-está en los orígenes de fábrica: el conector responde a `/v1/health` sin
-cabeceras CORS y el navegador bloquea la respuesta, así que Walinka dice que no
-encuentra el conector. Desde el PR #118, la pantalla de impresión lo distingue
-con una sonda `no-cors` (sin token) y muestra el origen exacto que falta.
+Una Preview (`https://saas-<rama-o-hash>-juan-s-projects-afd7e18e.vercel.app`) no
+está en los orígenes de fábrica. Desde la versión 0.4.0 se autoriza sin
+PowerShell y sin editar JSON:
 
-Para autorizar una Preview concreta, sin abrir CORS a otros dominios y sin
-recompilar el conector:
+1. Abrir la Preview en Walinka → Configuración de impresión. La tarjeta del
+   conector dice que el conector está abierto pero no autoriza ese sitio.
+2. Pulsar **«Autorizar este sitio»**.
+3. En Windows aparece una ventana de Walinka Print Connector con el origen
+   exacto. Pulsar **«Sí»**. «No» es el botón por defecto: un Enter no autoriza.
+4. El conector guarda el origen en `config.json` (conserva los demás orígenes y
+   claves, deja copia `config.json.bak`), lo aplica sin reiniciarse y muestra un
+   código de 6 dígitos.
+5. Escribir ese código en la Preview y pulsar «Emparejar».
 
-```powershell
-powershell -ExecutionPolicy Bypass -File tools\walinka-print-connector\scripts\autorizar-origen.ps1 -Origen "https://saas-git-<rama>-juan-s-projects-afd7e18e.vercel.app"
-```
+Límites de seguridad (`OriginApproval.cs`):
+- Solo una Preview del proyecto `saas` de este equipo de Vercel puede hacer
+  aparecer la ventana (`PreviewOrigins.IsApprovable`). Cualquier otro sitio
+  recibe 403 y no ve ninguna ventana. No hay comodines: se agrega el origen exacto.
+- Una ventana a la vez, como mucho 5 por hora. Un «No» silencia ese origen
+  10 minutos. Sin respuesta en 2 minutos, no se autoriza nada.
+- La solicitud (`POST /v1/origin-approval`) no lleva token ni cuerpo y el
+  navegador no puede leer la respuesta. El sitio solo sabe que lo aprobaron
+  porque `/v1/health` empieza a responderle.
+- Los orígenes de producción no cambian. `"AllowPreviewApproval": false` en
+  `config.json` desactiva la ventana.
 
-El script agrega solo ese origen exacto a `AllowedOrigins`, valida la
-configuración con el propio conector (si falla, restaura la copia `.bak`),
-reinicia el conector y muestra un código de emparejamiento. El token queda
-ligado a ese origen, así que hay que emparejar en la Preview. Para revocar:
-`-Quitar`. No se aceptan comodines: el conector solo compara orígenes exactos
-(`OriginPolicy.IsAllowed`). Chrome y Edge pueden pedir el permiso de acceso a
-la red local la primera vez que la Preview llama a `127.0.0.1`: hay que aceptarlo.
+Chrome y Edge pueden pedir el permiso de acceso a la red local la primera vez
+que la Preview llama a `127.0.0.1`: hay que aceptarlo.
+
+El script `scripts\autorizar-origen.ps1` sigue disponible para revocar
+(`-Quitar`) o para conectores anteriores a 0.4.0.
 
 ## Generar el instalador
 
@@ -211,12 +222,17 @@ cd tools\walinka-print-connector
 .\installer\build-installer.ps1
 ```
 
-Resultado: `tools\walinka-print-connector\installer-output\WalinkaPrintConnector-Setup-0.3.0.exe`.
+Resultado: `tools\walinka-print-connector\installer-output\WalinkaPrintConnector-Setup-<versión>.exe`.
 La versión sale de `WalinkaPrintConnector.csproj`; subirla ahí antes de cada release.
+
+También lo genera GitHub Actions (`.github/workflows/print-connector-installer.yml`)
+en cada push a una rama distinta de `main` que toque esta carpeta: compila en
+Windows, ejecuta `selftest` y deja el instalador como artefacto de la ejecución.
+No publica releases.
 
 ## Instalar y probar en tu computadora
 
-1. Ejecutar `WalinkaPrintConnector-Setup-0.3.0.exe`. No pide administrador.
+1. Ejecutar `WalinkaPrintConnector-Setup-<versión>.exe`. No pide administrador.
 2. Al terminar, el conector queda corriendo. Menú Inicio → Walinka → "Estado del conector".
 3. Reiniciar Windows y comprobar que el conector arranca solo (`Estado del conector` debe mostrar que responde).
 4. En Walinka: Configuración de impresión → emparejar, elegir la XP-80C, activar para ventas.

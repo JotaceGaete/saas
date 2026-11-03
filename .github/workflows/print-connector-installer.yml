@@ -1,0 +1,57 @@
+name: Walinka Print Connector installer
+
+# Compila el conector en Windows, ejecuta su selftest y genera el instalador
+# como artefacto descargable. No publica releases ni toca producción.
+on:
+  push:
+    branches-ignore:
+      - main
+    paths:
+      - 'tools/walinka-print-connector/**'
+      - '.github/workflows/print-connector-installer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: tools/walinka-print-connector
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Instalar Inno Setup si falta
+        run: |
+          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") |
+            Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { choco install innosetup -y --no-progress }
+
+      - name: Compilar y generar instalador
+        run: .\installer\build-installer.ps1
+
+      - name: Selftest
+        run: |
+          .\publish\WalinkaPrintConnector.exe selftest
+          if ($LASTEXITCODE -ne 0) { throw 'selftest falló' }
+
+      - name: Versión
+        id: version
+        run: |
+          $v = (Select-String -Path 'WalinkaPrintConnector.csproj' -Pattern '<Version>(.+)</Version>').Matches[0].Groups[1].Value
+          "value=$v" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WalinkaPrintConnector-Setup-${{ steps.version.outputs.value }}
+          path: tools/walinka-print-connector/installer-output/WalinkaPrintConnector-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 30

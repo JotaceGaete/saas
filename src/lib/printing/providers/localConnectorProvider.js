@@ -151,6 +151,23 @@ export function createLocalConnectorProvider({
       }
     },
 
+    /**
+     * Pide al conector que autorice este sitio. El conector muestra una
+     * ventana en Windows y solo agrega el origen si el usuario pulsa «Sí».
+     * Petición simple `no-cors` (POST sin cuerpo ni cabeceras, sin token): el
+     * sitio todavía no está autorizado, así que no hay preflight ni se puede
+     * leer la respuesta. El resultado se ve al volver a consultar /v1/health.
+     * Devuelve false si no hay nada escuchando.
+     */
+    async requestOriginApproval() {
+      try {
+        await fetchImpl(`${base}/v1/origin-approval`, { method: 'POST', mode: 'no-cors', credentials: 'omit', cache: 'no-store' });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+
     async disconnect() {
       connected = false;
     },
