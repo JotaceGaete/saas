@@ -18,6 +18,8 @@ echo "migraciones del repo que no aplican en local (cron/realtime/email, esperad
 for f in supabase/fiscal-recovery/migrations/*.sql; do
   $P -d "$DB" -1 -f "$f" >/dev/null 2>&1 || echo "recuperada sin aplicar (datos del piloto): $f"
 done
+# Permisos de producción en el esquema fiscal antes de P0 y A–G (ver 80_permisos_produccion.sql).
+$P -d "$DB" -f supabase/fiscal-recovery/localdb/80_permisos_produccion.sql
 for f in 20261031_p0_fiscal_admin_tables 20261031_fiscal_single_ledger_guard 20261101_fiscal_connection \
          20261102_fiscal_provider_claim_guard 20261031_issuer_sucursal_config 20261102_fiscal_sii_status \
          20261104_fiscal_onboarding_review 20261104_fiscal_product_tax_category; do

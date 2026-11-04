@@ -15,6 +15,7 @@ fp() { $P -d $DB -At -f $HERE/fingerprint.sql > $SP/fp-$1.txt; }
 $P -d postgres -c "drop database if exists $DB" -c "create database $DB" >/dev/null 2>&1
 $P -d $DB -f supabase/fiscal-recovery/localdb/00_supabase_stub.sql >/dev/null 2>&1
 for f in supabase/migrations/*.sql supabase/fiscal-recovery/migrations/*.sql; do $P -d $DB -1 -f "$f" >/dev/null 2>&1 || true; done
+$P -d $DB -f supabase/fiscal-recovery/localdb/80_permisos_produccion.sql >/dev/null 2>&1
 $P -d $DB -f $PR/20261031_p0_fiscal_admin_tables.sql >/dev/null 2>&1
 $P -d $DB -f supabase/fiscal-recovery/localdb/90_service_role_grants.sql >/dev/null 2>&1
 python3 -I - "$HERE/01-respaldo-estructura-pre-AG.sql" > $SP/prod4.sql <<'PY'

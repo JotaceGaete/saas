@@ -14,6 +14,11 @@ with checks(paso, comprobacion, ok) as (
   union all select 'A', 'business_credentials existe y está vacía', case when to_regclass('fiscal.business_credentials') is null then false else (xpath('/row/c/text()', query_to_xml('select count(*) as c from fiscal.business_credentials', false, true, '')))[1]::text::int = 0 end
   union all select 'A', 'crm_claim_fiscal_issuance reemplazada (ya no es la versión previa a A del respaldo)',
     md5(pg_get_functiondef('public.crm_claim_fiscal_issuance(uuid,uuid,text,integer)'::regprocedure)) <> '06d1f18683242ffa3e6b1d60e8452afb'
+  union all select 'A', 'service_role lee dte39_emission_control y pos_dte39_outbox (las RPC lo necesitan)',
+    has_table_privilege('service_role', 'fiscal.dte39_emission_control', 'SELECT') and has_table_privilege('service_role', 'fiscal.pos_dte39_outbox', 'SELECT')
+  union all select 'A', 'service_role no escribe dte39_emission_control ni pos_dte39_outbox',
+    not has_table_privilege('service_role', 'fiscal.dte39_emission_control', 'INSERT,UPDATE,DELETE')
+    and not has_table_privilege('service_role', 'fiscal.pos_dte39_outbox', 'INSERT,UPDATE,DELETE')
   union all select 'A', 'anon sin permisos sobre crm_invoices', not has_table_privilege('anon', 'public.crm_invoices', 'SELECT,INSERT,UPDATE,DELETE')
   union all select 'A', 'authenticated conserva SELECT/INSERT/UPDATE/DELETE en crm_invoices',
     has_table_privilege('authenticated', 'public.crm_invoices', 'SELECT') and has_table_privilege('authenticated', 'public.crm_invoices', 'INSERT')

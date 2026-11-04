@@ -220,6 +220,13 @@ comment on table fiscal.business_credentials is
 -- ---------------------------------------------------------------------------
 revoke execute on function fiscal.dte39_evidence_append_only() from public, anon, authenticated;
 REVOKE ALL ON TABLE public.crm_invoices FROM anon;
+-- Ajuste previo a producción (2026-11-04): las RPC del ledger son SECURITY INVOKER y corren como
+-- service_role. En producción service_role no tiene ningún permiso sobre estas dos tablas (verificado
+-- en solo lectura); sin estas lecturas crm_fiscal_emission_context y fiscal.sale_fiscal_conflict
+-- fallan con "permission denied" y la emisión queda bloqueada. Solo lectura: las colas antiguas
+-- siguen escribiéndose únicamente desde sus funciones SECURITY DEFINER.
+grant select on fiscal.dte39_emission_control to service_role;
+grant select on fiscal.pos_dte39_outbox to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 3c. Validación del medio de pago dentro de SQL (espejo de lib/eligibility.mjs).

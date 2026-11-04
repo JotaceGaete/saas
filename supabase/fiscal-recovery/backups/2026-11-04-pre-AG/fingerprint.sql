@@ -1,9 +1,10 @@
 -- Huella del catálogo (public, fiscal): funciones, tablas, columnas, restricciones, triggers, políticas y
--- permisos (ordenados, para que el orden interno de las ACL no cuente como diferencia).
-select 'fn '||n.nspname||'.'||p.oid::regprocedure::text||' '||md5(pg_get_functiondef(p.oid))||' '||coalesce((select string_agg(x::text, ',' order by x::text) from unnest(p.proacl) x),'DEFAULT')
+-- permisos efectivos (ordenados; los permisos por defecto se expanden con acldefault, así que no
+-- cuenta como diferencia ni el orden interno de las ACL ni que estén implícitos o escritos).
+select 'fn '||n.nspname||'.'||p.oid::regprocedure::text||' '||md5(pg_get_functiondef(p.oid))||' '||(select string_agg(x::text, ',' order by x::text) from unnest(coalesce(p.proacl, acldefault('f', p.proowner))) x)
   from pg_proc p join pg_namespace n on n.oid=p.pronamespace where n.nspname in ('public','fiscal') and p.prokind in ('f','p')
 union all
-select 'rel '||c.oid::regclass::text||' '||c.relkind::text||' '||coalesce((select string_agg(x::text, ',' order by x::text) from unnest(c.relacl) x),'DEFAULT')||' rls='||c.relrowsecurity
+select 'rel '||c.oid::regclass::text||' '||c.relkind::text||' '||(select string_agg(x::text, ',' order by x::text) from unnest(coalesce(c.relacl, acldefault('r', c.relowner))) x)||' rls='||c.relrowsecurity
   from pg_class c join pg_namespace n on n.oid=c.relnamespace where n.nspname in ('public','fiscal') and c.relkind in ('r','v','m','S')
 union all
 select 'col '||c.oid::regclass::text||'.'||a.attname||' '||format_type(a.atttypid,a.atttypmod)||' '||a.attnotnull||' '||coalesce((select string_agg(x::text, ',' order by x::text) from unnest(a.attacl) x),'')

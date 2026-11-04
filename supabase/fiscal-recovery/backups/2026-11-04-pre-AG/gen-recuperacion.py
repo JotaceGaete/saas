@@ -227,6 +227,9 @@ begin
 end $$;
 grant update on table public.wa_businesses to anon, authenticated;
 grant execute on function fiscal.dte39_evidence_append_only() to public;
+-- Lecturas que A concede a service_role (antes de A no tenía ningún permiso sobre estas tablas)
+revoke select on fiscal.dte39_emission_control from service_role;
+revoke select on fiscal.pos_dte39_outbox from service_role;
 -- Tablas nuevas (vacías, comprobado arriba)
 drop table if exists fiscal.crm_fiscal_provider_receipts;
 drop table if exists fiscal.crm_fiscal_reconciliation_evidence;

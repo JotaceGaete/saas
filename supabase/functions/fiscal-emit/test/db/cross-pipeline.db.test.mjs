@@ -35,11 +35,14 @@ async function openAs(role = 'service_role') {
 
 // A ejecuta `firstSql` y mantiene la transacción abierta (retiene el lock por venta).
 // B ejecuta `secondSql` en paralelo; debe quedar bloqueada. Luego A hace COMMIT y se resuelve B.
+// Cada paso corre como service_role (el emisor), salvo que indique otro rol. Las escrituras del
+// pipeline antiguo P3 corren como el dueño de las tablas: en producción service_role no puede
+// escribir fiscal.pos_dte39_outbox; solo lo hacen sus funciones SECURITY DEFINER (sii_pos_dte39_*).
 async function interleave({ first, second }) {
-  const A = await openAs();
+  const A = await openAs(first.role);
   const firstResult = await A.query(first.sql, first.params);
 
-  const B = await openAs();
+  const B = await openAs(second.role);
   const secondPromise = (async () => {
     try {
       await B.query(second.sql, second.params);
@@ -78,6 +81,7 @@ test('P2 reclama primero; P3 intenta pasar a claimed -> bloqueado y rechazado tr
   const r = await interleave({
     first: P2_CLAIM(f),
     second: {
+      role: 'postgres',
       sql: `insert into fiscal.pos_dte39_outbox (business_id, invoice_id, operation_id, state)
             values ($1, $2, $3, 'claimed')`,
       params: [f.businessId, f.saleId, `WALINKA-DTE39-${f.saleId}`],
@@ -95,6 +99,7 @@ test('P3 pasa a claimed primero; P2 intenta reclamar -> bloqueado y rechazado tr
   const f = await makeFixture(admin);
   const r = await interleave({
     first: {
+      role: 'postgres',
       sql: `insert into fiscal.pos_dte39_outbox (business_id, invoice_id, operation_id, state)
             values ($1, $2, $3, 'claimed')`,
       params: [f.businessId, f.saleId, `WALINKA-DTE39-${f.saleId}`],
@@ -183,6 +188,7 @@ test('un P3 en skipped no bloquea P2 aunque se escriba en paralelo', async () =>
   const f = await makeFixture(admin);
   const r = await interleave({
     first: {
+      role: 'postgres',
       sql: `insert into fiscal.pos_dte39_outbox (business_id, invoice_id, operation_id, state)
             values ($1, $2, $3, 'skipped')`,
       params: [f.businessId, f.saleId, `WALINKA-DTE39-${f.saleId}`],
