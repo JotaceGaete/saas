@@ -35,6 +35,9 @@ as $$
            when 'sii_solutions' then 'siisolutions'
          end
 $$;
+-- Ajuste previo a producción (2026-11-04): sin ejecución pública.
+revoke all on function fiscal.ledger_provider(text) from public, anon, authenticated;
+grant execute on function fiscal.ledger_provider(text) to service_role;
 
 -- 1c. Funciones de recuperación y reconciliación: aceptan el histórico y el canónico.
 --     Generadas desde 20261031_fiscal_single_ledger_guard.sql; solo cambia el filtro de proveedor.

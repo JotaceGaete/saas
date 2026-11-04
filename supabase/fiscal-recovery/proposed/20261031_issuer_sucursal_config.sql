@@ -4,6 +4,9 @@
 -- Configuración mínima: sucursal de emisión por comercio, guardada junto al emisor.
 -- Valores reales: pendientes de verificar en el proveedor (XML de la 51106 o panel). No se usan defaults.
 
+-- Ajuste previo a producción (2026-11-04): toda la migración en una transacción.
+begin;
+
 alter table fiscal.issuers
   add column if not exists sucursal_nombre text,
   add column if not exists sucursal_codigo text;
@@ -55,3 +58,5 @@ $$;
 
 revoke all on function public.crm_fiscal_emission_context(uuid, uuid) from public, anon, authenticated;
 grant execute on function public.crm_fiscal_emission_context(uuid, uuid) to service_role;
+
+commit;

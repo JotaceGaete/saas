@@ -29,6 +29,8 @@
 -- No cambia: numeración (invoice_number), idempotencia de la emisión, boletas ya emitidas.
 
 begin;
+-- Ajuste previo a producción (2026-11-04): no esperar indefinidamente un bloqueo de tablas en uso.
+set local lock_timeout = '5s';
 
 -- 1. Tratamiento tributario del producto -----------------------------------------------------
 alter table public.wa_products add column if not exists tax_treatment text;

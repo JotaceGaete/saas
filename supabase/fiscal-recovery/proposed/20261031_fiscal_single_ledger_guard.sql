@@ -12,6 +12,8 @@
 -- Pruebas: supabase/functions/fiscal-emit/test/ (base de prueba local, nunca producción).
 
 begin;
+-- Ajuste previo a producción (2026-11-04): no esperar indefinidamente un bloqueo de tablas en uso.
+set local lock_timeout = '5s';
 
 -- ---------------------------------------------------------------------------
 -- 1. Conflicto entre pipelines para una venta.

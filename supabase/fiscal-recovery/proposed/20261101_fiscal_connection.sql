@@ -13,6 +13,10 @@
 --
 -- Esta migración se aplica SOLO en walinka_test. No aplicar en producción sin aprobación.
 
+-- Ajuste previo a producción (2026-11-04): toda la migración en una transacción (antes terminaba en
+-- commit sin begin: un error a mitad de camino la dejaba aplicada a medias).
+begin;
+
 -- 0. La auditoría admite las dos acciones nuevas. La restricción original (20261031) solo listaba
 --    reconcile_attempt, reconcile_result y owner_changed.
 alter table fiscal.admin_audit drop constraint if exists admin_audit_action_check;
@@ -49,6 +53,12 @@ as $$
        and f.updated_at > now() - fiscal.sending_stale_window()
   );
 $$;
+
+-- Ajuste previo a producción (2026-11-04): las funciones auxiliares no quedan ejecutables por todos.
+revoke all on function fiscal.sending_stale_window() from public, anon, authenticated;
+revoke all on function fiscal.has_fresh_sending(uuid) from public, anon, authenticated;
+grant execute on function fiscal.sending_stale_window() to service_role;
+grant execute on function fiscal.has_fresh_sending(uuid) to service_role;
 
 -- 1. Estado de conexión (sin secretos).
 create or replace function public.crm_fiscal_connection_status(p_business_id uuid)
