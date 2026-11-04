@@ -10,21 +10,10 @@
 //
 // VITE_FISCAL_AUTO_EMIT=off lo apaga siempre.
 
-const PREVIEW_BRANCH_HOST = /^saas-git-(?!main-)[a-z0-9-]+\.vercel\.app$/i;
-const LOCAL_HOST = /^(localhost|127\.0\.0\.1)$/i;
+import { isPreviewDeployment, isPreviewLike } from '../lib/deployEnv';
 
-// VITE_VERCEL_ENV lo fija vite.config.js con el entorno real de la compilación
-// en Vercel. Manda sobre el hostname: una compilación de producción nunca es
-// Preview (aunque se abra por un alias), y una de Preview lo es por cualquier URL.
-export function isPreviewLike(env = {}, hostname = '') {
-  if (env.VITE_VERCEL_ENV === 'production') return false;
-  return env.VITE_VERCEL_ENV === 'preview' || PREVIEW_BRANCH_HOST.test(String(hostname || '')) || LOCAL_HOST.test(String(hostname || ''));
-}
-
-function isPreviewDeployment(env = {}, hostname = '') {
-  if (env.VITE_VERCEL_ENV === 'production') return false;
-  return env.VITE_VERCEL_ENV === 'preview' || PREVIEW_BRANCH_HOST.test(String(hostname || ''));
-}
+// Detección de Preview compartida con Point (src/lib/deployEnv.js).
+export { isPreviewLike };
 
 export function resolveFiscalAutoMode(env = {}, hostname = '') {
   const raw = String(env.VITE_FISCAL_AUTO_EMIT || '').trim().toLowerCase();

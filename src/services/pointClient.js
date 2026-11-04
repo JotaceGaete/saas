@@ -12,7 +12,7 @@
 // Preview se ignora.
 
 import * as live from './crmService';
-import { isPreviewLike } from './fiscalAutoMode';
+import { isPreviewLike } from '../lib/deployEnv';
 import { createPointSimulator } from './pointSimulator';
 
 /** Importe máximo de un cobro Point REAL hecho desde una Preview (CLP). */
