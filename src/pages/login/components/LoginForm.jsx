@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import GoogleIcon from 'components/GoogleIcon';
 import VentalinkLogo from 'components/branding/VentalinkLogo';
@@ -233,18 +232,6 @@ export default function LoginForm({ onSubmit, onGoogleLogin, onForgotPassword, i
         </button>
       </form>
 
-      {/* El registro público permanece cerrado; no ofrecer un enlace que no funciona. */}
-      {false && <div className="mt-6">
-        <div className="relative flex items-center">
-          <div className="flex-1 border-t" style={{ borderColor: 'var(--color-border)' }} />
-        </div>
-        <p className="text-center text-sm mt-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-          ¿No tienes cuenta?{' '}
-          <Link to="/business-registration" className="font-semibold hover:underline" style={{ color: 'var(--color-primary)' }}>
-            Crear cuenta gratis
-          </Link>
-        </p>
-      </div>}
       </div>
     </div>
   );
