@@ -71,7 +71,9 @@ async function request(businessId, { method = 'GET', body } = {}) {
   if (!response.ok) {
     throw new FiscalConnectionError(json?.error || 'SERVER_ERROR', response.status);
   }
-  return json?.connection ?? null;
+  if (!json?.connection) return null;
+  // GET informa si el negocio está en la lista de empresas autorizadas del servidor.
+  return typeof json.allowed === 'boolean' ? { ...json.connection, allowed: json.allowed } : json.connection;
 }
 
 export function getFiscalConnection(businessId) {

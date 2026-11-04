@@ -7,9 +7,13 @@
 //    ninguna respuesta, error ni log contiene la clave.
 //  - Guardar o desconectar NO habilita emisión (lo hace la base: enabled = false, verified = false).
 //  - Entrada estricta: solo los campos de cada acción. Cualquier otro campo se rechaza.
+//  - Alcance actual: solo las empresas de la lista del servidor (FISCAL_ALLOWED_ISSUERS, id del
+//    negocio + RUT). Otro negocio, o el mismo con otro RUT, no puede guardar credenciales ni enviar
+//    la solicitud. Desconectar sí se permite siempre (solo borra).
 
 import { seal } from '../../supabase/functions/fiscal-emit/lib/secrets.mjs';
 import { CANONICAL_PROVIDER } from '../../supabase/functions/fiscal-emit/lib/provider-ids.mjs';
+import { isAllowlist, normalizeRut } from '../../supabase/functions/fiscal-emit/lib/allowlist.mjs';
 
 const KEY_VERSION = 1;
 const CONNECT_FIELDS = new Set(['action', 'apiKey', 'issuerRut']);
@@ -18,25 +22,9 @@ const TAX_DEFAULT_FIELDS = new Set(['action', 'category']);
 const TAX_CATEGORIES = new Set(['IVA_AFECTO_19', 'EXENTO', 'NO_AFECTO']);
 const SUBMIT_FIELDS = new Set(['action', 'apiKey', 'issuerRut', 'resolucionNumero', 'resolucionFecha', 'sucursalNombre', 'sucursalCodigo']);
 
-// RUT chileno: cuerpo + dígito verificador (módulo 11). Devuelve forma canónica "12345678-K" o null.
-export function normalizeRut(input) {
-  if (typeof input !== 'string') return null;
-  const clean = input.replace(/[.\s]/g, '').toUpperCase();
-  const m = /^(\d{1,8})-([0-9K])$/.exec(clean);
-  if (!m) return null;
-  const body = m[1];
-  const dv = m[2];
-  let sum = 0;
-  let mul = 2;
-  for (let i = body.length - 1; i >= 0; i -= 1) {
-    sum += Number(body[i]) * mul;
-    mul = mul === 7 ? 2 : mul + 1;
-  }
-  const r = 11 - (sum % 11);
-  const expected = r === 11 ? '0' : r === 10 ? 'K' : String(r);
-  if (dv !== expected) return null;
-  return `${Number(body)}-${dv}`;
-}
+// RUT chileno (módulo 11), forma canónica "12345678-K". Una sola implementación, compartida con la
+// lista de empresas autorizadas del emisor (así no pueden divergir).
+export { normalizeRut };
 
 // Clave: texto sin espacios ni caracteres de control, longitud razonable. Devuelve la clave o null.
 export function validateApiKey(input) {
@@ -119,9 +107,11 @@ function publicConnection(row) {
   };
 }
 
-export function createFiscalConnectionService({ admin, masterKey }) {
+export function createFiscalConnectionService({ admin, masterKey, allowedIssuers }) {
   if (!admin || typeof admin.rpc !== 'function') throw new Error('admin client with rpc required');
   if (!masterKey) throw new Error('master key required');
+  if (!isAllowlist(allowedIssuers)) throw new Error('allowedIssuers required (fail-closed)');
+  const NOT_ALLOWED = () => fail(403, 'FISCAL_BUSINESS_NOT_ALLOWED');
 
   async function readStatus(businessId) {
     const { data, error } = await admin.rpc('crm_fiscal_connection_status', { p_business_id: businessId });
@@ -129,10 +119,12 @@ export function createFiscalConnectionService({ admin, masterKey }) {
     return { ok: true, connection: publicConnection(data) };
   }
 
+  // allowed: el negocio está en la lista del servidor (la pantalla oculta el formulario si no).
+  // No revela qué RUT espera la lista.
   async function status({ businessId }) {
     const r = await readStatus(businessId);
     if (!r.ok) return { status: r.status, body: r.body };
-    return { status: 200, body: { connection: r.connection } };
+    return { status: 200, body: { connection: r.connection, allowed: allowedIssuers.permitsBusiness(businessId) } };
   }
 
   // Guarda RUT + API key sellada. La clave no sale de este bloque: solo viajan bytes cifrados.
@@ -156,6 +148,7 @@ export function createFiscalConnectionService({ admin, masterKey }) {
     }
     const issuerRut = normalizeRut(body.issuerRut);
     if (!issuerRut) return fail(400, 'INVALID_RUT');
+    if (!allowedIssuers.permits(businessId, issuerRut)) return NOT_ALLOWED();
     const apiKey = validateApiKey(body.apiKey);
     if (!apiKey) return fail(400, 'INVALID_API_KEY');
     const failed = await saveCredentials(businessId, actorId, issuerRut, apiKey);
@@ -175,6 +168,7 @@ export function createFiscalConnectionService({ admin, masterKey }) {
     }
     const issuerRut = normalizeRut(body.issuerRut);
     if (!issuerRut) return fail(400, 'INVALID_RUT');
+    if (!allowedIssuers.permits(businessId, issuerRut)) return NOT_ALLOWED();
     const resolucion = validateResolucion(body.resolucionNumero, body.resolucionFecha);
     if (!resolucion) return fail(400, 'INVALID_RESOLUCION');
     const sucursal = validateSucursal(body.sucursalNombre, body.sucursalCodigo);
@@ -224,6 +218,7 @@ export function createFiscalConnectionService({ admin, masterKey }) {
     for (const key of Object.keys(body)) {
       if (!TAX_DEFAULT_FIELDS.has(key)) return fail(400, 'UNKNOWN_FIELD');
     }
+    if (!allowedIssuers.permitsBusiness(businessId)) return NOT_ALLOWED();
     const category = body.category === null || body.category === '' ? null : body.category;
     if (category !== null && !TAX_CATEGORIES.has(category)) return fail(400, 'INVALID_TAX_CATEGORY');
     const { error } = await admin.rpc('crm_fiscal_set_tax_default', {

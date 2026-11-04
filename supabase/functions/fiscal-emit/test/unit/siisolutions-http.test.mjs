@@ -11,6 +11,7 @@ import { ProviderRejectedError } from '../../lib/errors.mjs';
 import { createFiscalEmitter, operationIdFor } from '../../lib/emit.mjs';
 import { createMemoryStore, IDS } from '../helpers/memory-store.mjs';
 import { syntheticDocument, syntheticDteXml, b64, SYNTHETIC_PDF_B64 } from '../helpers/dte-fixtures.mjs';
+import { TEST_ALLOW_ALL } from '../helpers/allowlist.mjs';
 
 let server;
 let baseUrl;
@@ -173,7 +174,7 @@ async function runSale(status, body, setupDocs) {
   const store = createMemoryStore({ masterKey: MASTER });
   store.seed({ businessId: IDS.bizA, userId: IDS.userA, saleId: IDS.saleA });
   const prov = { ...createSiisolutionsHttpProvider({ baseUrl }), ready: true };
-  const emitter = createFiscalEmitter({ store, provider: prov, masterKey: MASTER, timeoutMs: 2000 });
+  const emitter = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store, provider: prov, masterKey: MASTER, timeoutMs: 2000 });
   setupDocs?.();
   next = { status, body };
   const result = await emitter.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA }).catch((e) => ({ error: e }));
@@ -243,7 +244,7 @@ test('status: antes de emitir canEmit true; después ALREADY_ISSUED con estado S
   const store = createMemoryStore({ masterKey: MASTER });
   store.seed({ businessId: IDS.bizA, userId: IDS.userA, saleId: IDS.saleA });
   const prov = { ...createSiisolutionsHttpProvider({ baseUrl }), ready: true };
-  const emitter = createFiscalEmitter({ store, provider: prov, masterKey: MASTER, timeoutMs: 2000 });
+  const emitter = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store, provider: prov, masterKey: MASTER, timeoutMs: 2000 });
   const before = await emitter.status({ actorUserId: IDS.userA, saleId: IDS.saleA });
   assert.equal(before.state, 'none');
   assert.equal(before.canEmit, true);

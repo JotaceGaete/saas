@@ -19,6 +19,7 @@ import { authorizeAction } from './authz.mjs';
 import { validDocument } from './document.mjs';
 import { open as openSecret, parseMasterKey } from './secrets.mjs';
 import { expectedTotals } from './payload.mjs';
+import { isAllowlist } from './allowlist.mjs';
 
 export const DEFAULT_TIMEOUT_MS = 20_000;
 // Reintentos acotados SOLO para errores de transporte/almacén (no FiscalError). Todas las
@@ -55,10 +56,14 @@ export function createFiscalEmitter({
   store,
   provider,
   masterKey, // string base64 de 32 bytes (FISCAL_MASTER_KEY)
+  // Empresas autorizadas (lib/allowlist.mjs, FISCAL_ALLOWED_ISSUERS): id del negocio + RUT del
+  // emisor. Obligatoria: sin ella el emisor no se construye (falla cerrado).
+  allowedIssuers,
   timeoutMs = DEFAULT_TIMEOUT_MS,
   now = () => new Date(),
 }) {
   if (!store || !provider) throw new Error('store and provider are required');
+  if (!isAllowlist(allowedIssuers)) throw new Error('allowedIssuers is required (fail-closed)');
   const key = typeof masterKey === 'string' || masterKey === undefined ? parseMasterKey(masterKey) : masterKey;
 
   async function readStatus(businessId, saleId) {
@@ -102,6 +107,29 @@ export function createFiscalEmitter({
     return { sale, business, role };
   }
 
+  // Empresa autorizada: el negocio de la venta y el RUT del emisor guardado en la base (nunca un
+  // dato del cliente) deben estar juntos en la lista del servidor.
+  const businessAllowed = (businessId, issuer) => allowedIssuers.permits(businessId, issuer?.issuerRut ?? null);
+  function assertBusinessAllowed(businessId, issuer) {
+    if (!businessAllowed(businessId, issuer)) throw new FiscalError('FISCAL_BUSINESS_NOT_ALLOWED');
+  }
+
+  // Credencial del comercio para CONSULTAS de solo lectura (operación, estado SII). La emisión no
+  // usa este camino: lee la credencial dentro del reclamo atómico.
+  async function readOnlyCredentials(businessId) {
+    const record = await store.loadCredentialRecord(businessId);
+    if (!record) throw new FiscalError('CREDENTIALS_MISSING');
+    return openSecret(record, { key, businessId });
+  }
+
+  async function auditBestEffort(entry) {
+    try {
+      await store.appendAudit(entry);
+    } catch {
+      /* la consulta ya terminó; la falta de esta fila no cambia la venta */
+    }
+  }
+
   async function emitSale({ actorUserId, saleId }) {
     const { sale, business } = await loadAuthorizedSale(actorUserId, saleId, 'emit');
     const businessId = sale.businessId;
@@ -123,6 +151,8 @@ export function createFiscalEmitter({
     }
 
     const ctx = await store.loadEmissionContext(businessId, sale.id);
+    // Antes del reclamo: un negocio fuera de la lista no crea fila ni llama al proveedor.
+    assertBusinessAllowed(businessId, ctx.issuer);
     const { medioPago, montoPago, payload } = evaluateEligibility({
       sale,
       business,
@@ -241,9 +271,19 @@ export function createFiscalEmitter({
   // Estado fiscal de la venta para el TPV. Solo lectura: nunca reclama ni llama al proveedor.
   // canEmit es true solo si el rol permite emitir, la venta no tiene fila (o está pending), el
   // proveedor está activo y la venta pasa la elegibilidad completa. blockedReason explica por qué no.
+  // liveAuthorized: el SERVIDOR autoriza la emisión real para este negocio (proveedor real activo,
+  // empresa en la lista, emisor habilitado y verificado). El TPV en Preview solo usa el modo real
+  // si lo recibe en true; aun así cada emisión vuelve a pasar todas las reglas del servidor.
   async function status({ actorUserId, saleId }) {
     const { sale, business, role } = await loadAuthorizedSale(actorUserId, saleId, 'reprint');
     const row = await store.getIssuance(sale.businessId, sale.id);
+    let ctx = null;
+    try {
+      ctx = await store.loadEmissionContext(sale.businessId, sale.id);
+    } catch {
+      ctx = null;
+    }
+    const allowed = businessAllowed(sale.businessId, ctx?.issuer);
     const out = {
       state: row?.status ?? 'none',
       folio: row?.folio ?? null,
@@ -253,29 +293,25 @@ export function createFiscalEmitter({
       hasXml: Boolean(row?.hasXml),
       canEmit: false,
       blockedReason: null,
+      liveAuthorized: provider.ready === true && provider.name === 'dtecore' && allowed
+        && ctx?.issuer?.enabled === true && ctx?.issuer?.verified === true,
       // Resolución SII del emisor para imprimir la boleta (o su reimpresión). null si no está.
       resolucion: null,
     };
-    const resolucionOf = async () => {
-      try {
-        return (await store.loadEmissionContext(sale.businessId, sale.id))?.issuer?.resolucion ?? null;
-      } catch {
-        return null;
-      }
-    };
     if (row?.status === 'unknown' || row?.status === 'failed') out.errorCode = row.errorCode ?? null;
     if (row && row.status !== 'pending') {
-      if (row.status === 'issued' || row.status === 'cancelled') out.resolucion = await resolucionOf();
+      if (row.status === 'issued' || row.status === 'cancelled') out.resolucion = ctx?.issuer?.resolucion ?? null;
       out.blockedReason = row.status === 'issued' ? 'ALREADY_ISSUED'
         : row.status === 'unknown' ? 'UNKNOWN_REQUIRES_RECONCILIATION'
           : row.status === 'sending' ? 'ALREADY_IN_PROGRESS' : 'NOT_EMITTABLE_IN_STATE';
       return out;
     }
+    if (!ctx) { out.blockedReason = 'STATUS_UNAVAILABLE'; return out; }
+    if (!allowed) { out.blockedReason = 'FISCAL_BUSINESS_NOT_ALLOWED'; return out; }
     if (!authorizeAction(role, 'emit')) { out.blockedReason = 'FISCAL_ROLE_REQUIRED'; return out; }
     if (provider.ready === false) { out.blockedReason = 'PROVIDER_NOT_READY'; return out; }
+    out.resolucion = ctx.issuer?.resolucion ?? null;
     try {
-      const ctx = await store.loadEmissionContext(sale.businessId, sale.id);
-      out.resolucion = ctx.issuer?.resolucion ?? null;
       evaluateEligibility({
         sale, business, issuer: ctx.issuer, emissionEnabled: ctx.emissionEnabled,
         taxLinesVerified: ctx.taxLinesVerified, lines: ctx.lines, payments: ctx.payments,
@@ -289,6 +325,91 @@ export function createFiscalEmitter({
     return out;
   }
 
-  // Superficie pública: emit, reprint y status. No hay reconcile aquí (lib/reconciler.mjs).
-  return Object.freeze({ emitSale, reprint, status });
+  // Recuperación de un resultado desconocido: SOLO CONSULTA.
+  //  - Nunca llama a provider.emit, nunca reclama, nunca cambia el estado de la venta: sigue en
+  //    'unknown' pase lo que pase (una venta 'unknown' no se vuelve a emitir por ningún camino).
+  //  - Pregunta a DTE Core por NUESTRO idBoletaOperacion y, si informa un folio, descarga XML y PDF
+  //    de ese folio y los valida (tipo 39, folio, RUT del emisor, total de la venta, timbre, PDF).
+  //  - Devuelve lo encontrado para que una persona decida la conciliación (lib/reconciler.mjs,
+  //    fuera de la API pública). Deja registro en la auditoría.
+  async function lookupOperation({ actorUserId, saleId }) {
+    const { sale } = await loadAuthorizedSale(actorUserId, saleId, 'lookup');
+    const businessId = sale.businessId;
+    const ctx = await store.loadEmissionContext(businessId, sale.id);
+    assertBusinessAllowed(businessId, ctx.issuer);
+    const row = await store.getIssuance(businessId, sale.id);
+    if (!row || row.status !== 'unknown') throw new FiscalError('NOT_UNKNOWN');
+    if (provider.ready !== true || typeof provider.lookupOperation !== 'function') throw new FiscalError('PROVIDER_NOT_READY');
+    const creds = await readOnlyCredentials(businessId);
+    const operationId = operationIdFor(businessId, sale.id);
+
+    const found = await provider.lookupOperation({ operationId, credentials: creds });
+    const out = {
+      state: 'unknown', // no cambia: esta acción no concilia
+      result: ['found', 'not_found'].includes(found?.result) ? found.result : 'indeterminate',
+      folio: null,
+      folioHint: Number.isSafeInteger(row.folio) ? row.folio : null,
+      documents: null,
+      code: null,
+    };
+    if (out.result === 'indeterminate') out.code = String(found?.code ?? 'LOOKUP_UNRECOGNIZED').slice(0, 64);
+    if (out.result === 'found') {
+      out.folio = found.folio;
+      if (out.folioHint != null && out.folioHint !== found.folio) out.code = 'FOLIO_HINT_MISMATCH';
+      const expect = { total: Number(sale.total), rutEmisor: ctx.issuer?.issuerRut ?? null };
+      let doc = null;
+      try {
+        doc = typeof provider.retrieveDocuments === 'function'
+          ? await provider.retrieveDocuments({ folio: found.folio, credentials: creds, expect }) : null;
+      } catch {
+        doc = null;
+      }
+      out.documents = doc ? 'valid' : 'not_retrieved';
+    }
+    await auditBestEffort({
+      businessId, saleId: sale.id, actorUserId, action: 'reconcile_attempt', outcome: `lookup_${out.result}`,
+      detail: { operationId, folio: out.folio, folioHint: out.folioHint, documents: out.documents, code: out.code },
+    });
+    return out;
+  }
+
+  // Estado del SII de una boleta emitida, consultado a DTE Core. Solo lee al proveedor; en la base
+  // solo escribe sii_status (crm_fiscal_record_sii_status), nunca folio, XML, PDF ni estado de emisión.
+  // Si la respuesta no se reconoce, no escribe nada y la boleta sigue «sin verificar».
+  async function refreshSiiStatus({ actorUserId, saleId }) {
+    const { sale } = await loadAuthorizedSale(actorUserId, saleId, 'sii_status');
+    const businessId = sale.businessId;
+    const ctx = await store.loadEmissionContext(businessId, sale.id);
+    assertBusinessAllowed(businessId, ctx.issuer);
+    const row = await store.getIssuance(businessId, sale.id);
+    if (!row || (row.status !== 'issued' && row.status !== 'cancelled') || !Number.isSafeInteger(row.folio)) {
+      throw new FiscalError('NOT_ISSUED');
+    }
+    if (provider.ready !== true || typeof provider.getSiiStatus !== 'function') throw new FiscalError('PROVIDER_NOT_READY');
+    const creds = await readOnlyCredentials(businessId);
+    const r = await provider.getSiiStatus({ folio: row.folio, credentials: creds });
+    const previous = row.siiStatus ?? 'unverified';
+    if (r?.result !== 'ok') {
+      return { folio: row.folio, siiStatus: previous, updated: false, code: String(r?.code ?? 'SII_STATUS_UNAVAILABLE').slice(0, 64) };
+    }
+    if (!r.siiStatus) {
+      return { folio: row.folio, siiStatus: previous, updated: false, code: 'SII_STATUS_UNRECOGNIZED', rawState: r.rawState ?? null };
+    }
+    if (r.siiStatus === previous) return { folio: row.folio, siiStatus: previous, updated: false, rawState: r.rawState ?? null };
+    try {
+      await store.recordSiiStatus(businessId, sale.id, {
+        siiStatus: r.siiStatus, source: 'provider_api', trackId: r.trackId ?? null,
+        detail: r.rawState ? `estado=${r.rawState}` : null, actorUserId,
+      });
+    } catch (err) {
+      if (err instanceof FiscalError && ['FISCAL_SII_STATUS_FINAL', 'FISCAL_SII_TRACK_MISMATCH'].includes(err.code)) {
+        return { folio: row.folio, siiStatus: previous, updated: false, code: err.code, rawState: r.rawState ?? null };
+      }
+      throw err;
+    }
+    return { folio: row.folio, siiStatus: r.siiStatus, updated: true, rawState: r.rawState ?? null };
+  }
+
+  // Superficie pública: emit, reprint, status y las dos consultas. No hay reconcile aquí (lib/reconciler.mjs).
+  return Object.freeze({ emitSale, reprint, status, lookupOperation, refreshSiiStatus });
 }

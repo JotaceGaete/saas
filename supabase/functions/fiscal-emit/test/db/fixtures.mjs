@@ -45,6 +45,7 @@ export async function makeFixture(c, opts = {}) {
     discount: 0,
     total: 2380,
     withCredentials: true,
+    issuerRut: '76123456-7',
     ...opts,
   };
   const businessId = randomUUID();
@@ -70,9 +71,9 @@ export async function makeFixture(c, opts = {}) {
   await c.query(
     `insert into fiscal.issuers (business_id, issuer_rut, provider, enabled, verified, sucursal_nombre, sucursal_codigo,
                                  review_status, resolucion_numero, resolucion_fecha)
-     values ($1, '76123456-7', 'dtecore', $2, $3, 'SUCURSAL DE PRUEBA', '1',
+     values ($1, $4, 'dtecore', $2, $3, 'SUCURSAL DE PRUEBA', '1',
              case when $3::boolean then 'approved' else 'draft' end, 80, date '2014-08-22')`,
-    [businessId, o.issuerEnabled, o.issuerVerified],
+    [businessId, o.issuerEnabled, o.issuerVerified, o.issuerRut],
   );
   await c.query(
     `insert into public.crm_invoices (id, business_id, invoice_number, status, paid_at, total, subtotal, discount_amount)

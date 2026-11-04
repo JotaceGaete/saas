@@ -30,6 +30,9 @@ export const FISCAL_EMIT_MESSAGES = Object.freeze({
   ALREADY_ISSUED: 'Esta venta ya tiene boleta.',
   PROVIDER_REJECTED: 'DTE Core rechazó la boleta. No se asignó folio. Revisa el detalle antes de volver a intentarlo.',
   RESPONSE_LOST: 'No recibimos respuesta. No repitas la emisión: revisa el estado de la venta.',
+  FISCAL_BUSINESS_NOT_ALLOWED: 'La boleta electrónica no está habilitada para este negocio.',
+  NOT_UNKNOWN: 'Esta venta no tiene un resultado pendiente de confirmar.',
+  NOT_ISSUED: 'Esta venta no tiene una boleta emitida.',
 });
 
 export function describeFiscalEmitError(code) {
@@ -104,4 +107,44 @@ export async function emitFiscalSale(saleId) {
   // Sin respuesta del handler (red, función caída): no sabemos si emitió.
   if (!payload?.error) return { ok: false, status: 'error', code: 'RESPONSE_LOST' };
   return { ok: false, status: 'error', code: payload.error };
+}
+
+// Invoca una acción de CONSULTA de fiscal-emit. Nunca emite. Devuelve { ok, data } | { ok:false, code }.
+async function invokeQuery(action, saleId) {
+  try {
+    const { data, error } = await supabase.functions.invoke('fiscal-emit', { body: { action, saleId } });
+    if (!error && data && typeof data === 'object') return { ok: true, data };
+    let payload = null;
+    try {
+      if (error?.context && typeof error.context.json === 'function') payload = await error.context.json();
+    } catch { /* sin detalle */ }
+    return { ok: false, code: payload?.error ?? 'QUERY_UNAVAILABLE' };
+  } catch {
+    return { ok: false, code: 'QUERY_UNAVAILABLE' };
+  }
+}
+
+/**
+ * Resultado desconocido: pregunta a DTE Core por la operación de la venta. Solo consulta: no
+ * emite, no reintenta y no cambia la venta (sigue «por confirmar» hasta la conciliación manual).
+ */
+export function lookupFiscalOperation(saleId) {
+  return invokeQuery('lookup', saleId);
+}
+
+/** Estado SII de una boleta ya emitida, consultado a DTE Core. Nunca emite. */
+export function refreshFiscalSiiStatus(saleId) {
+  return invokeQuery('sii-status', saleId);
+}
+
+/** Texto para el cajero con el resultado de lookupFiscalOperation. */
+export function describeLookupResult(r) {
+  if (!r?.ok) return describeFiscalEmitError(r?.code);
+  const d = r.data;
+  if (d.result === 'found') {
+    const docs = d.documents === 'valid' ? 'XML y PDF verificados' : 'sin poder verificar XML y PDF';
+    return `DTE Core informa la boleta folio ${d.folio} (${docs}). Falta conciliarla; no se emitió otra.`;
+  }
+  if (d.result === 'not_found') return 'DTE Core no informa esta operación. La venta sigue bloqueada: no se emite sola.';
+  return 'DTE Core no dio una respuesta clara. La venta sigue bloqueada: no se emite sola.';
 }

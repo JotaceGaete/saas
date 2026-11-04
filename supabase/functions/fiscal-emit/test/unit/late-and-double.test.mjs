@@ -9,6 +9,7 @@ import { createFiscalEmitter } from '../../lib/emit.mjs';
 import { createHttpHandler } from '../../lib/http.mjs';
 import { createMemoryStore, IDS } from '../helpers/memory-store.mjs';
 import { syntheticDocument } from '../helpers/dte-fixtures.mjs';
+import { TEST_ALLOW_ALL } from '../helpers/allowlist.mjs';
 
 const SALE = '11111111-1111-4111-8111-111111111111';
 let server;
@@ -39,7 +40,7 @@ function setup({ adapterTimeoutMs = 2000, emitterTimeoutMs = 3000 } = {}) {
   const store = createMemoryStore({ masterKey: MASTER });
   store.seed({ businessId: IDS.bizA, userId: IDS.userA, saleId: SALE });
   const provider = { ...createSiisolutionsHttpProvider({ baseUrl, timeoutMs: adapterTimeoutMs }), ready: true };
-  const emitter = createFiscalEmitter({ store, provider, masterKey: MASTER, timeoutMs: emitterTimeoutMs });
+  const emitter = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store, provider, masterKey: MASTER, timeoutMs: emitterTimeoutMs });
   const handle = createHttpHandler({ emitter, resolveUser: async () => IDS.userA });
   const call = (action) => handle({ method: 'POST', authHeader: 'Bearer t', body: { action, saleId: SALE } });
   const row = () => store.issuances.get(`${IDS.bizA}|${SALE}`);

@@ -162,6 +162,13 @@ export function createPgStore(cfg) {
       ));
     },
 
+    async recordSiiStatus(businessId, saleId, { siiStatus, source, trackId = null, detail = null, actorUserId = null }) {
+      return scalar(
+        `select public.crm_fiscal_record_sii_status($1, $2, $3, $4, $5, $6, $7) as j`,
+        [businessId, saleId, siiStatus, source, trackId, detail, actorUserId], 'j',
+      );
+    },
+
     async listStaleSending(before) {
       return mapStaleList(await scalar(
         `select public.crm_fiscal_list_stale_sending($1) as j`, [before.toISOString()], 'j',

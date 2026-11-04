@@ -34,6 +34,7 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
   const receipts = new Map(); // `${b}|${s}|${op}` -> receipt
   const evidenceLog = [];
   const auditLog = [];
+  const siiEvents = [];
   const retroBlocks = new Set(); // sale ids bloqueadas para emisión retroactiva automática
   const control = { enabled: emissionEnabled };
   const faults = new Map();
@@ -43,13 +44,13 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
   const key = (b, s) => `${b}|${s}`;
   const rkey = (b, u) => `${b}|${u}`;
 
-  function seed({ businessId, userId, saleId, total = 2380, cash = true, withLines = true, point = null, active = true, owner = true }) {
+  function seed({ businessId, userId, saleId, total = 2380, cash = true, withLines = true, point = null, active = true, owner = true, issuerRut = '76123456-7' }) {
     businesses.set(businessId, { id: businessId, userId, countryCode: 'CL', isActive: active });
     sales.set(saleId, {
       id: saleId, businessId, status: 'pagada', paidAt: new Date(), total, discountAmount: 0,
     });
     issuers.set(businessId, {
-      issuerRut: '76123456-7', provider: 'dtecore', enabled: true, verified: true,
+      issuerRut, provider: 'dtecore', enabled: true, verified: true,
       sucursal: { nombre: 'SUCURSAL DE PRUEBA', codigo: '1' }, resolucion: { numero: 80, fecha: '2014-08-22' },
     });
     lines.set(saleId, withLines
@@ -146,6 +147,8 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
     issuances,
     creds,
     evidenceLog,
+    siiEvents,
+    issuers,
     receipts,
     sales,
     calls,
@@ -269,6 +272,21 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
       Object.assign(cur, { status: 'failed', errorCode: code });
       stamp(cur);
       return true;
+    }),
+
+    // Espejo de public.crm_fiscal_record_sii_status (migración E): solo issued/cancelled con folio;
+    // un estado final no cambia a otro; nunca toca status, folio, XML ni PDF.
+    recordSiiStatus: guard('recordSiiStatus', async (b, s, { siiStatus, source, trackId = null, detail = null, actorUserId = null }) => {
+      if (!['received', 'accepted', 'accepted_with_objections', 'rejected'].includes(siiStatus)
+          || !['portal_manual', 'provider_api', 'sii_api'].includes(source)) throw new FiscalError('FISCAL_SII_STATUS_INVALID');
+      const cur = issuances.get(key(b, s));
+      if (!cur || !['issued', 'cancelled'].includes(cur.status) || !cur.folio) throw new FiscalError('FISCAL_NOT_ISSUED');
+      const prev = cur.siiStatus ?? 'unverified';
+      if (['accepted', 'accepted_with_objections', 'rejected'].includes(prev) && siiStatus !== prev) throw new FiscalError('FISCAL_SII_STATUS_FINAL');
+      if (cur.siiTrackId && trackId && trackId !== cur.siiTrackId) throw new FiscalError('FISCAL_SII_TRACK_MISMATCH');
+      Object.assign(cur, { siiStatus, siiTrackId: cur.siiTrackId ?? trackId, siiDetail: detail, siiSource: source });
+      siiEvents.push({ businessId: b, saleId: s, from: prev, to: siiStatus, source, trackId, actorUserId });
+      return { folio: cur.folio, sii_status: siiStatus, previous: prev };
     }),
 
     // Espejo de public.crm_fiscal_list_stale_sending.

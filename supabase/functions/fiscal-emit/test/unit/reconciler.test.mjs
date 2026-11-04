@@ -7,6 +7,7 @@ import { normalizeEvidence } from '../../lib/evidence.mjs';
 import { createFiscalEmitter } from '../../lib/emit.mjs';
 import { createSimulatedProvider } from '../../lib/providers/simulated.mjs';
 import { createMemoryStore, IDS } from '../helpers/memory-store.mjs';
+import { TEST_ALLOW_ALL } from '../helpers/allowlist.mjs';
 
 const MASTER = randomBytes(32);
 const ROW_A = `${IDS.bizA}|${IDS.saleA}`;
@@ -19,7 +20,7 @@ async function unknownSale() {
   store.seed({ businessId: IDS.bizA, userId: IDS.userA, saleId: IDS.saleA });
   store.seed({ businessId: IDS.bizB, userId: IDS.userB, saleId: IDS.saleB });
   const provider = createSimulatedProvider({ scenario: 'timeout', delayMs: 5 });
-  const emitter = createFiscalEmitter({ store, provider, masterKey: MASTER, timeoutMs: 100 });
+  const emitter = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store, provider, masterKey: MASTER, timeoutMs: 100 });
   await emitter.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA });
   return { store, provider };
 }
@@ -114,7 +115,7 @@ test('autorizado + evidencia "no encontrada" -> failed sin folio', async () => {
 test('reconciliar solo desde unknown: una venta issued no se reconcilia', async () => {
   const store = createMemoryStore({ masterKey: MASTER });
   store.seed({ businessId: IDS.bizA, userId: IDS.userA, saleId: IDS.saleA });
-  const emitter = createFiscalEmitter({ store, provider: createSimulatedProvider({ scenario: 'ok' }), masterKey: MASTER });
+  const emitter = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store, provider: createSimulatedProvider({ scenario: 'ok' }), masterKey: MASTER });
   await emitter.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA });
   const rec = createReconciler({ store, authorize: ALLOW });
   await assert.rejects(rec.reconcile({ actorUserId: IDS.userA, saleId: IDS.saleA, evidence: BASE_EVIDENCE }), { code: 'NOT_UNKNOWN' });

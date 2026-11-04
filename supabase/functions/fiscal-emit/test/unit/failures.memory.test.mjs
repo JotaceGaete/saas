@@ -13,6 +13,7 @@ import { createFiscalEmitter, operationIdFor, PERSIST_ATTEMPTS } from '../../lib
 import { createRecovery, MIN_STALE_AFTER_MS } from '../../lib/recovery.mjs';
 import { createSimulatedProvider } from '../../lib/providers/simulated.mjs';
 import { createMemoryStore, IDS } from '../helpers/memory-store.mjs';
+import { TEST_ALLOW_ALL } from '../helpers/allowlist.mjs';
 
 const MASTER = randomBytes(32);
 const ROW = `${IDS.bizA}|${IDS.saleA}`;
@@ -25,7 +26,7 @@ function world({ scenario = 'ok', timeoutMs = 200 } = {}) {
   const store = createMemoryStore({ masterKey: MASTER, now: clock.now });
   store.seed({ businessId: IDS.bizA, userId: IDS.userA, saleId: IDS.saleA });
   const provider = createSimulatedProvider({ scenario, delayMs: 5 });
-  const emitter = createFiscalEmitter({ store, provider, masterKey: MASTER, timeoutMs });
+  const emitter = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store, provider, masterKey: MASTER, timeoutMs });
   const recovery = createRecovery({ store, now: clock.now, staleAfterMs: 10 * 60_000 });
   return { store, provider, emitter, recovery, clock };
 }
@@ -119,7 +120,7 @@ test('documento con base64 mal formado -> unknown (INCOMPLETE_DOCUMENT); nunca l
     const doc = await inner.emit(args);
     return { ...doc, xmlBase64: 'PERTFPgo=' }; // longitud 9: base64 inválido
   } };
-  const emitter = createFiscalEmitter({ store: w.store, provider: malformed, masterKey: MASTER, timeoutMs: 200 });
+  const emitter = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store: w.store, provider: malformed, masterKey: MASTER, timeoutMs: 200 });
   const r = await emitter.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA });
   assert.equal(r.status, 'unknown');
   assert.equal(r.reason, 'INCOMPLETE_DOCUMENT');
@@ -224,7 +225,7 @@ test('carrera: la recuperación marca unknown mientras el proveedor responde; el
       return doc;
     },
   };
-  const emitter = createFiscalEmitter({ store, provider, masterKey: MASTER, timeoutMs: 500 });
+  const emitter = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store, provider, masterKey: MASTER, timeoutMs: 500 });
   const r = await emitter.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA });
   assert.equal(r.status, 'unknown');
   assert.equal(r.reason, 'STATE_CHANGED');

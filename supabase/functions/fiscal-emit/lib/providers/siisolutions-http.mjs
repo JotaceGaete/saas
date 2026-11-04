@@ -26,6 +26,13 @@ import { ProviderRejectedError } from '../errors.mjs';
 export const DTECORE_PRODUCTION_ORIGIN = 'https://api.siisolutions.cl';
 export const SIISOLUTIONS_EMIT_PATH = '/dte/boletas/emitir';
 export const documentPath = (folio, kind) => `/dte/documentos/39/${folio}/${kind}`;
+// Consultas de solo lectura (GET). Ninguna emite, reenvía ni anula.
+//   Operación por idBoletaOperacion: endpoint presente en la colección Postman, sin ejemplo de
+//   respuesta. Ver lookupOperation: solo se acepta un folio explícito; lo demás es indeterminado.
+//   Estado de envío al SII de un folio: ver getSiiStatus y mapSiiStatus.
+export const operationPath = (operationId) => `/dte/operaciones/39/${encodeURIComponent(operationId)}`;
+export const siiStatusPath = (folio) => `/dte/emitidos/39/${folio}/envio-sii`;
+const OPERATION_ID = /^[A-Za-z0-9-]{1,100}$/;
 const DEFAULT_TIMEOUT_MS = 20_000;
 const DOCS_TIMEOUT_MS = 12_000;
 const BASE64 = /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/;
@@ -116,6 +123,70 @@ export function documentCandidate(kind, bytes, contentType) {
   return isB64(trimmed) ? trimmed : null;
 }
 
+const folioOfValue = (v) => {
+  const n = typeof v === 'string' && /^\d{1,12}$/.test(v) ? Number(v) : v;
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+};
+const objectsOf = (body) => [body, body?.data, body?.resultado, body?.operacion, body?.result]
+  .filter((o) => o && typeof o === 'object' && !Array.isArray(o));
+
+/**
+ * Interpreta la respuesta de GET /dte/operaciones/39/{idBoletaOperacion}. El formato no está
+ * documentado, así que solo hay tres resultados y ante la duda gana 'indeterminate':
+ *   found         2xx con un folio explícito, del tipo 39 si lo informa, de NUESTRA operación si
+ *                 la informa, y no marcado como simulación.
+ *   not_found     404. No es prueba de que no se emitió (el proveedor no lo ha confirmado): la venta
+ *                 sigue bloqueada igual.
+ *   indeterminate cualquier otra cosa (2xx sin folio, 401/403, 5xx, cuerpo ilegible...).
+ */
+export function parseOperationLookup(status, body, operationId) {
+  if (status === 404) return { result: 'not_found' };
+  if (status === 401 || status === 403) return { result: 'indeterminate', code: 'PROVIDER_AUTH' };
+  if (status < 200 || status >= 300) return { result: 'indeterminate', code: `PROVIDER_HTTP_${status}` };
+  const candidates = objectsOf(body);
+  if (candidates.length === 0) return { result: 'indeterminate', code: 'RESPONSE_UNRECOGNIZED' };
+  for (const o of candidates) {
+    const folio = folioOfValue(o.folio ?? o.Folio ?? o.folioAsignado);
+    if (!folio) continue;
+    const tipo = o.codigoDte ?? o.tipoDte ?? o.TipoDTE;
+    if (tipo != null && Number(tipo) !== 39) return { result: 'indeterminate', code: 'OPERATION_TYPE_MISMATCH' };
+    const op = o.idBoletaOperacion ?? o.idOperacion;
+    if (op != null && String(op) !== operationId) return { result: 'indeterminate', code: 'OPERATION_ID_MISMATCH' };
+    if (o.esSimulacion === true) return { result: 'indeterminate', code: 'PROVIDER_SIMULATION' };
+    return { result: 'found', folio };
+  }
+  return { result: 'indeterminate', code: 'OPERATION_WITHOUT_FOLIO' };
+}
+
+const plain = (s) => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toUpperCase().replace(/[\s-]+/g, '_');
+const SII_FINAL = Object.freeze([
+  [/^(ACEPTADO|ACEPTADA|ACCEPTED|DTE_ACEPTADO)$/, 'accepted'],
+  [/^(ACEPTADO_CON_REPAROS|ACEPTADA_CON_REPAROS|CON_REPAROS|REPARO|ACCEPTED_WITH_OBJECTIONS)$/, 'accepted_with_objections'],
+  [/^(RECHAZADO|RECHAZADA|REJECTED|DTE_RECHAZADO)$/, 'rejected'],
+  [/^(RECIBIDO|RECIBIDA|ENVIADO|ENVIADA|EN_PROCESO|PROCESANDO|PENDIENTE|RECEIVED|SENT)$/, 'received'],
+]);
+
+/**
+ * Interpreta GET /dte/emitidos/39/{folio}/envio-sii. Formato no documentado: solo se reconocen
+ * estados escritos con palabras inequívocas (ACEPTADO, RECHAZADO, CON REPAROS, RECIBIDO...).
+ * Códigos abreviados del SII (EPR, DOK, RCT...) u otro texto NO se interpretan: siiStatus = null y
+ * la venta sigue «sin verificar» hasta revisar la respuesta real. Nunca se deduce «aceptada».
+ */
+export function mapSiiStatus(body) {
+  let raw = null;
+  let trackId = null;
+  for (const o of objectsOf(body)) {
+    raw ??= [o.estadoSii, o.estado, o.estadoEnvio, o.status].find((v) => typeof v === 'string' && v.trim()) ?? null;
+    const t = o.trackId ?? o.trackid ?? o.track_id ?? o.TrackId;
+    if (trackId == null && t != null && /^\d{1,20}$/.test(String(t))) trackId = String(t);
+  }
+  const normalized = raw ? plain(raw) : null;
+  const rawState = normalized ? normalized.replace(/[^A-Z0-9_]/g, '').slice(0, 40) : null;
+  // Se compara el texto completo, sin quitarle nada: «ACEPTADO?» o «ACEPTADO (parcial)» no cuentan.
+  const hit = normalized && /^[A-Z_]{1,40}$/.test(normalized) ? SII_FINAL.find(([re]) => re.test(normalized)) : null;
+  return { siiStatus: hit ? hit[1] : null, rawState, trackId };
+}
+
 export function createSiisolutionsHttpProvider({
   baseUrl = DTECORE_PRODUCTION_ORIGIN,
   fetchImpl = globalThis.fetch,
@@ -152,10 +223,51 @@ export function createSiisolutionsHttpProvider({
     return documentProblem(doc, expect) ? null : doc;
   }
 
+  // GET JSON de solo lectura. Nunca lanza: { status, body } o { error } (red, plazo, tipo).
+  async function getJson(path, apiKey) {
+    let res;
+    try {
+      res = await fetchImpl(`${origin}${path}`, {
+        method: 'GET',
+        headers: { 'X-Api-Key': apiKey, accept: 'application/json' },
+        redirect: 'error',
+        signal: AbortSignal.timeout(docsTimeoutMs),
+      });
+    } catch (err) {
+      return { error: err?.name === 'TimeoutError' ? 'PROVIDER_TIMEOUT' : 'PROVIDER_NETWORK' };
+    }
+    const text = await res.text().catch(() => '');
+    let body = null;
+    try { body = text ? JSON.parse(text) : null; } catch { body = null; }
+    return { status: res.status, body };
+  }
+
+  /** Consulta una operación por su idBoletaOperacion. Solo lectura: nunca emite. */
+  async function lookupOperation({ operationId, credentials }) {
+    if (typeof operationId !== 'string' || !OPERATION_ID.test(operationId) || !credentials?.apiKey) {
+      return { result: 'indeterminate', code: 'LOOKUP_INVALID' };
+    }
+    const r = await getJson(operationPath(operationId), credentials.apiKey);
+    if (r.error) return { result: 'indeterminate', code: r.error };
+    return parseOperationLookup(r.status, r.body, operationId);
+  }
+
+  /** Estado del envío al SII de un folio ya emitido. Solo lectura. */
+  async function getSiiStatus({ folio, credentials }) {
+    if (!Number.isSafeInteger(folio) || folio <= 0 || !credentials?.apiKey) return { result: 'indeterminate', code: 'SII_STATUS_INVALID' };
+    const r = await getJson(siiStatusPath(folio), credentials.apiKey);
+    if (r.error) return { result: 'indeterminate', code: r.error };
+    if (r.status === 401 || r.status === 403) return { result: 'indeterminate', code: 'PROVIDER_AUTH' };
+    if (r.status < 200 || r.status >= 300) return { result: 'indeterminate', code: `PROVIDER_HTTP_${r.status}` };
+    return { result: 'ok', ...mapSiiStatus(r.body) };
+  }
+
   return {
     name: 'dtecore',
     ready: ready === true,
     retrieveDocuments,
+    lookupOperation,
+    getSiiStatus,
     async emit({ payload, credentials, expect = {} }) {
       if (!credentials?.apiKey) throw new ProviderUnknownError('PROVIDER_AUTH', { message: 'missing api key' });
       let res;

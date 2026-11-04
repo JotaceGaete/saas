@@ -35,6 +35,8 @@ export const PHASE = Object.freeze({
 // fiscal; el TPV imprime el comprobante interno de siempre.
 export const MODULE_OFF_CODES = Object.freeze(new Set([
   'FISCAL_ISSUER_NOT_ENABLED', 'FISCAL_EMISSION_DISABLED', 'COUNTRY_NOT_SUPPORTED',
+  // Negocio fuera de la lista de empresas autorizadas del servidor (alcance actual).
+  'FISCAL_BUSINESS_NOT_ALLOWED',
 ]));
 
 // Motivos por los que la venta no lleva boleta electrónica: el TPV imprime el comprobante
@@ -74,10 +76,16 @@ function memoryStorage() {
   return { getItem: (k) => (m.has(k) ? m.get(k) : null), setItem: (k, v) => m.set(k, String(v)), removeItem: (k) => m.delete(k) };
 }
 
+// Las boletas reales y las simuladas no comparten marcas ni claves de impresión: el folio
+// simulado 900001 no puede hacer creer que el folio real 900001 ya se imprimió. Las simuladas
+// conservan el formato anterior (así no se pierden las marcas que ya existen en los equipos).
+const isLive = (mode) => mode === 'live';
+
 /** Marcas locales por negocio: envío de emisión por venta e impresión del original por folio. */
-export function createFlowMarks({ businessId, storage } = {}) {
+export function createFlowMarks({ businessId, storage, mode = 'simulated' } = {}) {
   const s = storage || globalThis.localStorage || memoryStorage();
-  const key = (kind, id) => `walinka:fiscal-flow:${kind}:${businessId}:${id}`;
+  const prefix = isLive(mode) ? 'walinka:fiscal-flow:live' : 'walinka:fiscal-flow';
+  const key = (kind, id) => `${prefix}:${kind}:${businessId}:${id}`;
   const get = (k) => { try { return s.getItem(k); } catch { return null; } };
   const set = (k, v) => { try { s.setItem(k, v); } catch { /* sin almacenamiento */ } };
   const del = (k) => { try { s.removeItem(k); } catch { /* sin almacenamiento */ } };
@@ -91,12 +99,12 @@ export function createFlowMarks({ businessId, storage } = {}) {
 }
 
 /** Clave del trabajo de impresión del ORIGINAL: fija por folio (el conector descarta duplicados). */
-export function originalPrintKey(businessId, folio) {
-  return `fiscal:${businessId}:${folio}:boleta`;
+export function originalPrintKey(businessId, folio, mode = 'simulated') {
+  return isLive(mode) ? `fiscal-live:${businessId}:39:${folio}:boleta` : `fiscal:${businessId}:${folio}:boleta`;
 }
 
-export function reprintKey(businessId, folio, { now = Date.now(), nonce = Math.random().toString(36).slice(2, 8) } = {}) {
-  return `fiscal-reprint:${businessId}:${folio}:${now}${nonce}`;
+export function reprintKey(businessId, folio, { now = Date.now(), nonce = Math.random().toString(36).slice(2, 8), mode = 'simulated' } = {}) {
+  return isLive(mode) ? `fiscal-live-reprint:${businessId}:39:${folio}:${now}${nonce}` : `fiscal-reprint:${businessId}:${folio}:${now}${nonce}`;
 }
 
 /**
@@ -108,7 +116,10 @@ export function reprintKey(businessId, folio, { now = Date.now(), nonce = Math.r
  * @param {() => (string|null)} [deps.printBlocker] - código si falta algo para imprimir una boleta nueva
  *   (conector no activo, sin impresora, resolución en modo real); null si se puede imprimir
  */
-export function createFiscalSaleFlow({ businessId, emitter, print, marks = createFlowMarks({ businessId }), printBlocker = () => null }) {
+export function createFiscalSaleFlow({
+  businessId, emitter, print, mode = emitter?.mode === 'live' ? 'live' : 'simulated',
+  marks = createFlowMarks({ businessId, mode }), printBlocker = () => null,
+}) {
 
   // Número interno de cada venta (invoice_number del servidor), para el pie
   // de la boleta y de sus reimpresiones. Lo trae el contexto de la venta.
@@ -126,7 +137,7 @@ export function createFiscalSaleFlow({ businessId, emitter, print, marks = creat
     } catch (err) {
       return { phase: PHASE.PRINT_FAILED, folio, code: err?.code || 'XML_DOWNLOAD_FAILED', message: err?.message };
     }
-    const r = await print({ bytes, reprint: false, idempotencyKey: originalPrintKey(businessId, folio), saleNumber: saleNumberOf(saleId) });
+    const r = await print({ bytes, reprint: false, idempotencyKey: originalPrintKey(businessId, folio, mode), saleNumber: saleNumberOf(saleId) });
     if (!r?.ok) return { phase: PHASE.PRINT_FAILED, folio, code: r?.code || 'PRINT_FAILED', message: r?.message };
     marks.markPrinted(folio);
     return { phase: PHASE.PRINTED, folio, simulation: Boolean(r.simulation) };
@@ -199,7 +210,7 @@ export function createFiscalSaleFlow({ businessId, emitter, print, marks = creat
     /** Copia rotulada REIMPRESION con clave nueva: nunca emite ni consume folio. */
     reprint: (saleId, folio) => once(saleId, async () => {
       const bytes = await emitter.loadDte(saleId);
-      const r = await print({ bytes, reprint: true, idempotencyKey: reprintKey(businessId, folio), saleNumber: saleNumberOf(saleId) });
+      const r = await print({ bytes, reprint: true, idempotencyKey: reprintKey(businessId, folio, { mode }), saleNumber: saleNumberOf(saleId) });
       return r?.ok ? { phase: PHASE.PRINTED, folio, reprinted: true, simulation: Boolean(r.simulation) }
         : { phase: PHASE.PRINT_FAILED, folio, code: r?.code || 'PRINT_FAILED', message: r?.message, reprint: true };
     }),

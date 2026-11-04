@@ -12,6 +12,7 @@ import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
 import { buildFiscalHandler } from './app.ts';
 import { createDtecoreBlockedProvider } from './lib/providers/dtecore-blocked.mjs';
 import { createSiisolutionsHttpProvider } from './lib/providers/siisolutions-http.mjs';
+import { ALLOWED_ISSUERS_ENV, parseAllowedIssuers } from './lib/allowlist.mjs';
 
 // Proveedor: bloqueado salvo FISCAL_PROVIDER=dtecore (alias histórico: siisolutions).
 // Aun activado, la emisión exige emisor habilitado y verificado, control de emisión global
@@ -28,10 +29,15 @@ const service = createClient(
   { auth: { persistSession: false } },
 );
 
+// Empresas autorizadas: FISCAL_ALLOWED_ISSUERS="<uuid>=<rut>,...". Vacía o inválida = nadie.
+const allowedIssuers = parseAllowedIssuers(Deno.env.get(ALLOWED_ISSUERS_ENV) ?? '');
+if (allowedIssuers.error) console.error('fiscal-emit: lista de empresas autorizadas no disponible', allowedIssuers.error);
+
 const handler = buildFiscalHandler({
   db: service as any,
   provider,
   masterKey: Deno.env.get('FISCAL_MASTER_KEY'),
+  allowedIssuers,
 });
 
 Deno.serve(handler);

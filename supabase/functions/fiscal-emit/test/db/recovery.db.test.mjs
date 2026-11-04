@@ -9,6 +9,7 @@ import { createFiscalEmitter } from '../../lib/emit.mjs';
 import { createRecovery } from '../../lib/recovery.mjs';
 import { createSimulatedProvider } from '../../lib/providers/simulated.mjs';
 import { CFG, TEST_MASTER_KEY, makeFixture, otherUser, setEmissionControl } from './fixtures.mjs';
+import { TEST_ALLOW_ALL } from '../helpers/allowlist.mjs';
 
 let c;
 let store;
@@ -120,7 +121,7 @@ test('roles: negocio inactivo no concede rol aunque la fila exista', async () =>
 
 test('roles: fiscal_viewer no emite (FISCAL_ROLE_REQUIRED), pero sí reimprime', async () => {
   const f = await makeFixture(c);
-  const emitter = createFiscalEmitter({ store, provider: createSimulatedProvider({ scenario: 'ok' }), masterKey: TEST_MASTER_KEY });
+  const emitter = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store, provider: createSimulatedProvider({ scenario: 'ok' }), masterKey: TEST_MASTER_KEY });
   await emitter.emitSale({ actorUserId: f.userId, saleId: f.saleId });
   await c.query(`update fiscal.business_fiscal_roles set revoked_at = now() where business_id = $1 and user_id = $2`, [f.businessId, f.userId]);
   await c.query(
@@ -235,7 +236,7 @@ test('list_stale_sending: indica qué filas vencidas tienen recibo', async () =>
 test('extremo a extremo: fallo al finalizar -> PERSIST_PENDING_RECOVERY; recuperación desde recibo; cero llamadas al proveedor', async () => {
   const f = await makeFixture(c);
   const provider = createSimulatedProvider({ scenario: 'ok' });
-  const emitter = createFiscalEmitter({ store: failingStore({ finalize: 99 }), provider, masterKey: TEST_MASTER_KEY, timeoutMs: 1000 });
+  const emitter = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store: failingStore({ finalize: 99 }), provider, masterKey: TEST_MASTER_KEY, timeoutMs: 1000 });
   await assert.rejects(emitter.emitSale({ actorUserId: f.userId, saleId: f.saleId }), { code: 'PERSIST_PENDING_RECOVERY' });
   assert.equal(provider.calls, 1);
   assert.equal((await row(f.businessId, f.saleId)).status, 'sending');
@@ -253,7 +254,7 @@ test('extremo a extremo: fallo al finalizar -> PERSIST_PENDING_RECOVERY; recuper
 test('extremo a extremo: caída antes del recibo -> recuperación marca unknown; no se reemite', async () => {
   const f = await makeFixture(c);
   const provider = createSimulatedProvider({ scenario: 'ok' });
-  const emitter = createFiscalEmitter({
+  const emitter = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL,
     store: failingStore({ storeReceipt: 99, finalize: 99 }), provider, masterKey: TEST_MASTER_KEY, timeoutMs: 1000,
   });
   await assert.rejects(emitter.emitSale({ actorUserId: f.userId, saleId: f.saleId }), { code: 'PERSIST_PENDING_RECOVERY' });
@@ -264,7 +265,7 @@ test('extremo a extremo: caída antes del recibo -> recuperación marca unknown;
   assert.equal(rep.markedUnknown, 1);
   assert.equal((await row(f.businessId, f.saleId)).status, 'unknown');
 
-  const healthy = createFiscalEmitter({ store, provider, masterKey: TEST_MASTER_KEY, timeoutMs: 1000 });
+  const healthy = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store, provider, masterKey: TEST_MASTER_KEY, timeoutMs: 1000 });
   await assert.rejects(healthy.emitSale({ actorUserId: f.userId, saleId: f.saleId }), { code: 'UNKNOWN_REQUIRES_RECONCILIATION' });
   assert.equal(provider.calls, 1, 'nunca se reemite tras una caída');
 });

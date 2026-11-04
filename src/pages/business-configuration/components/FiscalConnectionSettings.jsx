@@ -174,6 +174,19 @@ export default function FiscalConnectionSettings({ businessId }) {
 
   const current = stepIndex(status);
 
+  // Alcance actual: solo las empresas autorizadas por Walinka en el servidor. El servidor rechaza
+  // igual cualquier intento de otro negocio; aquí solo se evita mostrar un formulario inútil.
+  if (connection?.allowed === false) {
+    return (
+      <div className="rounded-xl border p-4 text-sm" style={cardStyle} data-testid="fiscal-not-available">
+        <p style={{ color: 'var(--color-text-primary)' }}>
+          La boleta electrónica todavía no está disponible para este negocio. Tus ventas siguen
+          imprimiendo el comprobante interno de siempre.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5" data-testid="fiscal-onboarding">
       {/* Progreso */}

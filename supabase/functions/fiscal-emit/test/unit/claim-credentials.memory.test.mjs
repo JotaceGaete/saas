@@ -8,6 +8,7 @@ import { createFiscalEmitter, operationIdFor } from '../../lib/emit.mjs';
 import { createSimulatedProvider } from '../../lib/providers/simulated.mjs';
 import { seal } from '../../lib/secrets.mjs';
 import { createMemoryStore, IDS } from '../helpers/memory-store.mjs';
+import { TEST_ALLOW_ALL } from '../helpers/allowlist.mjs';
 
 const MASTER = randomBytes(32);
 const OP_A = operationIdFor(IDS.bizA, IDS.saleA);
@@ -17,7 +18,7 @@ function setup() {
   const store = createMemoryStore({ masterKey: MASTER });
   store.seed({ businessId: IDS.bizA, userId: IDS.userA, saleId: IDS.saleA });
   const provider = createSimulatedProvider({ scenario: 'ok', delayMs: 5 });
-  const emitter = createFiscalEmitter({ store, provider, masterKey: MASTER, timeoutMs: 200 });
+  const emitter = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store, provider, masterKey: MASTER, timeoutMs: 200 });
   return { store, provider, emitter };
 }
 
@@ -41,7 +42,7 @@ test('el proveedor recibe la clave que estaba vigente en el momento del reclamo'
   const { store, provider } = setup();
   let seen = null;
   const spy = { ...provider, emit: async (args) => { seen = args.credentials.apiKey; return provider.emit(args); } };
-  const e2 = createFiscalEmitter({ store, provider: spy, masterKey: MASTER, timeoutMs: 200 });
+  const e2 = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store, provider: spy, masterKey: MASTER, timeoutMs: 200 });
   await e2.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA });
   assert.equal(seen, `TEST-KEY-${IDS.bizA}`);
 });

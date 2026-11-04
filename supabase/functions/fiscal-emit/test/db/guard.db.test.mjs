@@ -9,6 +9,7 @@ import { createReconciler } from '../../lib/reconciler.mjs';
 import { createSimulatedProvider } from '../../lib/providers/simulated.mjs';
 import { open as openSecret } from '../../lib/secrets.mjs';
 import { CFG, TEST_MASTER_KEY, makeFixture, otherUser, setEmissionControl } from './fixtures.mjs';
+import { TEST_ALLOW_ALL } from '../helpers/allowlist.mjs';
 
 let c; // cliente como superusuario de prueba (fixtures y lecturas de verificación)
 let store;
@@ -30,7 +31,7 @@ after(async () => {
 });
 
 function emitterFor(provider) {
-  return createFiscalEmitter({ store, provider, masterKey: TEST_MASTER_KEY, timeoutMs: 300 });
+  return createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store, provider, masterKey: TEST_MASTER_KEY, timeoutMs: 300 });
 }
 
 // Reconciliador con autorización de prueba explícita (la política real aún no está definida).

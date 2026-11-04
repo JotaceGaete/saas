@@ -5,6 +5,7 @@ import { createClient } from '@supabase/supabase-js';
 import { createFiscalRoleGuard } from '../_lib/siisolutions-fiscal-role-guard.js';
 import { createFiscalConnectionService } from '../_lib/fiscal-connection.js';
 import { parseMasterKey } from '../../supabase/functions/fiscal-emit/lib/secrets.mjs';
+import { allowlistFromEnv } from '../../supabase/functions/fiscal-emit/lib/allowlist.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CONNECTION_ROLES = Object.freeze(['fiscal_owner']);
@@ -70,7 +71,10 @@ export default async function handler(req, res) {
     return data.user.id;
   };
   const assertAccess = createFiscalRoleGuard({ authenticate, admin, allowedRoles: CONNECTION_ROLES });
-  const service = createFiscalConnectionService({ admin, masterKey });
+  // Empresas autorizadas: FISCAL_ALLOWED_ISSUERS (servidor). Vacía o inválida = ninguna.
+  const allowedIssuers = allowlistFromEnv(process.env);
+  if (allowedIssuers.error) console.error('[fiscal/connection] lista de empresas autorizadas no disponible', allowedIssuers.error);
+  const service = createFiscalConnectionService({ admin, masterKey, allowedIssuers });
   const parsed = Object.assign(req, { query: req.query || Object.fromEntries(new URL(req.url, 'http://x').searchParams) });
   return createFiscalConnectionHandler({ service, assertAccess })(parsed, res);
 }

@@ -136,6 +136,14 @@ export function createSupabaseStore(client) {
       }));
     },
 
+    // Estado SII (migración E). Solo service_role; nunca toca folio, XML, PDF ni estado de emisión.
+    async recordSiiStatus(businessId, saleId, { siiStatus, source, trackId = null, detail = null, actorUserId = null }) {
+      return rpc('crm_fiscal_record_sii_status', {
+        p_business_id: businessId, p_sale_id: saleId, p_sii_status: siiStatus, p_source: source,
+        p_track_id: trackId, p_detail: detail, p_actor_user_id: actorUserId,
+      });
+    },
+
     async listStaleSending(before) {
       return mapStaleList(await rpc('crm_fiscal_list_stale_sending', { p_before: before.toISOString() }));
     },

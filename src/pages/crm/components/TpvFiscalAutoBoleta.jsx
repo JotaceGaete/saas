@@ -1,6 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FISCAL_AUTO_MODE } from '../../../services/fiscalAutoMode';
 import { createLiveEmitter, createSimulatedEmitter, SIM_SCENARIO_STORAGE_KEY, SIM_SCENARIOS } from '../../../services/fiscalEmitters';
+import {
+  describeFiscalEmitError, describeLookupResult, getFiscalSaleStatus, lookupFiscalOperation, refreshFiscalSiiStatus, SII_STATUS_LABELS,
+} from '../../../services/fiscalEmitService';
+
+const DEFAULT_QUERIES = Object.freeze({ lookup: lookupFiscalOperation, siiStatus: refreshFiscalSiiStatus });
 import { createFiscalSaleFlow, describeFlowCode, MODULE_OFF_CODES, PHASE } from '../../../services/fiscalSaleFlow';
 import { fiscalPrintBlocker, printIssuedBoleta, readFiscalPrintSettings } from '../../../services/fiscalThermalPrintService';
 import { POINT_PREVIEW } from '../../../services/pointClient';
@@ -43,14 +48,27 @@ function readScenario() {
   try { return JSON.parse(window.localStorage.getItem(SIM_SCENARIO_STORAGE_KEY)) || 'ok'; } catch { return 'ok'; }
 }
 
+// En una Preview el modo real no lo decide el frontend: se pregunta al servidor (fiscal-emit,
+// acción status, solo lectura) y se usa 'live' únicamente si responde liveAuthorized === true
+// (proveedor real activo, empresa en la lista FISCAL_ALLOWED_ISSUERS, emisor habilitado y
+// verificado). Ante cualquier otra respuesta o error, la boleta queda simulada. Aunque se use
+// 'live', cada emisión vuelve a pasar todas las reglas del servidor.
+export const PREVIEW_LIVE = 'preview-live';
+
 /**
- * Modo fiscal efectivo de una venta. En una Preview nunca es 'live' (DTE Core
- * y SII desactivados, aunque el cobro Point sea real), ni para una venta simulada.
+ * Modo fiscal pedido para una venta. Una venta simulada nunca es 'live'. En una Preview, 'live'
+ * pasa a PREVIEW_LIVE: pendiente de la autorización del servidor (previewLiveDecision).
  */
 export function fiscalModeForSale(mode, sale, { preview = POINT_PREVIEW } = {}) {
   if (mode !== 'live') return mode;
-  if (sale?.simulated || preview) return 'simulated';
+  if (sale?.simulated) return 'simulated';
+  if (preview) return PREVIEW_LIVE;
   return mode;
+}
+
+/** Decisión en Preview a partir del estado del servidor: 'live' solo con liveAuthorized === true. */
+export function previewLiveDecision(statusResult) {
+  return statusResult?.ok === true && statusResult.data?.liveAuthorized === true ? 'live' : 'simulated';
 }
 
 /** Resolución del servidor ({ numero, fecha }) en la forma que imprime la boleta ({ numero, anio }). */
@@ -78,7 +96,7 @@ export function withServerResolucion(emitter) {
 }
 
 export function buildFlowForMode(mode, businessId) {
-  if (mode === 'off' || !businessId) return null;
+  if (mode === 'off' || mode === PREVIEW_LIVE || !mode || !businessId) return null;
   const emitter = mode === 'live' ? withServerResolucion(createLiveEmitter({ businessId })) : createSimulatedEmitter({ businessId });
   const settings = () => (mode === 'live'
     ? { ...readFiscalPrintSettings(), resolucion: printableResolucion(emitter.resolucion()) }
@@ -93,20 +111,56 @@ export function buildFlowForMode(mode, businessId) {
     // Una boleta nueva no se emite si este equipo no puede imprimirla: conector
     // activo con impresora y, en modo real, resolución SII.
     printBlocker,
+    // Marcas locales y clave de impresión separadas por modo: un folio simulado nunca tapa uno real.
+    mode,
   });
   return { emitter, flow, printBlocker };
 }
 
-export default function TpvFiscalAutoBoleta({ businessId, sale, saleContext, onPlainTicket, onSettled, mode = FISCAL_AUTO_MODE, deps }) {
-  // Una venta simulada nunca llega a DTE Core, y en una Preview la boleta es
-  // siempre simulada, aunque el cobro Point haya sido real.
-  const effectiveMode = fiscalModeForSale(mode, sale);
+export default function TpvFiscalAutoBoleta({
+  businessId, sale, saleContext, onPlainTicket, onSettled, mode = FISCAL_AUTO_MODE, deps,
+  preview = POINT_PREVIEW, previewStatus = getFiscalSaleStatus, queries = DEFAULT_QUERIES,
+}) {
+  // Una venta simulada nunca llega a DTE Core. En una Preview, el modo real solo se usa si el
+  // servidor lo autoriza para esta venta (ver PREVIEW_LIVE); si no, la boleta es simulada.
+  const requestedMode = fiscalModeForSale(mode, sale, { preview });
+  const saleIdForMode = sale?.id;
+  const [previewDecision, setPreviewDecision] = useState(null); // { saleId, mode }
+  useEffect(() => {
+    if (requestedMode !== PREVIEW_LIVE || deps || !saleIdForMode) return undefined;
+    let alive = true;
+    (async () => {
+      let r = null;
+      try { r = await previewStatus(saleIdForMode); } catch { r = null; }
+      if (alive) setPreviewDecision({ saleId: saleIdForMode, mode: previewLiveDecision(r) });
+    })();
+    return () => { alive = false; };
+  }, [requestedMode, deps, saleIdForMode, previewStatus]);
+  const effectiveMode = requestedMode !== PREVIEW_LIVE ? requestedMode
+    : (previewDecision?.saleId === saleIdForMode ? previewDecision.mode : PREVIEW_LIVE);
   const built = useMemo(() => deps || buildFlowForMode(effectiveMode, businessId), [deps, effectiveMode, businessId]);
   const [state, setState] = useState({ phase: PHASE.CHECKING });
   const [busy, setBusy] = useState(false);
   const [scenario, setScenario] = useState(readScenario);
   const plainPrintedRef = useRef(false);
   const saleId = sale?.id;
+  // Resultado de una consulta (DTE Core o SII). Solo informa: nunca emite ni cambia el flujo.
+  const [queryNote, setQueryNote] = useState(null);
+  const query = useCallback(async (kind) => {
+    if (!saleId || busy) return;
+    setBusy(true);
+    try {
+      if (kind === 'lookup') {
+        setQueryNote(describeLookupResult(await queries.lookup(saleId)));
+      } else {
+        const r = await queries.siiStatus(saleId);
+        setQueryNote(!r?.ok ? describeFiscalEmitError(r?.code)
+          : `${SII_STATUS_LABELS[r.data.siiStatus] ?? SII_STATUS_LABELS.unverified}${r.data.code === 'SII_STATUS_UNRECOGNIZED' ? ' (respuesta de DTE Core no reconocida; revisar en el portal)' : ''}.`);
+      }
+    } finally {
+      setBusy(false);
+    }
+  }, [saleId, busy, queries]);
 
   const apply = useCallback((r) => {
     setState(r);
@@ -262,7 +316,16 @@ export default function TpvFiscalAutoBoleta({ businessId, sale, saleContext, onP
         {simulated && phase === PHASE.UNCERTAIN && code !== 'ATTEMPT_ALREADY_SENT' && (
           <button type="button" style={btn()} disabled={busy} onClick={() => run('reconcile')}>Conciliar (simulado)</button>
         )}
+        {!simulated && phase === PHASE.UNCERTAIN && code !== 'ATTEMPT_ALREADY_SENT' && (
+          <button type="button" style={btn()} disabled={busy} onClick={() => query('lookup')}>Consultar en DTE Core</button>
+        )}
+        {!simulated && hasBoleta && (
+          <button type="button" style={btn()} disabled={busy} onClick={() => query('sii')}>Consultar estado SII</button>
+        )}
       </div>
+      {queryNote && (
+        <div role="status" data-testid="fiscal-query-note" style={{ marginTop: 6, color: '#374151' }}>{queryNote}</div>
+      )}
       {simulated && (
         <label style={{ display: 'flex', gap: 6, alignItems: 'center', marginTop: 8, color: '#6b7280', fontSize: 11 }}>
           Escenario de la próxima venta simulada:

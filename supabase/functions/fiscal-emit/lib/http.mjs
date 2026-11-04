@@ -4,13 +4,16 @@
 //    business_id, folio, medioPago ni montos del cliente).
 //  - Autenticación por usuario: resolveUser(authHeader) debe devolver el id del usuario o null.
 //  - Respuestas sin secretos. emit no devuelve XML ni PDF; reprint devuelve el PDF al dueño.
+//  - lookup y sii-status son consultas: nunca emiten. lookup no cambia la venta; sii-status solo
+//    registra el estado SII de una boleta ya emitida. Mismo control de tenant, rol y lista de
+//    empresas autorizadas que emit (lib/emit.mjs).
 //  - Errores: códigos estables; nunca stack traces ni mensajes internos.
 
 import { FiscalError } from './errors.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ALLOWED_FIELDS = new Set(['action', 'saleId']);
-const ACTIONS = new Set(['emit', 'reprint', 'status']);
+const ACTIONS = new Set(['emit', 'reprint', 'status', 'lookup', 'sii-status']);
 
 const STATUS_BY_CODE = {
   SALE_NOT_FOUND: 404,
@@ -32,6 +35,10 @@ const STATUS_BY_CODE = {
   // Configuración de proveedor o credencial inválida: no es reintentable hasta corregir la configuración.
   CREDENTIAL_INVALID: 503,
   FISCAL_PROVIDER_MISMATCH: 503,
+  // Negocio o RUT fuera de la lista de empresas autorizadas del servidor.
+  FISCAL_BUSINESS_NOT_ALLOWED: 403,
+  // lookup solo aplica a ventas con resultado desconocido.
+  NOT_UNKNOWN: 409,
 };
 
 export function statusFor(err) {
@@ -69,6 +76,12 @@ export function createHttpHandler({ emitter, resolveUser }) {
       }
       if (body.action === 'status') {
         return { status: 200, body: await emitter.status({ actorUserId: userId, saleId: body.saleId }) };
+      }
+      if (body.action === 'lookup') {
+        return { status: 200, body: await emitter.lookupOperation({ actorUserId: userId, saleId: body.saleId }) };
+      }
+      if (body.action === 'sii-status') {
+        return { status: 200, body: await emitter.refreshSiiStatus({ actorUserId: userId, saleId: body.saleId }) };
       }
       const r = await emitter.reprint({ actorUserId: userId, saleId: body.saleId });
       return { status: 200, body: { folio: r.folio, pdfBase64: r.pdfBase64 } };

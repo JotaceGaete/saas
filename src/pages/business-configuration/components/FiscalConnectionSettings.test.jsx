@@ -121,3 +121,21 @@ describe('IVA por defecto del negocio', () => {
     expect(screen.queryByTestId('fiscal-tax-default')).toBeNull();
   });
 });
+
+describe('empresas autorizadas (servidor)', () => {
+  it('negocio fuera de la lista: no se muestra el formulario ni se puede enviar nada', async () => {
+    svc.getFiscalConnection.mockResolvedValue({ ...base, allowed: false });
+    render(<FiscalConnectionSettings businessId={BIZ} />);
+    await screen.findByTestId('fiscal-not-available');
+    expect(screen.queryByTestId('fiscal-form')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Enviar a revisión' })).toBeNull();
+    expect(svc.submitFiscalApplication).not.toHaveBeenCalled();
+  });
+
+  it('negocio de la lista: formulario normal', async () => {
+    svc.getFiscalConnection.mockResolvedValue({ ...base, allowed: true });
+    render(<FiscalConnectionSettings businessId={BIZ} />);
+    await screen.findByTestId('fiscal-form');
+    expect(screen.queryByTestId('fiscal-not-available')).toBeNull();
+  });
+});

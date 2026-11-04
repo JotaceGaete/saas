@@ -9,6 +9,7 @@ import { createAdminReconciler } from '../../lib/reconciler.mjs';
 import { createSimulatedProvider } from '../../lib/providers/simulated.mjs';
 import { readRecoveryConfig, DEFAULT_STALE_AFTER_MS, MIN_STALE_AFTER_MS, MAX_STALE_AFTER_MS } from '../../lib/config.mjs';
 import { createMemoryStore, IDS } from '../helpers/memory-store.mjs';
+import { TEST_ALLOW_ALL } from '../helpers/allowlist.mjs';
 
 const MASTER = randomBytes(32);
 const ROW = `${IDS.bizA}|${IDS.saleA}`;
@@ -23,7 +24,7 @@ function world({ scenario = 'ok' } = {}) {
   store.seed({ businessId: IDS.bizA, userId: IDS.userA, saleId: IDS.saleA });
   store.seed({ businessId: IDS.bizB, userId: IDS.userB, saleId: IDS.saleB });
   const provider = createSimulatedProvider({ scenario, delayMs: 5 });
-  const emitter = createFiscalEmitter({ store, provider, masterKey: MASTER, timeoutMs: 200 });
+  const emitter = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store, provider, masterKey: MASTER, timeoutMs: 200 });
   const recovery = createRecovery({ store, now: clock.now, staleAfterMs: 15 * 60_000 });
   return { store, provider, emitter, recovery, clock };
 }

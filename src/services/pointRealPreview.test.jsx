@@ -11,7 +11,7 @@ vi.mock('../lib/supabase', () => ({ supabase: { functions: { invoke: (...a) => i
 const {
   createPointClient, createPreviewPointDemo, resolvePointMode, PREVIEW_POINT_DEMO_KEY, PREVIEW_REAL_POINT_MAX_AMOUNT, PREVIEW_POINT_DEMO_TTL_MS,
 } = await import('./pointClient');
-const { default: TpvFiscalAutoBoleta, fiscalModeForSale } = await import('../pages/crm/components/TpvFiscalAutoBoleta');
+const { default: TpvFiscalAutoBoleta, fiscalModeForSale, previewLiveDecision, PREVIEW_LIVE } = await import('../pages/crm/components/TpvFiscalAutoBoleta');
 const { buildConnectorConfigKey, writeConnectorConfig } = await import('../lib/printing/connectorConfigStorage');
 
 const PREVIEW_HOST = 'saas-git-claude-project-thread-x9ut7z-juan-s-projects-afd7e18e.vercel.app';
@@ -88,15 +88,23 @@ describe('modo Point', () => {
 });
 
 describe('boleta con Point real en Preview', () => {
-  it('en una Preview el modo fiscal nunca es real (DTE Core y SII desactivados), ni para una venta simulada', () => {
-    expect(fiscalModeForSale('live', { id: 'x' }, { preview: true })).toBe('simulated');
+  it('en una Preview el modo real queda pendiente del servidor; una venta simulada nunca es real', () => {
+    expect(fiscalModeForSale('live', { id: 'x' }, { preview: true })).toBe(PREVIEW_LIVE);
     expect(fiscalModeForSale('live', { id: 'x', simulated: true }, { preview: false })).toBe('simulated');
     expect(fiscalModeForSale('simulated', { id: 'x' }, { preview: true })).toBe('simulated');
     expect(fiscalModeForSale('off', { id: 'x' }, { preview: true })).toBe('off');
     expect(fiscalModeForSale('live', { id: 'x' }, { preview: false })).toBe('live');
   });
 
-  it('venta pagada con Point real: boleta SIMULADA impresa sola, sin llamar a DTE Core (fiscal-emit)', async () => {
+  it('el modo real en Preview solo con liveAuthorized === true del servidor; cualquier otra respuesta = simulada', () => {
+    expect(previewLiveDecision({ ok: true, data: { liveAuthorized: true } })).toBe('live');
+    for (const r of [
+      { ok: true, data: { liveAuthorized: false } }, { ok: true, data: { liveAuthorized: 'true' } }, { ok: true, data: {} },
+      { ok: false, code: 'STATUS_UNAVAILABLE' }, { ok: false, data: { liveAuthorized: true } }, null, undefined,
+    ]) expect(previewLiveDecision(r)).toBe('simulated');
+  });
+
+  it('venta pagada con Point real: boleta SIMULADA impresa sola, sin emitir en DTE Core (fiscal-emit)', async () => {
     writeConnectorConfig(buildConnectorConfigKey(BIZ), {
       enabled: true, token: 't'.repeat(40), baseUrl: 'http://127.0.0.1:47801', printerName: 'Star TSP100 Cutter (TSP143)',
     });
@@ -115,9 +123,59 @@ describe('boleta con Point real en Preview', () => {
     render(<TpvFiscalAutoBoleta businessId={BIZ} sale={{ id: 'real-point-sale', invoice_number: 60 }} saleContext={ctx} mode="live" />);
     await screen.findByText(/Boleta 900001 emitida y enviada a la impresora/);
     expect(screen.getByText(/SIMULACIÓN \(sin valor tributario\)/)).toBeInTheDocument();
-    expect(invoke).not.toHaveBeenCalled();
+    // En Preview se pregunta al servidor si autoriza el modo real (solo lectura). Aquí no responde:
+    // la boleta queda simulada y nunca se pide una emisión.
+    expect(invoke.mock.calls.every(([fn, opts]) => fn === 'fiscal-emit' && opts.body.action === 'status')).toBe(true);
     expect(jobs).toHaveLength(1);
     expect(jobs[0].text).toContain('SIMULACION');
     expect(jobs[0].text).toContain('SIN VALOR TRIBUTARIO');
+  });
+});
+
+describe('modo real en Preview autorizado por el servidor', () => {
+  const ctx = {
+    items: [{ product_id: 'p1', name: 'Prueba', unit_price: 1190, quantity: 1 }],
+    payments: [{ method: 'cash', amount: 1190 }], total: 1190, discountAmount: 0, pendingBalance: 0, saleNumber: 61,
+  };
+
+  it('con liveAuthorized del servidor usa el emisor real (sin SIMULACIÓN); el servidor sigue decidiendo cada emisión', async () => {
+    // El servidor autoriza el modo real, pero la emisión está apagada: el panel no muestra boleta
+    // y se imprime el comprobante interno. Nunca se pide 'emit'.
+    invoke.mockResolvedValue({ data: { state: 'none', canEmit: false, blockedReason: 'FISCAL_EMISSION_DISABLED', liveAuthorized: true }, error: null });
+    const onPlainTicket = vi.fn();
+    const previewStatus = vi.fn(async () => ({ ok: true, data: { liveAuthorized: true } }));
+    render(<TpvFiscalAutoBoleta businessId={BIZ} sale={{ id: 'sale-live-1' }} saleContext={ctx} mode="live" preview previewStatus={previewStatus} onPlainTicket={onPlainTicket} />);
+    await vi.waitFor(() => expect(onPlainTicket).toHaveBeenCalledTimes(1));
+    expect(previewStatus).toHaveBeenCalledWith('sale-live-1');
+    expect(invoke).toHaveBeenCalledWith('fiscal-emit', { body: { action: 'status', saleId: 'sale-live-1' } });
+    expect(invoke.mock.calls.some(([, o]) => o.body.action === 'emit')).toBe(false);
+    expect(screen.queryByText(/SIMULACIÓN/)).toBeNull();
+  });
+
+  it('sin autorización o con error del servidor: boleta simulada, sin llamar al emisor real', async () => {
+    writeConnectorConfig(buildConnectorConfigKey(BIZ), {
+      enabled: true, token: 't'.repeat(40), baseUrl: 'http://127.0.0.1:47801', printerName: 'Star TSP100 Cutter (TSP143)',
+    });
+    globalThis.fetch = vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ status: 'sent_to_spooler', duplicate: false }) }));
+    for (const [i, previewStatus] of [
+      async () => ({ ok: true, data: { liveAuthorized: false } }),
+      async () => { throw new Error('caído'); },
+    ].entries()) {
+      cleanup();
+      render(<TpvFiscalAutoBoleta businessId={BIZ} sale={{ id: `sale-sim-${i}` }} saleContext={ctx} mode="live" preview previewStatus={previewStatus} />);
+      expect(await screen.findByText(/SIMULACIÓN \(sin valor tributario\)/)).toBeInTheDocument();
+    }
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it('fuera de Preview el modo real no pregunta nada extra', async () => {
+    invoke.mockResolvedValue({ data: { state: 'none', canEmit: false, blockedReason: 'FISCAL_BUSINESS_NOT_ALLOWED', liveAuthorized: false }, error: null });
+    const previewStatus = vi.fn();
+    const onPlainTicket = vi.fn();
+    const { container } = render(<TpvFiscalAutoBoleta businessId={BIZ} sale={{ id: 'sale-prod-1' }} saleContext={ctx} mode="live" preview={false} previewStatus={previewStatus} onPlainTicket={onPlainTicket} />);
+    await vi.waitFor(() => expect(onPlainTicket).toHaveBeenCalledTimes(1));
+    expect(previewStatus).not.toHaveBeenCalled();
+    // Negocio fuera de la lista: el módulo no se muestra y se imprime el comprobante interno.
+    expect(container.querySelector('[data-testid="fiscal-auto-boleta"]')).toBeNull();
   });
 });

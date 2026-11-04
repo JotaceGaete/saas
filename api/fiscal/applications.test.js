@@ -2,9 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createFiscalApplicationsHandler, createAdminGuard } from './applications.js';
 import { createFiscalApplicationsService } from '../_lib/fiscal-applications.js';
+import { parseAllowedIssuers } from '../../supabase/functions/fiscal-emit/lib/allowlist.mjs';
 
 const BIZ = 'cda904a1-e331-4bd4-9f33-a6715687d3dd';
 const ADMIN = '99999999-2222-4333-8444-555555555555';
+const ALLOW = parseAllowedIssuers(`${BIZ}=12345678-5`);
 
 function fakeRes() {
   const res = { headers: {}, statusCode: 200, payload: undefined };
@@ -14,7 +16,7 @@ function fakeRes() {
   return res;
 }
 
-function fakeAdmin({ reviewError = null, list = [] } = {}) {
+function fakeAdmin({ reviewError = null, list = [], issuerRut = '12345678-5' } = {}) {
   const calls = [];
   return {
     calls,
@@ -22,6 +24,7 @@ function fakeAdmin({ reviewError = null, list = [] } = {}) {
       calls.push({ fn, args });
       if (fn === 'crm_fiscal_list_applications') return { data: list, error: null };
       if (fn === 'crm_fiscal_review_application') return { data: reviewError ? null : true, error: reviewError };
+      if (fn === 'crm_fiscal_connection_status') return { data: { issuerRut }, error: null };
       throw new Error(`unexpected rpc ${fn}`);
     },
   };
@@ -34,7 +37,7 @@ const users = {
 const assertAdmin = createAdminGuard({ getUser: async (t) => { if (!users[t]) throw new Error('bad'); return users[t]; } });
 
 async function call({ method = 'GET', authorization = 'Bearer tok-admin', query = {}, body, admin = fakeAdmin() } = {}) {
-  const handler = createFiscalApplicationsHandler({ service: createFiscalApplicationsService({ admin }), assertAdmin });
+  const handler = createFiscalApplicationsHandler({ service: createFiscalApplicationsService({ admin, allowedIssuers: ALLOW }), assertAdmin });
   const res = fakeRes();
   await handler({ method, headers: authorization ? { authorization } : {}, query, body }, res);
   return { res, admin };
@@ -61,7 +64,9 @@ test('GET lista la cola (con filtro válido) y responde no-store', async () => {
 test('aprobar: pasa el id del admin de la sesión, no uno del cuerpo', async () => {
   const { res, admin } = await call({ method: 'POST', body: { action: 'review', businessId: BIZ, decision: 'approve' } });
   assert.equal(res.statusCode, 200);
-  assert.deepEqual(admin.calls[0], {
+  // Primero se lee el RUT de la solicitud (lista de empresas autorizadas), después se aprueba.
+  assert.equal(admin.calls[0].fn, 'crm_fiscal_connection_status');
+  assert.deepEqual(admin.calls[1], {
     fn: 'crm_fiscal_review_application',
     args: { p_business_id: BIZ, p_admin_user_id: ADMIN, p_decision: 'approve', p_note: null },
   });
@@ -96,4 +101,24 @@ test('acciones y métodos desconocidos', async () => {
   assert.equal((await call({ method: 'DELETE' })).res.statusCode, 405);
   assert.equal((await call({ method: 'POST', body: { action: 'approve-all' } })).res.statusCode, 400);
   assert.equal((await call({ method: 'POST', body: { action: 'review', businessId: 'no-uuid', decision: 'approve' } })).res.statusCode, 400);
+});
+
+test('aprobar solo empresas de la lista del servidor, con el RUT de su solicitud', async () => {
+  // Otro RUT en la solicitud: no se aprueba ni se llama a la revisión.
+  const otherRut = await call({ method: 'POST', body: { action: 'review', businessId: BIZ, decision: 'approve' }, admin: fakeAdmin({ issuerRut: '76123456-0' }) });
+  assert.deepEqual([otherRut.res.statusCode, otherRut.res.payload.error], [403, 'FISCAL_BUSINESS_NOT_ALLOWED']);
+  assert.equal(otherRut.admin.calls.some((c) => c.fn === 'crm_fiscal_review_application'), false);
+  // Negocio fuera de la lista.
+  const outside = await call({ method: 'POST', body: { action: 'review', businessId: 'a9b8c7d6-e5f4-4321-8765-0fedcba98765', decision: 'approve' } });
+  assert.deepEqual([outside.res.statusCode, outside.res.payload.error], [403, 'FISCAL_BUSINESS_NOT_ALLOWED']);
+  // Sin solicitud (sin RUT).
+  const empty = await call({ method: 'POST', body: { action: 'review', businessId: BIZ, decision: 'approve' }, admin: fakeAdmin({ issuerRut: null }) });
+  assert.equal(empty.res.statusCode, 403);
+  // Rechazar o suspender sí se permite fuera de la lista (no habilita nada).
+  const reject = await call({ method: 'POST', body: { action: 'review', businessId: 'a9b8c7d6-e5f4-4321-8765-0fedcba98765', decision: 'reject', note: 'Fuera del alcance actual' } });
+  assert.equal(reject.res.statusCode, 200);
+});
+
+test('el servicio de revisión no se construye sin lista de empresas', () => {
+  assert.throws(() => createFiscalApplicationsService({ admin: fakeAdmin() }), /allowedIssuers/);
 });

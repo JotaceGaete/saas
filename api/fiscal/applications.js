@@ -2,6 +2,7 @@
 // Solo administradores de Walinka (app_metadata.role = 'admin'). Ninguna respuesta contiene API keys.
 import { createClient } from '@supabase/supabase-js';
 import { createFiscalApplicationsService } from '../_lib/fiscal-applications.js';
+import { allowlistFromEnv } from '../../supabase/functions/fiscal-emit/lib/allowlist.mjs';
 
 export function createFiscalApplicationsHandler({ service, assertAdmin }) {
   return async function handle(req, res) {
@@ -60,7 +61,9 @@ export default async function handler(req, res) {
     if (error) throw new Error('Invalid session');
     return data?.user ?? null;
   };
-  const service = createFiscalApplicationsService({ admin });
+  const allowedIssuers = allowlistFromEnv(process.env);
+  if (allowedIssuers.error) console.error('[fiscal/applications] lista de empresas autorizadas no disponible', allowedIssuers.error);
+  const service = createFiscalApplicationsService({ admin, allowedIssuers });
   const parsed = Object.assign(req, { query: req.query || Object.fromEntries(new URL(req.url, 'http://x').searchParams) });
   return createFiscalApplicationsHandler({ service, assertAdmin: createAdminGuard({ getUser }) })(parsed, res);
 }

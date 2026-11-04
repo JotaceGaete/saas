@@ -9,6 +9,7 @@ import { createSupabaseStore } from './lib/store-supabase.mjs';
 import { createHttpHandler } from './lib/http.mjs';
 import { createRecovery } from './lib/recovery.mjs';
 import { readRecoveryConfig } from './lib/config.mjs';
+import { EMPTY_ALLOWLIST } from './lib/allowlist.mjs';
 
 // Interfaz mínima de supabase-js que usa la aplicación (compatible con el cliente real).
 export interface FiscalDbClient {
@@ -21,11 +22,16 @@ export interface FiscalAppDeps {
   db: FiscalDbClient;
   provider: unknown; // adaptador de proveedor (lib/providers/*)
   masterKey: string | undefined;
+  // Empresas autorizadas (lib/allowlist.mjs). Sin ella, ningún negocio puede emitir ni consultar.
+  allowedIssuers?: unknown;
 }
 
 export function buildFiscalHandler(deps: FiscalAppDeps) {
   const store = createSupabaseStore(deps.db);
-  const emitter = createFiscalEmitter({ store, provider: deps.provider as any, masterKey: deps.masterKey });
+  const emitter = createFiscalEmitter({
+    store, provider: deps.provider as any, masterKey: deps.masterKey,
+    allowedIssuers: (deps.allowedIssuers ?? EMPTY_ALLOWLIST) as any,
+  });
   const resolveUser = async (authHeader: string): Promise<string | null> => {
     const token = authHeader.replace(/^Bearer\s+/i, '');
     if (!token) return null;

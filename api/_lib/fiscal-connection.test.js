@@ -3,10 +3,13 @@ import assert from 'node:assert/strict';
 import { randomBytes } from 'node:crypto';
 import { normalizeRut, validateApiKey, validateResolucion, validateSucursal, createFiscalConnectionService } from './fiscal-connection.js';
 import { open } from '../../supabase/functions/fiscal-emit/lib/secrets.mjs';
+import { parseAllowedIssuers } from '../../supabase/functions/fiscal-emit/lib/allowlist.mjs';
 
 const BIZ = 'cda904a1-e331-4bd4-9f33-a6715687d3dd';
 const ACTOR = '11111111-2222-4333-8444-555555555555';
 const MASTER = randomBytes(32);
+// Lista de empresas autorizadas de las pruebas: el negocio BIZ con el RUT de las solicitudes.
+const ALLOW = parseAllowedIssuers(`${BIZ}=12345678-5`);
 const API_KEY = 'dtc_live_EXAMPLE_KEY_0123456789abcdef';
 
 // Cliente admin falso: registra llamadas y responde según el nombre de la RPC.
@@ -63,7 +66,7 @@ test('clave: recorta espacios exteriores; rechaza vacía, corta, con espacios o 
 
 test('conectar: sella la clave, guarda bytes cifrados y responde sin la clave', async () => {
   const admin = fakeAdmin({ row: CONNECTED_ROW });
-  const svc = createFiscalConnectionService({ admin, masterKey: MASTER });
+  const svc = createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER });
   const { r, logs } = await captureLogs(() => svc.connect({ businessId: BIZ, actorId: ACTOR, body: { action: 'connect', apiKey: API_KEY, issuerRut: '12.345.678-5' } }));
 
   assert.equal(r.status, 200);
@@ -83,7 +86,7 @@ test('conectar: sella la clave, guarda bytes cifrados y responde sin la clave', 
 
 test('el texto cifrado se descifra solo con la clave maestra y el negocio correcto', async () => {
   const admin = fakeAdmin({ row: CONNECTED_ROW });
-  const svc = createFiscalConnectionService({ admin, masterKey: MASTER });
+  const svc = createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER });
   await svc.connect({ businessId: BIZ, actorId: ACTOR, body: { action: 'connect', apiKey: API_KEY, issuerRut: '12345678-5' } });
   const a = admin.calls.find((c) => c.fn === 'crm_fiscal_save_credentials').args;
   const toBuf = (s) => Buffer.from(s.slice(2), 'hex');
@@ -95,7 +98,7 @@ test('el texto cifrado se descifra solo con la clave maestra y el negocio correc
 
 test('conectar rechaza RUT inválido y clave inválida sin tocar la base', async () => {
   const admin = fakeAdmin();
-  const svc = createFiscalConnectionService({ admin, masterKey: MASTER });
+  const svc = createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER });
   assert.deepEqual((await svc.connect({ businessId: BIZ, actorId: ACTOR, body: { action: 'connect', apiKey: API_KEY, issuerRut: '76123456-7' } })).body, { error: 'INVALID_RUT' });
   assert.deepEqual((await svc.connect({ businessId: BIZ, actorId: ACTOR, body: { action: 'connect', apiKey: 'corta', issuerRut: '12345678-5' } })).body, { error: 'INVALID_API_KEY' });
   assert.equal(admin.calls.length, 0);
@@ -103,7 +106,7 @@ test('conectar rechaza RUT inválido y clave inválida sin tocar la base', async
 
 test('conectar rechaza campos no permitidos (p. ej. business_id enviado por el cliente)', async () => {
   const admin = fakeAdmin();
-  const svc = createFiscalConnectionService({ admin, masterKey: MASTER });
+  const svc = createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER });
   const r = await svc.connect({ businessId: BIZ, actorId: ACTOR, body: { action: 'connect', apiKey: API_KEY, issuerRut: '12345678-5', business_id: 'otro' } });
   assert.equal(r.status, 400);
   assert.equal(r.body.error, 'UNKNOWN_FIELD');
@@ -112,14 +115,14 @@ test('conectar rechaza campos no permitidos (p. ej. business_id enviado por el c
 
 test('operación fiscal en curso -> 409 FISCAL_OPERATION_IN_PROGRESS, sin cambios', async () => {
   const admin = fakeAdmin({ save: { data: null, error: { message: 'FISCAL_OPERATION_IN_PROGRESS' } } });
-  const svc = createFiscalConnectionService({ admin, masterKey: MASTER });
+  const svc = createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER });
   const r = await svc.connect({ businessId: BIZ, actorId: ACTOR, body: { action: 'connect', apiKey: API_KEY, issuerRut: '12345678-5' } });
   assert.deepEqual(r, { status: 409, body: { error: 'FISCAL_OPERATION_IN_PROGRESS' } });
 });
 
 test('error de base que contiene la clave: la respuesta y los logs no la repiten', async () => {
   const admin = fakeAdmin({ save: { data: null, error: { message: `connection refused near ${API_KEY}` } } });
-  const svc = createFiscalConnectionService({ admin, masterKey: MASTER });
+  const svc = createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER });
   const { r, logs } = await captureLogs(() => svc.connect({ businessId: BIZ, actorId: ACTOR, body: { action: 'connect', apiKey: API_KEY, issuerRut: '12345678-5' } }));
   assert.deepEqual(r.body, { error: 'SERVER_ERROR' });
   assert.equal(JSON.stringify(r).includes(API_KEY), false);
@@ -128,7 +131,7 @@ test('error de base que contiene la clave: la respuesta y los logs no la repiten
 
 test('desconectar: llama a la RPC con el actor y devuelve la conexión sin credenciales', async () => {
   const admin = fakeAdmin({ row: { connected: false, issuerRut: '12345678-5', enabled: false, verified: false, keyVersion: null, updatedAt: null } });
-  const svc = createFiscalConnectionService({ admin, masterKey: MASTER });
+  const svc = createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER });
   const r = await svc.disconnect({ businessId: BIZ, actorId: ACTOR, body: { action: 'disconnect' } });
   assert.equal(r.status, 200);
   assert.equal(r.body.connection.connected, false);
@@ -137,7 +140,7 @@ test('desconectar: llama a la RPC con el actor y devuelve la conexión sin crede
 
 test('estado: nunca contiene la clave ni el texto cifrado', async () => {
   const admin = fakeAdmin({ row: CONNECTED_ROW });
-  const svc = createFiscalConnectionService({ admin, masterKey: MASTER });
+  const svc = createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER });
   const r = await svc.status({ businessId: BIZ });
   assert.equal(r.status, 200);
   const text = JSON.stringify(r.body);
@@ -149,8 +152,8 @@ test('estado: nunca contiene la clave ni el texto cifrado', async () => {
 });
 
 test('constructor exige cliente admin y clave maestra', () => {
-  assert.throws(() => createFiscalConnectionService({ admin: {}, masterKey: MASTER }), /admin client/);
-  assert.throws(() => createFiscalConnectionService({ admin: fakeAdmin(), masterKey: undefined }), /master key/);
+  assert.throws(() => createFiscalConnectionService({ allowedIssuers: ALLOW, admin: {}, masterKey: MASTER }), /admin client/);
+  assert.throws(() => createFiscalConnectionService({ allowedIssuers: ALLOW, admin: fakeAdmin(), masterKey: undefined }), /master key/);
 });
 
 // --- Solicitud de alta (submit) --------------------------------------------------------------
@@ -177,7 +180,7 @@ const SUBMIT = { action: 'submit', issuerRut: '12.345.678-5', apiKey: API_KEY, r
 
 test('submit con API key: guarda la clave sellada y envía la solicitud a revisión, sin la clave en las llamadas', async () => {
   const admin = fakeAdmin({ row: { ...CONNECTED_ROW, reviewStatus: 'pending_review' } });
-  const svc = createFiscalConnectionService({ admin, masterKey: MASTER });
+  const svc = createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER });
   const r = await svc.submit({ businessId: BIZ, actorId: ACTOR, body: SUBMIT });
   assert.equal(r.status, 200);
   assert.equal(r.body.connection.reviewStatus, 'pending_review');
@@ -192,17 +195,17 @@ test('submit con API key: guarda la clave sellada y envía la solicitud a revisi
 test('submit sin API key: solo si ya hay una cuenta conectada con el mismo RUT', async () => {
   const { apiKey, ...noKey } = SUBMIT;
   const same = fakeAdmin({ row: CONNECTED_ROW });
-  const r1 = await createFiscalConnectionService({ admin: same, masterKey: MASTER }).submit({ businessId: BIZ, actorId: ACTOR, body: noKey });
+  const r1 = await createFiscalConnectionService({ allowedIssuers: ALLOW, admin: same, masterKey: MASTER }).submit({ businessId: BIZ, actorId: ACTOR, body: noKey });
   assert.equal(r1.status, 200);
   assert.equal(same.calls.some((c) => c.fn === 'crm_fiscal_save_credentials'), false);
 
   const other = fakeAdmin({ row: { ...CONNECTED_ROW, issuerRut: '76123456-7' } });
-  const r2 = await createFiscalConnectionService({ admin: other, masterKey: MASTER }).submit({ businessId: BIZ, actorId: ACTOR, body: noKey });
+  const r2 = await createFiscalConnectionService({ allowedIssuers: ALLOW, admin: other, masterKey: MASTER }).submit({ businessId: BIZ, actorId: ACTOR, body: noKey });
   assert.deepEqual([r2.status, r2.body.error], [409, 'API_KEY_REQUIRED']);
   assert.equal(other.calls.some((c) => c.fn === 'crm_fiscal_submit_application'), false);
 
   const none = fakeAdmin({ row: null });
-  const r3 = await createFiscalConnectionService({ admin: none, masterKey: MASTER }).submit({ businessId: BIZ, actorId: ACTOR, body: noKey });
+  const r3 = await createFiscalConnectionService({ allowedIssuers: ALLOW, admin: none, masterKey: MASTER }).submit({ businessId: BIZ, actorId: ACTOR, body: noKey });
   assert.deepEqual([r3.status, r3.body.error], [409, 'API_KEY_REQUIRED']);
 });
 
@@ -216,7 +219,7 @@ test('submit valida antes de guardar nada', async () => {
     [{ extra: 1 }, 'UNKNOWN_FIELD'],
   ]) {
     const admin = fakeAdmin();
-    const r = await createFiscalConnectionService({ admin, masterKey: MASTER }).submit({ businessId: BIZ, actorId: ACTOR, body: { ...SUBMIT, ...patch } });
+    const r = await createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER }).submit({ businessId: BIZ, actorId: ACTOR, body: { ...SUBMIT, ...patch } });
     assert.deepEqual([r.status, r.body.error], [400, code], JSON.stringify(patch));
     assert.equal(admin.calls.length, 0);
   }
@@ -224,25 +227,63 @@ test('submit valida antes de guardar nada', async () => {
 
 test('submit: errores de la base se traducen sin detalles', async () => {
   const admin = fakeAdmin({ row: CONNECTED_ROW, submitResult: { data: null, error: { message: 'FISCAL_OPERATION_IN_PROGRESS' } } });
-  const r = await createFiscalConnectionService({ admin, masterKey: MASTER }).submit({ businessId: BIZ, actorId: ACTOR, body: SUBMIT });
+  const r = await createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER }).submit({ businessId: BIZ, actorId: ACTOR, body: SUBMIT });
   assert.deepEqual([r.status, r.body.error], [409, 'FISCAL_OPERATION_IN_PROGRESS']);
 });
 
 // --- Tratamiento tributario por defecto -------------------------------------------------------
 test('categoría por defecto: valida, llama a la RPC con el actor y devuelve el estado', async () => {
   const admin = fakeAdmin({ row: { ...CONNECTED_ROW, defaultTaxCategory: 'IVA_AFECTO_19' } });
-  const svc = createFiscalConnectionService({ admin, masterKey: MASTER });
+  const svc = createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER });
   const r = await svc.setTaxDefault({ businessId: BIZ, actorId: ACTOR, body: { action: 'set-tax-default', category: 'IVA_AFECTO_19' } });
   assert.equal(r.status, 200);
   assert.equal(r.body.connection.defaultTaxCategory, 'IVA_AFECTO_19');
   assert.deepEqual(admin.calls[0], { fn: 'crm_fiscal_set_tax_default', args: { p_business_id: BIZ, p_actor_user_id: ACTOR, p_category: 'IVA_AFECTO_19' } });
   for (const [body, code] of [[{ action: 'set-tax-default', category: 'IVA_10' }, 'INVALID_TAX_CATEGORY'], [{ action: 'set-tax-default', category: 'EXENTO', x: 1 }, 'UNKNOWN_FIELD']]) {
     const bad = fakeAdmin();
-    const rr = await createFiscalConnectionService({ admin: bad, masterKey: MASTER }).setTaxDefault({ businessId: BIZ, actorId: ACTOR, body });
+    const rr = await createFiscalConnectionService({ allowedIssuers: ALLOW, admin: bad, masterKey: MASTER }).setTaxDefault({ businessId: BIZ, actorId: ACTOR, body });
     assert.deepEqual([rr.status, rr.body.error], [400, code]);
     assert.equal(bad.calls.length, 0);
   }
   const cleared = fakeAdmin({ row: CONNECTED_ROW });
-  await createFiscalConnectionService({ admin: cleared, masterKey: MASTER }).setTaxDefault({ businessId: BIZ, actorId: ACTOR, body: { action: 'set-tax-default', category: '' } });
+  await createFiscalConnectionService({ allowedIssuers: ALLOW, admin: cleared, masterKey: MASTER }).setTaxDefault({ businessId: BIZ, actorId: ACTOR, body: { action: 'set-tax-default', category: '' } });
   assert.equal(cleared.calls[0].args.p_category, null);
+});
+
+// --- Lista de empresas autorizadas (servidor) -------------------------------------------------
+const OTHER_BIZ = 'a9b8c7d6-e5f4-4321-8765-0fedcba98765';
+
+test('sin lista de empresas el servicio no se construye (falla cerrado)', () => {
+  assert.throws(() => createFiscalConnectionService({ admin: fakeAdmin(), masterKey: MASTER }), /allowedIssuers/);
+});
+
+test('conectar o enviar: negocio fuera de la lista, o con otro RUT -> 403 sin guardar nada', async () => {
+  for (const [businessId, issuerRut] of [[OTHER_BIZ, '12345678-5'], [BIZ, '76123456-0']]) {
+    const admin = fakeAdmin();
+    const svc = createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER });
+    const c = await svc.connect({ businessId, actorId: ACTOR, body: { action: 'connect', apiKey: API_KEY, issuerRut } });
+    assert.deepEqual([c.status, c.body], [403, { error: 'FISCAL_BUSINESS_NOT_ALLOWED' }]);
+    const s = await svc.submit({ businessId, actorId: ACTOR, body: { action: 'submit', apiKey: API_KEY, issuerRut, resolucionNumero: 80, resolucionFecha: '2014-08-22' } });
+    assert.deepEqual([s.status, s.body], [403, { error: 'FISCAL_BUSINESS_NOT_ALLOWED' }]);
+    assert.equal(admin.calls.length, 0, 'no se guarda credencial ni solicitud');
+  }
+});
+
+test('categoría por defecto: solo negocios de la lista; desconectar siempre se permite', async () => {
+  const admin = fakeAdmin();
+  const svc = createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER });
+  const t = await svc.setTaxDefault({ businessId: OTHER_BIZ, actorId: ACTOR, body: { action: 'set-tax-default', category: 'IVA_AFECTO_19' } });
+  assert.equal(t.status, 403);
+  assert.equal(admin.calls.length, 0);
+  const d = await svc.disconnect({ businessId: OTHER_BIZ, actorId: ACTOR, body: { action: 'disconnect' } });
+  assert.equal(d.status, 200);
+});
+
+test('estado: informa si el negocio está en la lista, sin revelar el RUT esperado', async () => {
+  const svc = createFiscalConnectionService({ allowedIssuers: ALLOW, admin: fakeAdmin(), masterKey: MASTER });
+  const inList = await svc.status({ businessId: BIZ });
+  assert.equal(inList.body.allowed, true);
+  const out = await svc.status({ businessId: OTHER_BIZ });
+  assert.equal(out.body.allowed, false);
+  assert.equal(JSON.stringify(out.body).includes('12345678'), false);
 });

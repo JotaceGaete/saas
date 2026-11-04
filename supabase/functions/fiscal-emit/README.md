@@ -43,6 +43,18 @@ Migración asociada (no aplicada en producción): `supabase/fiscal-recovery/prop
   `wa_businesses.user_id`. Un rol insuficiente recibe `FISCAL_ROLE_REQUIRED` (403).
 - **Dueño**: un trigger en `wa_businesses` siembra la fila `fiscal_owner` al crear el negocio.
 - **Reconciliación**: sus permisos tributarios específicos **no están definidos**. Por eso queda fuera de la API.
+- **Empresas autorizadas** (alcance actual: las empresas propias de Walinka): variable de servidor
+  `FISCAL_ALLOWED_ISSUERS="<uuid del negocio>=<RUT>,..."` (`lib/allowlist.mjs`), en los secretos de la
+  Edge Function **y** en Vercel (`api/fiscal/connection`, `api/fiscal/applications`). Nunca `VITE_*`.
+  Se compara el id del negocio de la venta con el RUT del emisor guardado en `fiscal.issuers`; un
+  negocio fuera de la lista, o con otro RUT, recibe `FISCAL_BUSINESS_NOT_ALLOWED` (403) antes del
+  reclamo: no se crea fila ni se llama al proveedor. Vacía o inválida = nadie autorizado.
+- **Consultas** (no emiten): `lookup` (fiscal_owner, fiscal_reconciler) pregunta a DTE Core por el
+  `idBoletaOperacion` de una venta `unknown` y valida XML/PDF del folio informado; no cambia la venta.
+  `sii-status` (fiscal_owner, fiscal_operator, fiscal_reconciler) consulta el envío al SII de un folio
+  emitido y solo registra `sii_status` con palabras inequívocas; lo demás queda «sin verificar».
+- **Modo real en Preview**: `status` devuelve `liveAuthorized`; el TPV en Preview usa el modo real
+  solo si es `true`. Cada emisión vuelve a pasar todas las reglas del servidor.
 
 ## Recuperación de `sending`
 
@@ -90,6 +102,25 @@ NO verificado:
 - Recibo en conflicto (`FISCAL_RECEIPT_CONFLICT`): hoy la fila queda `unknown` para revisión humana.
   No se elige automáticamente qué documento es válido.
 - Umbral `staleAfterMs` en producción: debe ser mucho mayor que el tiempo máximo de una emisión.
+
+## Pendientes y riesgos conocidos (paso 2: lista de empresas, consultas, modo real en Preview)
+
+- **Pruebas de Deno sin ejecutar.** `app.ts` e `index.ts` cambiaron (reciben `allowedIssuers`, leen
+  `FISCAL_ALLOWED_ISSUERS`), pero `test/deno/` no se ejecutó: el entorno donde se hizo el cambio no
+  tiene `deno`. La lógica que usan está cubierta por las pruebas de Node (`npm test`, `npm run test:db`).
+  Antes de desplegar: `npm run test:deno` y `deno check index.ts`.
+- **Preview y producción comparten el emisor.** Hay un solo proyecto Supabase y una sola Edge Function
+  `fiscal-emit` para los dos sitios. La autorización (`liveAuthorized`, lista de empresas, control de
+  emisión, emisor aprobado) es por negocio, no por sitio: una empresa autorizada con la emisión
+  encendida emite desde Preview **y** desde producción si allí `VITE_FISCAL_AUTO_EMIT=live`. Mantener
+  producción en `off` mientras dure la prueba, y apagar `fiscal.dte39_emission_control` al terminar cada
+  emisión controlada.
+- **Formatos no documentados.** `/dte/operaciones/39/{id}` y `/dte/emitidos/39/{folio}/envio-sii` no
+  tienen ejemplo de respuesta. Los lectores son conservadores (ante la duda: indeterminado / sin
+  verificar); revisar la primera respuesta real y ajustarlos. Un 404 de operaciones no prueba que no se
+  emitió: la venta sigue bloqueada.
+- **La lista vive en dos lugares** (secretos de Supabase y variables de Vercel) y deben coincidir. Si
+  falta o es inválida, nadie emite (falla cerrado).
 
 ## Qué no hace todavía
 

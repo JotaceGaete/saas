@@ -5,6 +5,10 @@
 //    (assertAdmin) y la base vuelve a comprobarlo dentro de crm_fiscal_review_application.
 //  - Nunca devuelve la API key ni datos cifrados: la cola solo trae RUT, resolución y estado.
 //  - Rechazar o suspender exige un motivo, que ve el comercio.
+//  - Aprobar exige que el negocio esté en la lista del servidor CON el RUT de su solicitud
+//    (FISCAL_ALLOWED_ISSUERS). Rechazar y suspender se permiten siempre.
+
+import { isAllowlist } from '../../supabase/functions/fiscal-emit/lib/allowlist.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 export const REVIEW_STATUSES = Object.freeze(['draft', 'pending_review', 'approved', 'rejected', 'suspended']);
@@ -26,8 +30,9 @@ function mapDbError(err) {
   return fail(503, 'SERVER_ERROR');
 }
 
-export function createFiscalApplicationsService({ admin }) {
+export function createFiscalApplicationsService({ admin, allowedIssuers }) {
   if (!admin || typeof admin.rpc !== 'function') throw new Error('admin client with rpc required');
+  if (!isAllowlist(allowedIssuers)) throw new Error('allowedIssuers required (fail-closed)');
 
   async function list({ status = null } = {}) {
     if (status !== null && !REVIEW_STATUSES.includes(status)) return fail(400, 'INVALID_STATUS');
@@ -45,6 +50,12 @@ export function createFiscalApplicationsService({ admin }) {
     const note = typeof body.note === 'string' ? body.note.trim() : '';
     if (note.length > 500) return fail(400, 'INVALID_REVIEW');
     if (body.decision !== 'approve' && !note) return fail(400, 'NOTE_REQUIRED');
+    if (body.decision === 'approve') {
+      // El RUT se lee de la base (el de la solicitud), nunca del cuerpo de la petición.
+      const { data, error: readError } = await admin.rpc('crm_fiscal_connection_status', { p_business_id: body.businessId });
+      if (readError) return mapDbError(readError);
+      if (!allowedIssuers.permits(body.businessId, data?.issuerRut ?? null)) return fail(403, 'FISCAL_BUSINESS_NOT_ALLOWED');
+    }
 
     const { error } = await admin.rpc('crm_fiscal_review_application', {
       p_business_id: body.businessId,

@@ -7,6 +7,7 @@ import { createFiscalEmitter, operationIdFor } from '../../lib/emit.mjs';
 import { createSimulatedProvider } from '../../lib/providers/simulated.mjs';
 import { createDtecoreBlockedProvider } from '../../lib/providers/dtecore-blocked.mjs';
 import { createMemoryStore, IDS } from '../helpers/memory-store.mjs';
+import { TEST_ALLOW_ALL } from '../helpers/allowlist.mjs';
 
 const MASTER = randomBytes(32);
 const OP_A = operationIdFor(IDS.bizA, IDS.saleA);
@@ -17,7 +18,7 @@ export function setup({ scenario = 'ok', ...storeOpts } = {}, seedOpts = {}) {
   store.seed({ businessId: IDS.bizA, userId: IDS.userA, saleId: IDS.saleA, ...seedOpts });
   store.seed({ businessId: IDS.bizB, userId: IDS.userB, saleId: IDS.saleB });
   const provider = createSimulatedProvider({ scenario, delayMs: 15 });
-  const emitter = createFiscalEmitter({ store, provider, masterKey: MASTER, timeoutMs: 200 });
+  const emitter = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store, provider, masterKey: MASTER, timeoutMs: 200 });
   return { store, provider, emitter };
 }
 
@@ -156,7 +157,7 @@ test('roles: fiscal_operator puede emitir', async () => {
 test('el emisor público no expone reconcile', () => {
   const { emitter } = setup();
   assert.equal('reconcile' in emitter, false);
-  assert.deepEqual(Object.keys(emitter).sort(), ['emitSale', 'reprint', 'status']);
+  assert.deepEqual(Object.keys(emitter).sort(), ['emitSale', 'lookupOperation', 'refreshSiiStatus', 'reprint', 'status']);
   assert.equal(Object.isFrozen(emitter), true);
 });
 
@@ -197,7 +198,7 @@ test('Point confirmada con monto exacto -> emite con medio PE', async () => {
 test('proveedor no verificado (bloqueado): rechazo previo al reclamo, la venta sigue sin fila', async () => {
   const store = createMemoryStore({ masterKey: MASTER });
   store.seed({ businessId: IDS.bizA, userId: IDS.userA, saleId: IDS.saleA });
-  const emitter = createFiscalEmitter({ store, provider: createDtecoreBlockedProvider(), masterKey: MASTER });
+  const emitter = createFiscalEmitter({ allowedIssuers: TEST_ALLOW_ALL, store, provider: createDtecoreBlockedProvider(), masterKey: MASTER });
   await assert.rejects(emitter.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA }), { code: 'PROVIDER_NOT_READY' });
   assert.equal(store.issuances.has(ROW_A), false);
 });
