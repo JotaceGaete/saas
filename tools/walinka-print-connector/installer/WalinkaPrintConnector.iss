@@ -4,7 +4,7 @@
 ; %LOCALAPPDATA%\WalinkaPrintConnector, fuera de la carpeta de programa.
 
 #ifndef AppVersion
-  #define AppVersion "0.3.0"
+  #define AppVersion "0.4.0"
 #endif
 
 #define AppName "Walinka Print Connector"
@@ -31,6 +31,13 @@ WizardStyle=modern
 UninstallDisplayIcon={app}\{#AppExe}
 UninstallDisplayName={#AppName} {#AppVersion}
 SetupLogging=yes
+; Metadatos visibles en Propiedades → Detalles del instalador.
+VersionInfoVersion={#AppVersion}
+VersionInfoCompany=Walinka
+VersionInfoDescription=Instalador de {#AppName}
+VersionInfoProductName={#AppName}
+VersionInfoProductVersion={#AppVersion}
+VersionInfoCopyright=Walinka
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"

@@ -16,6 +16,7 @@ import { buildFinalValidationReceipt } from 'lib/printing/receipts/buildSaleRece
 import { buildPrinterConfigKey, readPrinterConfig, writePrinterConfig } from 'lib/printing/printerConfigStorage';
 import { listCompatibilityProfiles, getCompatibilityProfile, matchCompatibilityProfileId, getPresetProfileIdForPrinter, DEFAULT_COMPATIBILITY_PROFILE_ID } from 'lib/printing/receipts/printerCompatibilityProfiles';
 import PrintConnectorSection from './components/PrintConnectorSection';
+import CrmFiscalThermalPrint from './CrmFiscalThermalPrint';
 import { usePrintConnector } from './components/usePrintConnector';
 import { buildPrintKey, CONNECTOR_TONE_CLASSES } from 'lib/printing/printRouting';
 
@@ -538,6 +539,9 @@ export default function CrmPrintSettings() {
             Los cambios se guardan para este equipo. Imprime un ticket de prueba para confirmar que todo quedó listo.
           </p>
         </section>
+
+        {/* FISCAL-80MM: solo visible con VITE_FISCAL_THERMAL_PRINT=preview; usa la impresora elegida arriba. */}
+        <CrmFiscalThermalPrint businessId={business?.id} />
 
       </DashboardLayoutContent>
     </DashboardAppShell>

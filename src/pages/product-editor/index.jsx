@@ -56,7 +56,12 @@ import {
   writeProductDraft,
 } from '../../lib/productDraftStorage';
 
+// Tratamiento tributario (boleta electrónica): solo con el módulo de facturación activado.
+// Sin el módulo, el campo no se muestra ni se envía (la columna puede no existir en la base).
+const FISCAL_TAX_ENABLED = import.meta.env.VITE_FISCAL_CONNECTION_ENABLED === 'true';
+
 const EMPTY_FORM = {
+  taxTreatment: '',
   nombre: '',
   precio: '',
   descripcion: '',
@@ -397,6 +402,7 @@ export default function ProductEditor() {
           categoria: data?.category ?? '',
           sku:     data?.sku     || '',
           barcode: data?.barcode || '',
+          taxTreatment: data?.taxTreatment || '',
           activo: data?.isActive !== undefined ? data?.isActive : true,
           soldOut: data?.isSoldOut === true,
           showPrice: data?.showPrice !== false,
@@ -1252,6 +1258,7 @@ export default function ProductEditor() {
         category: formData?.categoria?.trim() || null,
         sku:     formData?.sku?.trim()     || null,
         barcode: formData?.barcode?.trim() || null,
+        ...(FISCAL_TAX_ENABLED ? { taxTreatment: formData?.taxTreatment || null } : {}),
         cardImageUrl: cardImageUrl || null,
         addOns: normalizedAddOns,
         comboConfig: isRestaurant && normalizedComboConfig.enabled
@@ -1555,6 +1562,7 @@ export default function ProductEditor() {
                     businessId={business?.id}
                     isRestaurant={isRestaurant}
                     onGenerateBarcode={handleGenerateBarcode}
+                    showTaxTreatment={FISCAL_TAX_ENABLED}
                     productId={isEditingFlow ? currentProductId : null}
                     onCategoryCreated={(cat) => {
                       setBusinessCategories((prev) => [...prev, cat]);

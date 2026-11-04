@@ -25,6 +25,19 @@ const baseProps = {
 
 afterEach(() => cleanup());
 
+describe('CrmThermalTicket — número interno de la venta', () => {
+  it('muestra el número del servidor y lo repite al pie', () => {
+    render(<CrmThermalTicket {...baseProps} />);
+    expect(screen.getAllByText('Ref. interna NV-0001').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('NV-0001').length).toBeGreaterThan(0);
+  });
+  it('sin número del servidor no inventa uno', () => {
+    render(<CrmThermalTicket {...baseProps} sale={null} />);
+    expect(screen.queryByText(/Ref\. interna/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/T-\d+/)).not.toBeInTheDocument();
+  });
+});
+
 describe('CrmThermalTicket — sin printStatus (comportamiento previo intacto)', () => {
   it('no muestra ningún banner de impresión cuando no se pasa printStatus', () => {
     render(<CrmThermalTicket {...baseProps} />);

@@ -3,6 +3,10 @@ import { supabase } from '../../../lib/supabase';
 import ReactDOM from 'react-dom';
 import Icon from 'components/AppIcon';
 import { formatMoney } from '../../../utils/formatMoney';
+import { formatSaleNumber } from '../../../lib/printing/receipts/saleNumber';
+import TpvFiscalEmitPanel, { FISCAL_EMIT_ENABLED } from './TpvFiscalEmitPanel';
+import TpvFiscalAutoBoleta from './TpvFiscalAutoBoleta';
+import { FISCAL_AUTO_MODE } from '../../../services/fiscalAutoMode';
 
 const PAYMENT_LABELS = {
   cash: 'Efectivo',
@@ -17,7 +21,6 @@ const PAYMENT_LABELS = {
   otro: 'Otro',
 };
 
-function pad(n) { return String(n).padStart(4, '0'); }
 
 function formatDateTime(dt) {
   const d = dt ? new Date(dt) : new Date();
@@ -68,10 +71,19 @@ export default function CrmThermalTicket({
   printStatus = 'idle',
   printErrorMessage = null,
   onConfigurePrinter,
+  // Flujo automático de boleta (services/fiscalSaleFlow.js). Con el modo
+  // apagado no se monta y el ticket se comporta igual que antes.
+  fiscalAutoMode = FISCAL_AUTO_MODE,
+  fiscalSaleContext = null,
+  onFiscalSettled,
+  onPlainTicket,
 }) {
+  const fiscalAuto = fiscalAutoMode !== 'off' && Boolean(sale?.id);
   // Pilot-only fiscal status. This never issues a DTE or allocates a folio.
   const fiscalPilotBusinessId = 'cda904a1-e331-4bd4-9f33-a6715687d3dd';
-  const showFiscalPilot = business?.id === fiscalPilotBusinessId;
+  // Con la emisión DTE 39 activada (VITE_FISCAL_EMIT_ENABLED), el panel piloto antiguo se oculta:
+  // sus acciones escriben en el pipeline fiscal.operations, que bloquea la emisión nueva de la venta.
+  const showFiscalPilot = business?.id === fiscalPilotBusinessId && !FISCAL_EMIT_ENABLED && fiscalAutoMode === 'off';
   const [fiscalCheck, setFiscalCheck] = useState({ status: 'idle', data: null });
   useEffect(() => {
     if (!showFiscalPilot || !sale?.id) return;
@@ -231,9 +243,8 @@ export default function CrmThermalTicket({
     };
   }, []);
 
-  const ticketNumber = sale?.invoice_number
-    ? `NV-${pad(sale.invoice_number)}`
-    : `T-${Date.now().toString().slice(-6)}`;
+  // Número interno asignado por el servidor; el navegador nunca inventa uno.
+  const ticketNumber = formatSaleNumber(sale?.invoice_number);
 
   const customerName = customer?.name || 'Consumidor final';
 
@@ -300,7 +311,7 @@ export default function CrmThermalTicket({
       <Divider />
 
       <div style={{ fontSize: 10, color: '#444', marginBottom: 4 }}>
-        <div>Ticket: <strong>{ticketNumber}</strong></div>
+        {ticketNumber && <div>Ticket: <strong>{ticketNumber}</strong></div>}
         <div>Fecha: {formatDateTime(createdAt)}</div>
         <div>Cliente: {customerName}</div>
       </div>
@@ -410,6 +421,9 @@ export default function CrmThermalTicket({
       <div style={{ textAlign: 'center', fontSize: 11, color: '#555', marginTop: 8, marginBottom: 4 }}>
         Gracias por su compra
       </div>
+      {ticketNumber && (
+        <div style={{ textAlign: 'center', fontSize: 9, color: '#777', marginBottom: 2 }}>Ref. interna {ticketNumber}</div>
+      )}
     </div>
   );
 
@@ -454,7 +468,7 @@ export default function CrmThermalTicket({
               </div>
               <div>
                 <p style={{ fontWeight: 700, fontSize: 13, color: '#111827', margin: 0 }}>¡Venta registrada!</p>
-                <p style={{ fontSize: 11, color: '#6b7280', margin: 0 }}>{ticketNumber}</p>
+                {ticketNumber && <p style={{ fontSize: 11, color: '#6b7280', margin: 0 }}>{ticketNumber}</p>}
               </div>
             </div>
             <button
@@ -577,6 +591,15 @@ export default function CrmThermalTicket({
             </section>
           )}
 
+          {fiscalAuto && (
+            <TpvFiscalAutoBoleta businessId={business?.id} sale={sale} saleContext={fiscalSaleContext}
+              onPlainTicket={onPlainTicket} onSettled={onFiscalSettled} mode={fiscalAutoMode} />
+          )}
+
+          {!fiscalAuto && FISCAL_EMIT_ENABLED && sale?.id && (
+            <TpvFiscalEmitPanel saleId={sale.id} businessId={business?.id} total={total} />
+          )}
+
           {/* Ticket preview (screen only) */}
           {ticketBody}
 
@@ -594,7 +617,7 @@ export default function CrmThermalTicket({
               }}
             >
               <Icon name="Printer" size={15} color="currentColor" />
-              Reimprimir
+              {fiscalAuto ? 'Ticket de venta' : 'Reimprimir'}
             </button>
             <button
               onClick={onNewSale}

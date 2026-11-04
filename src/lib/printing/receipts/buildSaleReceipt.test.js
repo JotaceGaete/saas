@@ -82,9 +82,17 @@ describe('buildSaleReceipt', () => {
     expect(withoutRut).not.toContain('RUT:');
   });
 
-  it('usa el número de factura para el ticket, o un fallback si no hay venta aún', async () => {
-    expect(await renderText(baseSale)).toContain('Ticket: NV-0042');
-    expect(await renderText({ ...baseSale, sale: null })).toMatch(/Ticket: T-\d+/);
+  it('usa el número interno del servidor (NV-) en el encabezado y al pie', async () => {
+    const text = await renderText(baseSale);
+    expect(text).toContain('Ticket: NV-0042');
+    expect(text).toContain('Ref. interna NV-0042');
+  });
+
+  it('sin número del servidor no inventa uno en el navegador', async () => {
+    const text = await renderText({ ...baseSale, sale: null });
+    expect(text).not.toMatch(/Ticket:/);
+    expect(text).not.toMatch(/T-\d+/);
+    expect(text).not.toContain('Ref. interna');
   });
 
   describe('PRINT-4 — logo del negocio', () => {
