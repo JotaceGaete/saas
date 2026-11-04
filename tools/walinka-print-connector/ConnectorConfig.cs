@@ -16,6 +16,13 @@ public sealed class ConnectorConfig
     /// </summary>
     public bool AllowLocalDevOrigin { get; set; } = false;
 
+    /// <summary>
+    /// Permite que una Preview de Vercel del proyecto Walinka (ver PreviewOrigins)
+    /// pida autorización. El usuario la aprueba en una ventana de Windows; sin
+    /// su «Sí» explícito no se agrega nada. false desactiva la ventana.
+    /// </summary>
+    public bool AllowPreviewApproval { get; set; } = true;
+
     public List<string> AllowedOrigins { get; set; } = new()
     {
         "https://go.ventalink.app",

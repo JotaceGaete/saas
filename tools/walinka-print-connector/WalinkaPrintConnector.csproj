@@ -12,7 +12,12 @@
     <RootNamespace>WalinkaPrintConnector</RootNamespace>
     <Nullable>enable</Nullable>
     <ImplicitUsings>disable</ImplicitUsings>
-    <Version>0.3.0</Version>
+    <Version>0.4.0</Version>
+    <Company>Walinka</Company>
+    <Product>Walinka Print Connector</Product>
+    <AssemblyTitle>Walinka Print Connector</AssemblyTitle>
+    <Description>Servicio local de impresión de Walinka para Windows</Description>
+    <Copyright>Walinka</Copyright>
     <InvariantGlobalization>true</InvariantGlobalization>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
   </PropertyGroup>
