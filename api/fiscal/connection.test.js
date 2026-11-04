@@ -23,7 +23,7 @@ function fakeReq({ method = 'GET', businessId = BIZ, authorization = 'Bearer tok
 function spyService(response = { status: 200, body: { connection: { connected: true, issuerRut: '12345678-5', enabled: false, verified: false, keyVersion: 1, updatedAt: null } } }) {
   const calls = [];
   const record = (name) => async (args) => { calls.push({ name, args }); return response; };
-  return { calls, status: record('status'), connect: record('connect'), disconnect: record('disconnect') };
+  return { calls, status: record('status'), connect: record('connect'), submit: record('submit'), disconnect: record('disconnect') };
 }
 
 // Guarda que permite solo al propietario del negocio pedido.
@@ -128,4 +128,21 @@ test('POST disconnect: delega en el servicio y responde sin clave', async () => 
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.connection.connected, false);
   assert.equal(svc.calls[0].name, 'disconnect');
+});
+
+test('propietario: POST submit llama al servicio con el actor de la guarda', async () => {
+  const svc = spyService();
+  const handler = createFiscalConnectionHandler({ service: svc, assertAccess: ownerGuard().assertAccess });
+  const res = await run(handler, { method: 'POST', body: { action: 'submit', issuerRut: '12345678-5', resolucionNumero: '80', resolucionFecha: '2014-08-22' } });
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(svc.calls.map((c) => c.name), ['submit']);
+  assert.equal(svc.calls[0].args.actorId, 'owner-1');
+});
+
+test('submit de otro negocio: rechazado por la guarda sin llamar al servicio', async () => {
+  const svc = spyService();
+  const handler = createFiscalConnectionHandler({ service: svc, assertAccess: ownerGuard().assertAccess });
+  const res = await run(handler, { method: 'POST', businessId: OTHER_BIZ, body: { action: 'submit' } });
+  assert.equal(res.statusCode, 403);
+  assert.equal(svc.calls.length, 0);
 });

@@ -167,7 +167,7 @@ test('bloqueo solo por el negocio afectado: otro comercio con emisión en curso 
 test('desconectar: borra la credencial, deshabilita el emisor y el estado queda sin conexión', async () => {
   const f = await makeFixture(c, { withCredentials: false, issuerEnabled: true, issuerVerified: true });
   await save(f.businessId, f.userId);
-  await c.query(`update fiscal.issuers set enabled = true, verified = true where business_id = $1`, [f.businessId]);
+  await c.query(`update fiscal.issuers set review_status = 'approved', enabled = true, verified = true where business_id = $1`, [f.businessId]);
   await c.query(`select public.crm_fiscal_disconnect($1,$2)`, [f.businessId, f.userId]);
   assert.equal(await credentialRow(f.businessId), null);
   const i = await issuer(f.businessId);

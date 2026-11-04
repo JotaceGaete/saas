@@ -257,4 +257,7 @@ test('status: antes de emitir canEmit true; después ALREADY_ISSUED con estado S
   assert.equal(after.blockedReason, 'ALREADY_ISSUED');
   assert.equal(after.siiStatus, 'unverified'); // emitido != aceptado por el SII
   assert.equal(after.hasPdf, true);
+  // La resolución SII del emisor viaja con el estado, antes y después de emitir (para imprimir).
+  assert.deepEqual(before.resolucion, { numero: 80, fecha: '2014-08-22' });
+  assert.deepEqual(after.resolucion, { numero: 80, fecha: '2014-08-22' });
 });

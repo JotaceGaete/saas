@@ -38,7 +38,7 @@ export const NOT_ELIGIBLE_CODES = Object.freeze(new Set([
 
 const MESSAGES = Object.freeze({
   ATTEMPT_ALREADY_SENT: 'Esta venta ya se envió a emisión desde este equipo y no hay confirmación. No se reenvía sola: consulta el estado.',
-  RESOLUCION_REQUIRED: 'Falta la resolución del SII del emisor (Impresión > boleta). No se emitió la boleta.',
+  RESOLUCION_REQUIRED: 'Falta la resolución del SII del emisor (Configuración > Facturación). No se emitió la boleta.',
   CONNECTOR_REQUIRED: 'El Walinka Print Connector no está activo y emparejado en este equipo. No se emitió la boleta.',
   MISSING_PRINTER: 'El conector no tiene impresora elegida. No se emitió la boleta.',
   STATUS_UNAVAILABLE: 'No se pudo consultar el estado fiscal de la venta. No se emitió ninguna boleta.',

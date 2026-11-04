@@ -73,7 +73,7 @@ test('serialización: el reclamo espera a un reemplazo de credenciales en curso 
 
   // Reconectar deja el emisor sin habilitar ni verificar: no se puede emitir hasta que el propietario verifique.
   await assert.rejects(worker.query(...claimSql(f.businessId, f.saleId, f.operationId)), /FISCAL_ISSUER_NOT_ENABLED/);
-  await c.query(`update fiscal.issuers set enabled = true, verified = true where business_id = $1`, [f.businessId]);
+  await c.query(`update fiscal.issuers set review_status = 'approved', enabled = true, verified = true where business_id = $1`, [f.businessId]);
 
   // Tras la verificación, B reclama y recibe la clave nueva, nunca la anterior.
   const r = await worker.query(...claimSql(f.businessId, f.saleId, f.operationId));

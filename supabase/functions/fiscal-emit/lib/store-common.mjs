@@ -12,6 +12,9 @@ export function mapEmissionContext(raw) {
           issuerRut: raw.issuer.issuer_rut, enabled: raw.issuer.enabled, verified: raw.issuer.verified,
           sucursal: raw.issuer.sucursal_nombre && raw.issuer.sucursal_codigo
             ? { nombre: raw.issuer.sucursal_nombre, codigo: raw.issuer.sucursal_codigo } : null,
+          // Resolución SII del emisor (migración F), para imprimir la boleta. null si falta.
+          resolucion: raw.issuer.resolucion_numero && raw.issuer.resolucion_fecha
+            ? { numero: Number(raw.issuer.resolucion_numero), fecha: String(raw.issuer.resolucion_fecha).slice(0, 10) } : null,
         }
       : null,
     emissionEnabled: raw.emission_enabled === true,

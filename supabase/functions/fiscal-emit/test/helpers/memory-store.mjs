@@ -48,7 +48,10 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
     sales.set(saleId, {
       id: saleId, businessId, status: 'pagada', paidAt: new Date(), total, discountAmount: 0,
     });
-    issuers.set(businessId, { issuerRut: '76123456-7', provider: 'dtecore', enabled: true, verified: true, sucursal: { nombre: 'SUCURSAL DE PRUEBA', codigo: '1' } });
+    issuers.set(businessId, {
+      issuerRut: '76123456-7', provider: 'dtecore', enabled: true, verified: true,
+      sucursal: { nombre: 'SUCURSAL DE PRUEBA', codigo: '1' }, resolucion: { numero: 80, fecha: '2014-08-22' },
+    });
     lines.set(saleId, withLines
       ? [{ id: `${saleId}-l1`, name: 'Café', unitPrice: 1190, quantity: total / 1190, discountPct: 0, category: 'IVA_AFECTO_19' }]
       : []);

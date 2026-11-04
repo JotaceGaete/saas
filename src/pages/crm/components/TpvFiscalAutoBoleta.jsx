@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { FISCAL_AUTO_MODE } from '../../../services/fiscalAutoMode';
 import { createLiveEmitter, createSimulatedEmitter, SIM_SCENARIO_STORAGE_KEY, SIM_SCENARIOS } from '../../../services/fiscalEmitters';
 import { createFiscalSaleFlow, describeFlowCode, PHASE } from '../../../services/fiscalSaleFlow';
-import { fiscalPrintBlocker, printIssuedBoleta } from '../../../services/fiscalThermalPrintService';
+import { fiscalPrintBlocker, printIssuedBoleta, readFiscalPrintSettings } from '../../../services/fiscalThermalPrintService';
 import { POINT_PREVIEW } from '../../../services/pointClient';
 
 // Boleta electrónica automática al confirmar una venta cobrada en el TPV.
@@ -53,14 +53,43 @@ export function fiscalModeForSale(mode, sale, { preview = POINT_PREVIEW } = {}) 
   return mode;
 }
 
+/** Resolución del servidor ({ numero, fecha }) en la forma que imprime la boleta ({ numero, anio }). */
+export function printableResolucion(resolucion) {
+  if (!resolucion?.numero || !resolucion?.fecha) return { numero: '', anio: '' };
+  return { numero: String(resolucion.numero), anio: String(resolucion.fecha).slice(0, 4) };
+}
+
+/**
+ * En modo real la resolución SII es la del emisor aprobado por Walinka (viene en el estado de
+ * fiscal-emit), no la guardada en este navegador. Envuelve el emisor para recordarla.
+ */
+export function withServerResolucion(emitter) {
+  let resolucion = null;
+  return Object.freeze({
+    ...emitter,
+    mode: emitter.mode,
+    async status(...args) {
+      const r = await emitter.status(...args);
+      if (r?.ok && r.data && 'resolucion' in r.data) resolucion = r.data.resolucion ?? null;
+      return r;
+    },
+    resolucion: () => resolucion,
+  });
+}
+
 export function buildFlowForMode(mode, businessId) {
   if (mode === 'off' || !businessId) return null;
-  const emitter = mode === 'live' ? createLiveEmitter({ businessId }) : createSimulatedEmitter({ businessId });
-  const printBlocker = () => fiscalPrintBlocker(businessId, { requireResolucion: mode === 'live' });
+  const emitter = mode === 'live' ? withServerResolucion(createLiveEmitter({ businessId })) : createSimulatedEmitter({ businessId });
+  const settings = () => (mode === 'live'
+    ? { ...readFiscalPrintSettings(), resolucion: printableResolucion(emitter.resolucion()) }
+    : readFiscalPrintSettings());
+  const printBlocker = () => fiscalPrintBlocker(businessId, { requireResolucion: mode === 'live', settings: settings() });
   const flow = createFiscalSaleFlow({
     businessId,
     emitter,
-    print: ({ bytes, reprint, idempotencyKey, saleNumber }) => printIssuedBoleta({ businessId, bytes, reprint, idempotencyKey, saleNumber }),
+    print: ({ bytes, reprint, idempotencyKey, saleNumber }) => printIssuedBoleta({
+      businessId, bytes, reprint, idempotencyKey, saleNumber, settings: settings(),
+    }),
     // Una boleta nueva no se emite si este equipo no puede imprimirla: conector
     // activo con impresora y, en modo real, resolución SII.
     printBlocker,

@@ -253,9 +253,19 @@ export function createFiscalEmitter({
       hasXml: Boolean(row?.hasXml),
       canEmit: false,
       blockedReason: null,
+      // Resolución SII del emisor para imprimir la boleta (o su reimpresión). null si no está.
+      resolucion: null,
+    };
+    const resolucionOf = async () => {
+      try {
+        return (await store.loadEmissionContext(sale.businessId, sale.id))?.issuer?.resolucion ?? null;
+      } catch {
+        return null;
+      }
     };
     if (row?.status === 'unknown' || row?.status === 'failed') out.errorCode = row.errorCode ?? null;
     if (row && row.status !== 'pending') {
+      if (row.status === 'issued' || row.status === 'cancelled') out.resolucion = await resolucionOf();
       out.blockedReason = row.status === 'issued' ? 'ALREADY_ISSUED'
         : row.status === 'unknown' ? 'UNKNOWN_REQUIRES_RECONCILIATION'
           : row.status === 'sending' ? 'ALREADY_IN_PROGRESS' : 'NOT_EMITTABLE_IN_STATE';
@@ -265,6 +275,7 @@ export function createFiscalEmitter({
     if (provider.ready === false) { out.blockedReason = 'PROVIDER_NOT_READY'; return out; }
     try {
       const ctx = await store.loadEmissionContext(sale.businessId, sale.id);
+      out.resolucion = ctx.issuer?.resolucion ?? null;
       evaluateEligibility({
         sale, business, issuer: ctx.issuer, emissionEnabled: ctx.emissionEnabled,
         taxLinesVerified: ctx.taxLinesVerified, lines: ctx.lines, payments: ctx.payments,

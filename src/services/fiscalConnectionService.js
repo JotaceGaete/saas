@@ -26,6 +26,10 @@ export const FISCAL_ERROR_MESSAGES = Object.freeze({
   UNKNOWN_FIELD: 'La solicitud contiene datos no permitidos.',
   SERVER_NOT_CONFIGURED: 'La facturación electrónica no está disponible en este momento.',
   SERVER_ERROR: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
+  INVALID_RESOLUCION: 'Revisa la resolución del SII: número entero y fecha válida (no futura).',
+  INVALID_SUCURSAL: 'El código de sucursal del SII debe tener solo números.',
+  API_KEY_REQUIRED: 'Ingresa tu API key de DTE Core.',
+  INVALID_APPLICATION: 'Revisa los datos de la solicitud.',
 });
 
 export function describeFiscalError(err) {
@@ -76,6 +80,18 @@ export function getFiscalConnection(businessId) {
 // La clave se envía una sola vez en el cuerpo. El llamador debe limpiarla al terminar.
 export function connectFiscal(businessId, { issuerRut, apiKey }) {
   return request(businessId, { method: 'POST', body: { action: 'connect', issuerRut, apiKey } });
+}
+
+/**
+ * Formulario único: RUT + API key (opcional si ya está guardada para el mismo RUT) + resolución
+ * SII + sucursal opcional. Envía la solicitud a revisión de Walinka; nunca habilita la emisión.
+ */
+export function submitFiscalApplication(businessId, {
+  issuerRut, apiKey = '', resolucionNumero, resolucionFecha, sucursalNombre = '', sucursalCodigo = '',
+}) {
+  const body = { action: 'submit', issuerRut, resolucionNumero, resolucionFecha, sucursalNombre, sucursalCodigo };
+  if (apiKey) body.apiKey = apiKey;
+  return request(businessId, { method: 'POST', body });
 }
 
 export function disconnectFiscal(businessId) {

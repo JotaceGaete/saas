@@ -34,6 +34,8 @@ export function createFiscalConnectionHandler({ service, assertAccess }) {
       if (!body || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: 'BAD_REQUEST' });
       if (body.action === 'connect') {
         result = await service.connect({ businessId, actorId: guard.actorId, body });
+      } else if (body.action === 'submit') {
+        result = await service.submit({ businessId, actorId: guard.actorId, body });
       } else if (body.action === 'disconnect') {
         result = await service.disconnect({ businessId, actorId: guard.actorId, body });
       } else {

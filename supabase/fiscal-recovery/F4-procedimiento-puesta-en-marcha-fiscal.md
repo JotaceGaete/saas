@@ -30,7 +30,13 @@ P0 → A → B → C → D
   funciones de conexión.
 - **C = `proposed/20261102_fiscal_provider_claim_guard.sql`:** requiere A y B. Redefine `crm_fiscal_store_receipt`,
   `crm_fiscal_mark_failed` y funciones de reconciliación; crea `crm_fiscal_claim_with_credentials`.
-- **D = `proposed/20261031_issuer_sucursal_config.sql`:** requiere A (redefine `crm_fiscal_emission_context`) y C. Debe ir al final.
+- **D = `proposed/20261031_issuer_sucursal_config.sql`:** requiere A (redefine `crm_fiscal_emission_context`) y C.
+- **E = `proposed/20261102_fiscal_sii_status.sql`:** estado SII separado e inmutabilidad del documento. Va después de D.
+- **F = `proposed/20261104_fiscal_onboarding_review.sql`:** alta por comercio con revisión de Walinka
+  (estado de revisión, resolución SII por emisor, `crm_fiscal_submit_application`,
+  `crm_fiscal_review_application`, `crm_fiscal_list_applications`). Redefine `crm_fiscal_connection_status`
+  y `crm_fiscal_emission_context`. Un emisor solo queda `verified` con `review_status = 'approved'`;
+  cambiar o quitar la API key lo devuelve a `draft`. Debe ir al final.
 
 ## 2. Respaldo (antes de cualquier paso)
 
@@ -59,6 +65,8 @@ Un paso por migración, con verificación después de cada uno:
 | B | `crm_fiscal_save_credentials` y `crm_fiscal_connection_status` existen con grants solo a `service_role` |
 | C | `crm_fiscal_claim_with_credentials` existe; `crm_fiscal_issuances_provider_check` admite `siisolutions` y `dtecore` |
 | D | columnas `sucursal_nombre`, `sucursal_codigo` en `fiscal.issuers`; `crm_fiscal_emission_context` devuelve `sucursal_nombre` |
+| E | columna `sii_status` en `crm_fiscal_issuances` |
+| F | columnas `review_status`, `resolucion_numero`, `resolucion_fecha` en `fiscal.issuers`; constraint `issuers_review_check`; las tres funciones de alta solo con `service_role` |
 
 Todas las migraciones se aplican con `enabled=false` en `dte39_emission_control`. Nada emite con el interruptor apagado.
 
@@ -66,6 +74,9 @@ Todas las migraciones se aplican con `enabled=false` en `dte39_emission_control`
 
 Por paso, en orden inverso:
 
+- **F:** `drop function` de `crm_fiscal_submit_application`, `crm_fiscal_review_application`, `crm_fiscal_list_applications`;
+  `drop trigger business_credentials_reset_review`; restaurar `crm_fiscal_connection_status` y `crm_fiscal_emission_context`
+  de E/D; quitar `issuers_review_check` y las columnas nuevas solo si ningún comercio fue aprobado.
 - **D:** restaurar la definición de `crm_fiscal_emission_context` guardada en el respaldo; `alter table fiscal.issuers drop column sucursal_nombre, drop column sucursal_codigo`.
 - **C:** restaurar desde el respaldo las funciones redefinidas; `drop function public.crm_fiscal_claim_with_credentials`, `crm_fiscal_release_claim`; restaurar el check de `crm_fiscal_issuances`.
 - **B:** restaurar `issuers_provider_check` y `admin_audit_action_check` anteriores; `drop function` de las funciones de conexión.

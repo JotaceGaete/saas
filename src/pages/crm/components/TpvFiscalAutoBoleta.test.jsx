@@ -123,3 +123,21 @@ describe('TpvFiscalAutoBoleta — sin intervención del cajero', () => {
   });
 });
 
+
+describe('modo real: resolución SII del servidor', () => {
+  it('printableResolucion convierte { numero, fecha } en { numero, anio }', async () => {
+    const { printableResolucion } = await import('./TpvFiscalAutoBoleta');
+    expect(printableResolucion({ numero: 80, fecha: '2014-08-22' })).toEqual({ numero: '80', anio: '2014' });
+    expect(printableResolucion(null)).toEqual({ numero: '', anio: '' });
+  });
+
+  it('withServerResolucion recuerda la resolución que trae el estado de fiscal-emit', async () => {
+    const { withServerResolucion } = await import('./TpvFiscalAutoBoleta');
+    const base = { mode: 'live', status: async () => ({ ok: true, data: { state: 'none', resolucion: { numero: 80, fecha: '2014-08-22' } } }), emit: async () => ({}) };
+    const e = withServerResolucion(base);
+    expect(e.resolucion()).toBeNull();
+    await e.status('s1');
+    expect(e.resolucion()).toEqual({ numero: 80, fecha: '2014-08-22' });
+    expect(e.mode).toBe('live');
+  });
+});

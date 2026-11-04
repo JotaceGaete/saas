@@ -57,11 +57,8 @@ export async function makeFixture(c, opts = {}) {
      values ($1, $2, 'Negocio prueba', '+56900000000', 'CL', 'CLP')`,
     [businessId, userId],
   );
-  await c.query(
-    `insert into fiscal.issuers (business_id, issuer_rut, provider, enabled, verified, sucursal_nombre, sucursal_codigo)
-     values ($1, '76123456-7', 'dtecore', $2, $3, 'SUCURSAL DE PRUEBA', '1')`,
-    [businessId, o.issuerEnabled, o.issuerVerified],
-  );
+  // Credenciales antes que el emisor: guardar o cambiar la API key devuelve la solicitud a
+  // revisión (migración F); un emisor verificado es uno aprobado por Walinka.
   if (o.withCredentials) {
     const rec = seal({ apiKey: `TEST-API-KEY-${businessId}` }, { key: TEST_MASTER_KEY, businessId });
     await c.query(
@@ -70,6 +67,13 @@ export async function makeFixture(c, opts = {}) {
       [businessId, rec.ciphertext, rec.iv, rec.authTag],
     );
   }
+  await c.query(
+    `insert into fiscal.issuers (business_id, issuer_rut, provider, enabled, verified, sucursal_nombre, sucursal_codigo,
+                                 review_status, resolucion_numero, resolucion_fecha)
+     values ($1, '76123456-7', 'dtecore', $2, $3, 'SUCURSAL DE PRUEBA', '1',
+             case when $3::boolean then 'approved' else 'draft' end, 80, date '2014-08-22')`,
+    [businessId, o.issuerEnabled, o.issuerVerified],
+  );
   await c.query(
     `insert into public.crm_invoices (id, business_id, invoice_number, status, paid_at, total, subtotal, discount_amount)
      values ($1, $2, $3, $4, $5, $6, $6, $7)`,
