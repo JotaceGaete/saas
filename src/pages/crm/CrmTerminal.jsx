@@ -5,7 +5,9 @@ import PanelHeader from 'components/ui/PanelHeader';
 import Icon from 'components/AppIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useIsDesktop } from 'hooks/useMediaQuery';
-import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, holdPosSale, listHeldPosSales, claimHeldPosSale, releaseClaimedPosSale, consumeClaimedPosSale, discardHeldPosSale, getPointTerminals, getPointTerminalPreference, selectPointTerminal, unlinkPointTerminal, verifyPointTerminal, startPointOauth, getPointConnection, disconnectPointConnection, setupPointTerminal, createPointOrder, getPointOrder, cancelPointOrder } from '../../services/crmService';
+import { getCrmCustomers, getPosProducts, getAllActiveProducts, createPosInvoice, getOpenCashSession, createCrmCustomer, holdPosSale, listHeldPosSales, claimHeldPosSale, releaseClaimedPosSale, consumeClaimedPosSale, discardHeldPosSale, getSaleNumber } from '../../services/crmService';
+import { pointClient, previewPointDemo, POINT_PREVIEW, PREVIEW_REAL_POINT_MAX_AMOUNT } from '../../services/pointClient';
+import { POINT_SIM_SCENARIO_KEY, POINT_SIM_SCENARIOS, POINT_SIM_SCENARIO_LABELS } from '../../services/pointSimulator';
 import { getEffectivePlanSlug } from '../../services/waBusinessService';
 import { canUseFeature } from '../../config/planFeatures';
 import CrmThermalTicket from './components/CrmThermalTicket';
@@ -241,6 +243,15 @@ function CrmTerminalUI() {
   const [discount, setDiscount] = useState('');
   const [payments, setPayments] = useState([{ id: 'payment_1', method: 'cash', amount: '' }]);
   const [splitPaymentMode, setSplitPaymentMode] = useState(false);
+  // TPV-CHECKOUT-UX-2: solo presentación. pointSelected decide si el cobro
+  // va por el flujo Point (handlePointCharge) o por el flujo de pagos de
+  // siempre (handleRegister); no cambia ninguno de los dos.
+  const [pointSelected, setPointSelected] = useState(false);
+  const [pointConfigOpen, setPointConfigOpen] = useState(false);
+  const [moreMethodsOpen, setMoreMethodsOpen] = useState(false);
+  // Marca explícita de «Vender a cuenta corriente»: borrar el monto de
+  // efectivo para reescribirlo no debe cambiar de medio.
+  const [creditSaleChosen, setCreditSaleChosen] = useState(false);
   const [notes, setNotes] = useState('');
   const [busy, setBusy] = useState(false);
   const [errorMsg, setErrorMsg] = useState(null);
@@ -311,6 +322,12 @@ function CrmTerminalUI() {
 
   // Ticket modal state — set after successful (or locally-fallback) sale
   const [ticketData, setTicketData] = useState(null);
+  // Preview: Point REAL por defecto (cobro limitado); el simulador solo con
+  // el modo DEMO, que el cajero activa aquí.
+  const [pointModeView, setPointModeView] = useState(() => pointClient.mode);
+  const [pointSimScenario, setPointSimScenario] = useState(() => {
+    try { return JSON.parse(localStorage.getItem(POINT_SIM_SCENARIO_KEY)) || 'approved'; } catch { return 'approved'; }
+  });
 
   const searchRef = useRef(null);
   const printedTicketRef = useRef(null);
@@ -655,6 +672,23 @@ function CrmTerminalUI() {
   const requiresCustomerForPending = pendingBalance > 0;
   const isPaymentInvalid = hasNonCashOverpay || (requiresCustomerForPending && !customerId);
   const paymentStatusLabel = pendingBalance <= 0 ? 'Pagada' : paidTotal > 0 ? 'Parcial' : 'Pendiente';
+  // TPV-CHECKOUT-UX-2: qué medio está elegido, derivado del mismo array
+  // payments (nunca un estado contable paralelo).
+  const singlePaymentMethod = payments.length === 1 ? payments[0]?.method : null;
+  const creditSaleSelected = creditSaleChosen && !splitPaymentMode && paidTotal === 0;
+  const manualChoice = splitPaymentMode ? 'split' : creditSaleSelected ? 'credit' : singlePaymentMethod;
+  // Mismas condiciones que ya exigía el botón de cobro Point (y handlePointCharge).
+  const activePointTerminal = pointTerminals.find(t => t.id === pointTerminalId) || null;
+  const pointReady = Boolean(pointTerminalId)
+    && pointPreference?.terminal_id === pointTerminalId
+    && pointPreference?.verification_status === 'verified'
+    && activePointTerminal?.operating_mode === 'PDV';
+  const pointChargeDisabled = pointLoading || !pointReady || total <= 0 || Boolean(pointOperation?.operation_id);
+  const pointChargeLabel = pointOperation?.operation_id
+    ? 'Cobro en curso en la Point…'
+    : pointClient.mode === 'simulated'
+      ? `DEMO: simular cobro de ${fmt(total, business?.currency)} (no usa la Point)`
+      : `Enviar ${fmt(total, business?.currency)} a la Point`;
   const appliedPayments = parsedPayments
     .reduce((acc, payment) => {
       if (payment.method !== 'cash') {
@@ -686,6 +720,10 @@ function CrmTerminalUI() {
     setDiscount('');
     setPayments([{ id: `payment_${Date.now()}`, method: 'cash', amount: '' }]);
     setSplitPaymentMode(false);
+    setPointSelected(false);
+    setPointConfigOpen(false);
+    setMoreMethodsOpen(false);
+    setCreditSaleChosen(false);
     setNotes('');
     setSearch('');
     setActiveCategory('');
@@ -837,6 +875,34 @@ function CrmTerminalUI() {
     const amount = String(Math.max(0, total));
     setSplitPaymentMode(false);
     setPayments([{ id: `payment_${Date.now()}`, method, amount }]);
+  };
+
+  // TPV-CHECKOUT-UX-2: elegir un medio manual usa exactamente
+  // selectQuickPaymentMethod / startSplitPayment / la acción de cuenta
+  // corriente de siempre. Point solo cambia qué panel y qué botón se ven.
+  const choosePaymentMethod = (method) => {
+    if (pointOperation?.operation_id) return;
+    setPointSelected(false);
+    setCreditSaleChosen(false);
+    selectQuickPaymentMethod(method);
+  };
+  const choosePoint = () => {
+    setPointSelected(true);
+    setCreditSaleChosen(false);
+    setMoreMethodsOpen(false);
+  };
+  const chooseSplitPayment = () => {
+    if (pointOperation?.operation_id) return;
+    setPointSelected(false);
+    setCreditSaleChosen(false);
+    startSplitPayment();
+  };
+  const chooseCreditSale = () => {
+    if (pointOperation?.operation_id) return;
+    setPointSelected(false);
+    setCreditSaleChosen(true);
+    setSplitPaymentMode(false);
+    setPayments(prev => prev.map(p => ({ ...p, amount: '' })));
   };
 
   // Pago dividido rápido: al activarlo partimos con el primer medio vacío
@@ -1003,9 +1069,9 @@ function CrmTerminalUI() {
   const loadPointTerminals = useCallback(async () => {
     setPointLoading(true); setPointError(null); setPointErrorReason(null);
     const [terminalsResult, preferenceResult, connectionResult] = await Promise.all([
-      getPointTerminals(),
-      getPointTerminalPreference(),
-      getPointConnection(),
+      pointClient.getPointTerminals(),
+      pointClient.getPointTerminalPreference(),
+      pointClient.getPointConnection(),
     ]);
     setPointLoading(false);
     if (terminalsResult.error) {
@@ -1040,7 +1106,7 @@ function CrmTerminalUI() {
   const handleSelectPointTerminal = async (terminalId) => {
     if (pointOperation?.operation_id) return;
     setPointLoading(true); setPointError(null); setPointErrorReason(null);
-    const { data, error } = await selectPointTerminal(terminalId);
+    const { data, error } = await pointClient.selectPointTerminal(terminalId);
     setPointLoading(false);
     if (error) {
       setPointError(error.message);
@@ -1054,7 +1120,7 @@ function CrmTerminalUI() {
   const handleVerifyPointTerminal = async () => {
     if (!pointTerminalId || pointOperation?.operation_id) return;
     setPointLoading(true); setPointError(null); setPointErrorReason(null);
-    const { data, error } = await verifyPointTerminal(pointTerminalId);
+    const { data, error } = await pointClient.verifyPointTerminal(pointTerminalId);
     setPointLoading(false);
     if (error) {
       setPointError(error.message);
@@ -1067,7 +1133,7 @@ function CrmTerminalUI() {
   const handleUnlinkPointTerminal = async () => {
     if (pointOperation?.operation_id) return;
     setPointLoading(true); setPointError(null); setPointErrorReason(null);
-    const { error } = await unlinkPointTerminal();
+    const { error } = await pointClient.unlinkPointTerminal();
     setPointLoading(false);
     if (error) {
       setPointError(error.message);
@@ -1080,7 +1146,7 @@ function CrmTerminalUI() {
 
   const handleConnectPoint = useCallback(async () => {
     setPointLoading(true); setPointError(null); setPointErrorReason(null);
-    const { data, error } = await startPointOauth();
+    const { data, error } = await pointClient.startPointOauth();
     setPointLoading(false);
     if (error || !data?.authorizationUrl) {
       setPointError(error?.message || 'No pudimos iniciar la conexión con Mercado Pago Point.');
@@ -1092,7 +1158,7 @@ function CrmTerminalUI() {
   const handleDisconnectPointConnection = useCallback(async () => {
     if (pointOperation?.operation_id) return;
     setPointLoading(true); setPointError(null); setPointErrorReason(null);
-    const { error } = await disconnectPointConnection();
+    const { error } = await pointClient.disconnectPointConnection();
     setPointLoading(false);
     if (error) {
       setPointError(error.message);
@@ -1119,7 +1185,7 @@ function CrmTerminalUI() {
     } catch { /* localStorage no es autoridad */ }
   }, [pointStorageKey, pointOperation]);
 
-  const finishPointUi = useCallback((data) => {
+  const finishPointUi = useCallback(async (data) => {
     if (!data?.invoice_id) return;
     const saleSnapshot = {
       items: [...cart], customer: selectedCustomer, paymentMethod: 'mercado_pago',
@@ -1132,14 +1198,21 @@ function CrmTerminalUI() {
     if (draftKey) removePosTerminalDraft(draftKey);
     if (pointStorageKey) localStorage.removeItem(pointStorageKey);
     setPointOperation(null);
-    setTicketData({ sale: data.sale || { id: data.invoice_id }, ...saleSnapshot });
+    let sale = data.sale || { id: data.invoice_id };
+    // Si la respuesta trajo solo el id, el número interno se lee del
+    // servidor ANTES de mostrar e imprimir (nunca se inventa en el navegador).
+    if (sale.invoice_number == null) {
+      const invoiceNumber = await getSaleNumber(business?.id, sale.id);
+      if (invoiceNumber != null) sale = { ...sale, invoice_number: invoiceNumber };
+    }
+    setTicketData({ sale, ...saleSnapshot });
     refreshProducts();
-  }, [cart, selectedCustomer, total, discountAmount, subtotal, notes, draftKey, pointStorageKey]);
+  }, [cart, selectedCustomer, total, discountAmount, subtotal, notes, draftKey, pointStorageKey, business?.id]);
 
   const pollPointOnce = useCallback(async () => {
     const operationId = pointOperation?.operation_id;
     if (!operationId) return;
-    const { data, error } = await getPointOrder(operationId);
+    const { data, error } = await pointClient.getPointOrder(operationId);
     if (error && !data) { setPointError(error.message); return; }
     const next = data || {};
     setPointOperation(prev => ({ ...prev, ...next }));
@@ -1212,10 +1285,32 @@ function CrmTerminalUI() {
     };
   }, [pointOperation?.operation_id, pointOperation?.invoice_id, pollPointOnce]);
 
+  // Solo en Preview. Cambiar de modo nunca afecta un cobro en curso (botón
+  // deshabilitado) y deja una venta nueva con claves nuevas.
+  const switchPointMode = useCallback((toReal) => {
+    if (!POINT_PREVIEW || pointOperation?.operation_id) return;
+    if (toReal) previewPointDemo.disable();
+    else previewPointDemo.enable();
+    setPointModeView(pointClient.mode);
+    pointCreateKeyRef.current = null;
+    setPointLastResult(null);
+    setPointTerminals([]);
+    setPointPreference(null);
+    setPointTerminalId('');
+    setPointConnection(null);
+    setPointError(null);
+    setPointErrorReason(null);
+  }, [pointOperation?.operation_id]);
+
+  // Un cobro Point en curso (o recuperado tras recargar) siempre muestra Point.
+  useEffect(() => {
+    if (pointOperation?.operation_id) setPointSelected(true);
+  }, [pointOperation?.operation_id]);
+
   const handleSetupPoint = async () => {
     if (!pointTerminalId) return;
     setPointLoading(true); setPointError(null);
-    const { data, error } = await setupPointTerminal(pointTerminalId);
+    const { data, error } = await pointClient.setupPointTerminal(pointTerminalId);
     setPointLoading(false);
     if (error) { setPointError(error.message); return; }
     await loadPointTerminals();
@@ -1250,7 +1345,7 @@ function CrmTerminalUI() {
         pointCreateKeyRef.current = crypto.randomUUID();
         saleIdempotencyKeyRef.current = crypto.randomUUID();
       }
-      const { data, error } = await createPointOrder({
+      const { data, error } = await pointClient.createPointOrder({
         terminalId: pointTerminalId, items: cart, customerId: customerId || null,
         discount: discountAmount, notes: notes || null,
         createIdempotencyKey: pointCreateKeyRef.current,
@@ -1274,7 +1369,7 @@ function CrmTerminalUI() {
     // consulta se solapa, el cajero igual debe poder solicitar la cancelación.
     setPointCanceling(true); setPointError(null);
     try {
-      const { data, error } = await cancelPointOrder(operationId);
+      const { data, error } = await pointClient.cancelPointOrder(operationId);
       if (error) {
         setPointError(error.message || 'No pudimos confirmar la cancelación. Walinka seguirá consultando el mismo cobro.');
         return;
@@ -2199,11 +2294,102 @@ function CrmTerminalUI() {
 
                     {checkoutStep === 'payment' && (
                       <>
+                        {/* TPV-CHECKOUT-UX-2 — selector de medio. Cuatro
+                            opciones principales; el resto en «Más medios».
+                            Cada botón usa las mismas funciones de antes
+                            (selectQuickPaymentMethod, startSplitPayment, la
+                            acción de cuenta corriente) o elige Point. */}
+                        <div data-testid="payment-method-picker" className="rounded-2xl border border-gray-200 bg-white p-3 space-y-2.5">
+                          <div>
+                            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Total a cobrar</p>
+                            <p className="text-3xl font-black tracking-tight text-gray-950">{fmt(total, business?.currency)}</p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:grid-cols-2 2xl:grid-cols-4" role="radiogroup" aria-label="Medio de pago">
+                            {[
+                              { key: 'point', label: 'Point', icon: 'Smartphone', active: pointSelected, onClick: choosePoint },
+                              { key: 'cash', label: 'Efectivo', icon: 'Banknote', active: !pointSelected && manualChoice === 'cash', onClick: () => choosePaymentMethod('cash') },
+                              { key: 'card', label: 'Tarjeta externa', icon: 'CreditCard', active: !pointSelected && (manualChoice === 'debit_card' || manualChoice === 'credit_card'), onClick: () => choosePaymentMethod(manualChoice === 'credit_card' ? 'credit_card' : 'debit_card') },
+                              { key: 'transfer', label: 'Transferencia', icon: 'ArrowLeftRight', active: !pointSelected && manualChoice === 'bank_transfer', onClick: () => choosePaymentMethod('bank_transfer') },
+                            ].map((opt) => (
+                              <button
+                                key={opt.key}
+                                type="button"
+                                role="radio"
+                                aria-checked={opt.active}
+                                data-testid={`pay-${opt.key}`}
+                                onClick={opt.onClick}
+                                disabled={Boolean(pointOperation?.operation_id) && opt.key !== 'point'}
+                                className={`flex min-h-[56px] flex-col items-center justify-center gap-1 rounded-xl border px-2 py-2 text-center transition-colors disabled:opacity-40 ${opt.active ? 'border-gray-950 bg-gray-950 text-white' : 'border-gray-200 bg-white text-gray-800 hover:border-gray-400 hover:bg-gray-50'}`}
+                              >
+                                <Icon name={opt.icon} size={18} />
+                                <span className="text-xs font-black leading-tight">{opt.label}</span>
+                              </button>
+                            ))}
+                          </div>
+
+                          <div>
+                            <button
+                              type="button"
+                              data-testid="pay-more-toggle"
+                              aria-expanded={moreMethodsOpen || ['check', 'mercado_pago', 'other', 'split'].includes(!pointSelected ? manualChoice : '')}
+                              onClick={() => setMoreMethodsOpen(v => !v)}
+                              disabled={Boolean(pointOperation?.operation_id)}
+                              className="flex min-h-[44px] w-full items-center justify-between rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-xs font-bold text-gray-700 hover:bg-gray-100 disabled:opacity-40"
+                            >
+                              <span>Más medios de pago</span>
+                              <Icon name={moreMethodsOpen ? 'ChevronUp' : 'ChevronDown'} size={15} />
+                            </button>
+                            {(moreMethodsOpen || ['check', 'mercado_pago', 'other', 'split'].includes(!pointSelected ? manualChoice : '')) && (
+                              <div className="mt-2 grid grid-cols-2 gap-2">
+                                {[
+                                  { key: 'check', label: 'Cheque', icon: 'BadgeCheck', onClick: () => choosePaymentMethod('check') },
+                                  { key: 'mercado_pago', label: 'MP externo (ya cobrado)', icon: 'Wallet', onClick: () => choosePaymentMethod('mercado_pago') },
+                                  { key: 'other', label: 'Otro', icon: 'MoreHorizontal', onClick: () => choosePaymentMethod('other') },
+                                  { key: 'split', label: 'Dividir pago', icon: 'Split', onClick: chooseSplitPayment },
+                                ].map((opt) => {
+                                  const active = !pointSelected && manualChoice === opt.key;
+                                  return (
+                                    <button
+                                      key={opt.key}
+                                      type="button"
+                                      data-testid={`pay-${opt.key}`}
+                                      aria-pressed={active}
+                                      onClick={opt.onClick}
+                                      className={`flex min-h-[48px] items-center gap-2 rounded-xl border px-3 py-2 text-left text-xs font-bold ${active ? 'border-gray-950 bg-gray-950 text-white' : 'border-gray-200 bg-white text-gray-800 hover:bg-gray-50'}`}
+                                    >
+                                      <Icon name={opt.icon} size={15} />
+                                      <span className="leading-tight">{opt.label}</span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            data-testid="pay-credit"
+                            aria-pressed={!pointSelected && creditSaleSelected}
+                            onClick={chooseCreditSale}
+                            disabled={Boolean(pointOperation?.operation_id)}
+                            className={`w-full flex min-h-[48px] items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed transition-colors text-left disabled:opacity-40 ${!pointSelected && creditSaleSelected ? 'border-amber-500 bg-amber-100' : 'border-amber-300 bg-amber-50 hover:bg-amber-100'}`}
+                          >
+                            <span className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
+                              <Icon name="BookUser" size={14} className="text-amber-600" />
+                            </span>
+                            <span className="min-w-0">
+                              <span className="block text-xs font-bold text-amber-800 leading-tight">Vender a cuenta corriente</span>
+                              <span className="block text-[10px] text-amber-600 leading-tight mt-0.5">Deja el total pendiente · requiere cliente registrado</span>
+                            </span>
+                          </button>
+                        </div>
+
                         {/* POINT-SMART-2-7 — Point integrado. Separado de
                             "Mercado Pago manual": en esta fase cobra el total
                             completo y el backend crea la venta solo al recibir
                             processed desde Mercado Pago. */}
-                        <div className="rounded-2xl border border-yellow-200 bg-yellow-50 p-3 space-y-2">
+                        {pointSelected && (
+                        <div data-testid="point-panel" className="rounded-2xl border border-yellow-200 bg-yellow-50 p-3 space-y-2">
                           <div className="flex items-start justify-between gap-2">
                             <div className="flex items-center gap-2">
                               <span className="flex h-8 w-8 items-center justify-center rounded-xl bg-yellow-300">
@@ -2214,14 +2400,34 @@ function CrmTerminalUI() {
                                 <p className="text-[10px] text-gray-600">Cobro integrado · total {fmt(total, business?.currency)}</p>
                               </div>
                             </div>
+                            {(pointConfigOpen || !pointReady) && (
                             <button type="button" onClick={loadPointTerminals} disabled={pointLoading || !!pointOperation?.operation_id}
                               className="rounded-lg px-2 py-1 text-[10px] font-bold text-gray-700 hover:bg-yellow-100 disabled:opacity-40">
                               Actualizar
                             </button>
+                            )}
                           </div>
 
                           {!pointOperation?.operation_id ? (
+                            pointReady && !pointConfigOpen ? (
+                              <div data-testid="point-active-terminal" className="flex items-center justify-between gap-2 rounded-xl border border-gray-900/10 bg-white px-3 py-2.5">
+                                <div className="min-w-0">
+                                  <p className="text-[10px] font-bold uppercase tracking-wide text-gray-500">Terminal activa</p>
+                                  <p className="break-all text-[11px] font-black text-gray-900">{pointTerminalId}</p>
+                                </div>
+                                <button type="button" onClick={() => setPointConfigOpen(true)}
+                                  className="shrink-0 min-h-[44px] rounded-lg border border-gray-200 bg-white px-3 text-[11px] font-bold text-gray-700 hover:bg-gray-50">
+                                  Cambiar terminal
+                                </button>
+                              </div>
+                            ) : (
                             <>
+                              {pointReady && (
+                                <button type="button" onClick={() => setPointConfigOpen(false)}
+                                  className="w-full min-h-[40px] rounded-lg border border-gray-200 bg-white px-3 text-[11px] font-bold text-gray-700 hover:bg-gray-50">
+                                  Listo · usar terminal {pointTerminalId}
+                                </button>
+                              )}
                               {pointTerminals.length > 0 ? (
                                 <div className="space-y-2">
                                   {pointPreference?.terminal_id && (
@@ -2305,13 +2511,8 @@ function CrmTerminalUI() {
                                   {pointLoading ? 'Buscando terminales Point…' : 'No encontramos una terminal Point en la cuenta conectada.'}
                                 </p>
                               )}
-                              <button type="button" onClick={handlePointCharge}
-                                disabled={pointLoading || !pointTerminalId || pointPreference?.verification_status !== 'verified' || pointTerminals.find(t => t.id === pointTerminalId)?.operating_mode !== 'PDV' || total <= 0}
-                                className="flex w-full items-center justify-center gap-2 rounded-xl bg-yellow-300 px-3 py-2.5 text-sm font-black text-gray-950 hover:bg-yellow-200 disabled:bg-yellow-100 disabled:text-gray-400">
-                                {pointLoading ? <Icon name="Loader2" size={15} className="animate-spin" /> : <Icon name="Zap" size={15} />}
-                                Enviar {fmt(total, business?.currency)} a la Point
-                              </button>
                             </>
+                            )
                           ) : (
                             <div className="rounded-xl bg-white border border-yellow-200 p-3 space-y-2">
                               <div className="flex items-center gap-2">
@@ -2354,7 +2555,42 @@ function CrmTerminalUI() {
                               </div>
                             </div>
                           )}
-                          {pointConnection && !pointOperation?.operation_id && (
+                          {POINT_PREVIEW && pointModeView === 'live' && pointClient.mode === 'live' && (
+                            <div data-testid="point-real-banner" className="rounded-xl border border-red-300 bg-red-50 px-3 py-2.5 text-[11px] text-red-900">
+                              <p className="font-black">Point REAL · Mercado Pago · cobro real con tarjeta</p>
+                              <p className="mt-0.5">
+                                Preview: máximo ${PREVIEW_REAL_POINT_MAX_AMOUNT.toLocaleString('es-CL')} por cobro.
+                              </p>
+                              <button type="button" data-testid="point-demo-enable" onClick={() => switchPointMode(false)} disabled={Boolean(pointOperation?.operation_id)}
+                                className="mt-1.5 rounded-lg border border-red-300 bg-white px-2.5 py-1 text-[10px] font-bold text-red-700 hover:bg-red-100 disabled:opacity-40">
+                                Usar modo DEMO (Point simulada, sin cobro)
+                              </button>
+                            </div>
+                          )}
+                          {pointClient.mode === 'simulated' && (
+                            <div data-testid="point-sim-banner" className="rounded-xl border border-sky-300 bg-sky-50 px-3 py-2.5 text-[11px] text-sky-900">
+                              <p className="font-black">MODO DEMO · Point SIMULADA · no es una prueba real</p>
+                              <p className="mt-0.5">No se contacta a Mercado Pago ni a tu máquina. La venta queda solo en este navegador.</p>
+                              <label className="mt-1.5 flex items-center gap-1.5">
+                                Resultado del próximo cobro:
+                                <select value={pointSimScenario} disabled={Boolean(pointOperation?.operation_id)}
+                                  onChange={(e) => {
+                                    setPointSimScenario(e.target.value);
+                                    try { localStorage.setItem(POINT_SIM_SCENARIO_KEY, JSON.stringify(e.target.value)); } catch { /* sin almacenamiento */ }
+                                  }}
+                                  className="rounded border border-sky-300 bg-white px-1 py-0.5">
+                                  {POINT_SIM_SCENARIOS.map((sc) => <option key={sc} value={sc}>{POINT_SIM_SCENARIO_LABELS[sc]}</option>)}
+                                </select>
+                              </label>
+                              {POINT_PREVIEW && (
+                                <button type="button" data-testid="point-real-enable" onClick={() => switchPointMode(true)} disabled={Boolean(pointOperation?.operation_id)}
+                                  className="mt-1.5 rounded-lg border border-sky-400 bg-white px-2.5 py-1 text-[10px] font-bold text-sky-800 hover:bg-sky-100 disabled:opacity-40">
+                                  Volver a Point REAL (Mercado Pago)
+                                </button>
+                              )}
+                            </div>
+                          )}
+                          {pointConnection && !pointOperation?.operation_id && (pointConfigOpen || !pointReady) && (
                             <div className="rounded-xl border border-gray-200 bg-white/70 px-3 py-2.5 flex items-center justify-between gap-3">
                               <div className="min-w-0">
                                 <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Cuenta Point conectada</p>
@@ -2375,38 +2611,13 @@ function CrmTerminalUI() {
                           )}
                           {pointError && <p className="rounded-lg bg-white/70 px-2.5 py-2 text-[11px] font-semibold text-red-600">{pointError}</p>}
                         </div>
+                        )}
 
-                        {/* Payment method — reutiliza exactamente el mismo
-                            estado/lógica de payments/cuenta corriente que
-                            existía antes de TPV-CORE-3; solo cambió CUÁNDO
-                            se muestra, no CÓMO funciona. */}
-                        <div className="rounded-2xl border border-gray-200 bg-white p-3 space-y-3">
-                          <div>
-                            <p className="text-[11px] font-bold uppercase tracking-wide text-gray-400">Total a cobrar</p>
-                            <p className="text-3xl font-black tracking-tight text-gray-950">{fmt(total, business?.currency)}</p>
-                          </div>
-
-                          <div>
-                            <p className="mb-2 text-xs font-bold text-gray-700">Medio de pago</p>
-                            <div className="grid grid-cols-2 gap-2 xl:grid-cols-3">
-                              {REAL_PAYMENT_METHODS.map((method) => {
-                                const selected = payments.length === 1 && payments[0]?.method === method.value && parseMoneyInput(payments[0]?.amount) > 0;
-                                return (
-                                  <button
-                                    key={method.value}
-                                    type="button"
-                                    onClick={() => selectQuickPaymentMethod(method.value)}
-                                    className={`flex min-h-[54px] items-center gap-2 rounded-xl border px-3 py-2.5 text-left transition-colors ${selected ? 'border-gray-950 bg-gray-950 text-white' : 'border-gray-200 bg-white text-gray-800 hover:border-gray-400 hover:bg-gray-50'}`}
-                                  >
-                                    <Icon name={method.icon} size={17} />
-                                    <span className="flex-1 text-center text-[11px] font-black leading-tight xl:text-xs">{method.value === 'bank_transfer' ? 'Transfer.' : method.label}</span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          </div>
-
-                          {payments.length === 1 && payments[0]?.method === 'cash' && (
+                        {/* Detalle del medio elegido: solo sus campos. Usa los
+                            mismos bloques y el mismo estado payments de antes. */}
+                        {!pointSelected && (
+                        <div data-testid="payment-details" className="rounded-2xl border border-gray-200 bg-white p-3 space-y-3">
+                          {manualChoice === 'cash' && (
                             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                               <label className="mb-1.5 block text-xs font-bold text-emerald-900">Efectivo recibido</label>
                               <div className="relative">
@@ -2427,20 +2638,34 @@ function CrmTerminalUI() {
                             </div>
                           )}
 
-                          {!splitPaymentMode && payments.length === 1 && (
-                            <button
-                              type="button"
-                              onClick={startSplitPayment}
-                              className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5 text-left text-xs font-bold text-blue-700 hover:bg-blue-50"
-                            >
-                              <span className="flex items-center justify-between gap-2">
-                                <span className="flex items-center gap-2">
-                                  <Icon name="Split" size={14} />
-                                  Dividir pago
-                                </span>
-                                <span className="text-[10px] font-semibold text-gray-500">2 o más medios</span>
-                              </span>
-                            </button>
+                          {(manualChoice === 'debit_card' || manualChoice === 'credit_card') && (
+                            <div data-testid="card-details" className="rounded-xl border border-gray-200 bg-gray-50 p-3">
+                              <p className="mb-1.5 text-xs font-bold text-gray-800">Tarjeta externa · {fmt(total, business?.currency)}</p>
+                              <p className="mb-2 text-[10px] text-gray-500">Cobrada en otra máquina. Indica el tipo para la contabilidad.</p>
+                              <div className="grid grid-cols-2 gap-2" role="radiogroup" aria-label="Tipo de tarjeta">
+                                {[{ value: 'debit_card', label: 'Débito' }, { value: 'credit_card', label: 'Crédito' }].map((t) => (
+                                  <button
+                                    key={t.value}
+                                    type="button"
+                                    role="radio"
+                                    aria-checked={manualChoice === t.value}
+                                    onClick={() => choosePaymentMethod(t.value)}
+                                    className={`min-h-[44px] rounded-lg border text-xs font-black ${manualChoice === t.value ? 'border-gray-950 bg-gray-950 text-white' : 'border-gray-200 bg-white text-gray-800 hover:bg-gray-100'}`}
+                                  >
+                                    {t.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {['bank_transfer', 'check', 'mercado_pago', 'other'].includes(manualChoice) && (
+                            <div data-testid="simple-method-details" className="rounded-xl border border-gray-200 bg-gray-50 px-3 py-2.5">
+                              <p className="text-xs font-bold text-gray-800">
+                                {REAL_PAYMENT_METHODS.find(m => m.value === manualChoice)?.label} · {fmt(total, business?.currency)}
+                              </p>
+                              <p className="mt-0.5 text-[10px] text-gray-500">Se registra el total con este medio.</p>
+                            </div>
                           )}
 
                           {splitPaymentMode ? (
@@ -2509,20 +2734,36 @@ function CrmTerminalUI() {
                             </div>
                           ) : null}
 
-                          <button
-                            type="button"
-                            onClick={() => setPayments(prev => prev.map(p => ({ ...p, amount: '' })))}
-                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl border border-dashed border-amber-300 bg-amber-50 hover:bg-amber-100 transition-colors text-left"
-                          >
-                            <span className="w-7 h-7 rounded-lg bg-amber-100 flex items-center justify-center shrink-0">
-                              <Icon name="BookUser" size={14} className="text-amber-600" />
-                            </span>
-                            <span className="min-w-0">
-                              <span className="block text-xs font-bold text-amber-800 leading-tight">Vender a cuenta corriente</span>
-                              <span className="block text-[10px] text-amber-600 leading-tight mt-0.5">Deja el total pendiente · requiere cliente registrado</span>
-                            </span>
-                          </button>
+                          {manualChoice === 'credit' && (
+                            <div data-testid="credit-details" className="rounded-xl border border-amber-200 bg-amber-50 p-3 space-y-2">
+                              <p className="text-xs font-bold text-amber-900">Cuenta corriente · deuda de {fmt(pendingBalance, business?.currency)}</p>
+                              <div className="flex items-center gap-1.5 rounded-xl border border-amber-200 bg-white px-2">
+                                <Icon name="UserRound" size={14} className="text-amber-500" />
+                                <select
+                                  value={customerId}
+                                  onChange={e => setCustomerId(e.target.value)}
+                                  aria-label="Cliente de la cuenta corriente"
+                                  className="min-h-[44px] min-w-0 flex-1 bg-transparent text-xs font-semibold text-gray-800 focus:outline-none"
+                                >
+                                  <option value="">Elige un cliente registrado</option>
+                                  {customersDisplay.map(c => (
+                                    <option key={c.id} value={c.id}>
+                                      {c.name}{c.company ? ` - ${c.company}` : ''}
+                                    </option>
+                                  ))}
+                                </select>
+                                <button
+                                  type="button"
+                                  onClick={() => setShowNewCustomer(true)}
+                                  className="shrink-0 min-h-[36px] rounded-lg px-2 text-[11px] font-bold text-blue-600 hover:bg-blue-50"
+                                >
+                                  Nuevo
+                                </button>
+                              </div>
+                            </div>
+                          )}
 
+                          {(splitPaymentMode || pendingBalance > 0 || change > 0) && (
                           <div className="grid grid-cols-3 gap-1.5">
                             <div className="rounded-lg bg-emerald-50 px-2 py-1.5">
                               <p className="text-[10px] text-emerald-700 font-semibold">Pagado</p>
@@ -2537,6 +2778,7 @@ function CrmTerminalUI() {
                               <p className={`text-xs font-bold ${change > 0 ? 'text-blue-800' : 'text-gray-700'}`}>{fmt(change, business?.currency)}</p>
                             </div>
                           </div>
+                          )}
 
                           {hasNonCashOverpay && (
                             <p className="text-xs font-semibold text-red-600">Solo efectivo puede generar vuelto.</p>
@@ -2549,17 +2791,43 @@ function CrmTerminalUI() {
                             </div>
                           )}
                         </div>
+                        )}
 
-                        {/* Pago recibido — solo efectivo */}
-                        {/* Totals + Confirmar venta — desktop only; mobile uses fixed bar */}
-                        <div className="hidden lg:flex flex-col gap-2.5 rounded-2xl bg-gray-950 px-4 py-4 shadow-xl">
+                        {/* Volver a la venta — desktop only; el propio flujo
+                            mobile ya ofrece "Volver a la venta" en la barra
+                            fija (sección 14), así que este botón no se
+                            duplica ahí. Nunca borra carrito/pagos/key/draft. */}
+                        <button
+                          type="button"
+                          onClick={handleBackToSale}
+                          className="hidden lg:flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white py-3 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors min-h-[44px]"
+                        >
+                          <Icon name="ArrowLeft" size={16} />
+                          Volver a la venta
+                        </button>
+
+                        {/* Totals + Confirmar venta — desktop only; mobile uses fixed bar.
+                            TPV-CHECKOUT-UX-2: fija abajo de la columna (sticky), siempre a
+                            la vista sin desplazarse. Con Point elegido, el botón es el
+                            mismo cobro Point de siempre (handlePointCharge). */}
+                        <div data-testid="checkout-action-bar" className="hidden lg:flex lg:sticky lg:bottom-0 lg:z-10 flex-col gap-2.5 rounded-2xl bg-gray-950 px-4 py-4 shadow-xl">
                           {discountAmount > 0 && (
                             <div className="flex justify-between text-xs text-gray-400">
                               <span>Descuento aplicado</span>
                               <span className="font-bold text-red-400">-{fmt(discountAmount, business?.currency)}</span>
                             </div>
                           )}
-                          {requiresCustomerForPending && !customerId ? (
+                          {pointSelected ? (
+                            <button
+                              type="button"
+                              onClick={handlePointCharge}
+                              disabled={pointChargeDisabled}
+                              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-yellow-300 py-3.5 text-base font-black text-gray-950 shadow-lg transition-all hover:bg-yellow-200 disabled:bg-gray-800 disabled:text-gray-500 disabled:shadow-none xl:py-4"
+                            >
+                              {pointLoading || pointOperation?.operation_id ? <Icon name="Loader2" size={18} className="animate-spin" /> : <Icon name="Zap" size={18} />}
+                              {pointChargeLabel}
+                            </button>
+                          ) : requiresCustomerForPending && !customerId ? (
                             <div className="flex gap-2">
                               <button
                                 disabled
@@ -2590,21 +2858,13 @@ function CrmTerminalUI() {
                               }
                             </button>
                           )}
-                          <p className="text-center text-xs text-gray-400">{paymentStatusLabel}</p>
+                          <p className="text-center text-xs text-gray-400">
+                            {pointSelected
+                              ? (pointReady ? `Point · terminal ${pointTerminalId}` : 'Elige y verifica una terminal Point')
+                              : paymentStatusLabel}
+                          </p>
                         </div>
 
-                        {/* Volver a la venta — desktop only; el propio flujo
-                            mobile ya ofrece "Volver a la venta" en la barra
-                            fija (sección 14), así que este botón no se
-                            duplica ahí. Nunca borra carrito/pagos/key/draft. */}
-                        <button
-                          type="button"
-                          onClick={handleBackToSale}
-                          className="hidden lg:flex w-full items-center justify-center gap-2 rounded-2xl border border-gray-200 bg-white py-3 text-sm font-bold text-gray-600 hover:bg-gray-50 transition-colors min-h-[44px]"
-                        >
-                          <Icon name="ArrowLeft" size={16} />
-                          Volver a la venta
-                        </button>
                       </>
                     )}
 
@@ -2653,7 +2913,11 @@ function CrmTerminalUI() {
                   </p>
                 )}
                 <p className="truncate text-lg font-bold text-white leading-tight">{fmt(total, business?.currency)}</p>
-                {checkoutStep === 'payment' ? (
+                {checkoutStep === 'payment' && pointSelected ? (
+                  <p className="text-[10px] mt-0.5 text-gray-400">
+                    {pointReady ? `Point · ${pointTerminalId}` : 'Elige y verifica una terminal Point'}
+                  </p>
+                ) : checkoutStep === 'payment' ? (
                   <p className={`text-[10px] mt-0.5 ${isPaymentInvalid ? 'text-amber-400' : 'text-gray-400'}`}>
                     {requiresCustomerForPending && !customerId
                       ? `Faltan ${fmt(pendingBalance, business?.currency)} · selecciona cliente`
@@ -2696,6 +2960,16 @@ function CrmTerminalUI() {
                     Cobrar
                   </button>
                 </div>
+              ) : pointSelected ? (
+                <button
+                  type="button"
+                  onClick={handlePointCharge}
+                  disabled={pointChargeDisabled}
+                  className="shrink-0 max-w-[60%] px-4 py-3 rounded-xl bg-yellow-300 hover:bg-yellow-200 disabled:bg-gray-700 disabled:text-gray-500 text-gray-950 font-black text-sm transition-colors flex items-center gap-2 min-h-[44px]"
+                >
+                  {pointLoading || pointOperation?.operation_id ? <Icon name="Loader2" size={16} className="animate-spin" /> : <Icon name="Zap" size={16} />}
+                  <span className="truncate">{pointOperation?.operation_id ? 'Cobro en curso…' : pointClient.mode === 'simulated' ? 'DEMO: simular cobro' : 'Cobrar con Point'}</span>
+                </button>
               ) : requiresCustomerForPending && !customerId ? (
                 <button
                   type="button"

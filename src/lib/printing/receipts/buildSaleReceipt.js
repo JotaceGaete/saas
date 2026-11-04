@@ -1,3 +1,4 @@
+import { formatSaleNumber, saleNumberFooterLine } from './saleNumber';
 import { stripDiacritics } from './renderEscPosReceipt';
 
 // PRINT-2/PRINT-4 — arma el Receipt (datos planos, sin React/DOM, sin
@@ -29,10 +30,6 @@ const PAYMENT_LABELS = {
   tarjeta: 'Tarjeta',
   otro: 'Otro',
 };
-
-function pad(n) {
-  return String(n).padStart(4, '0');
-}
 
 function formatDateTime(dt) {
   const d = dt ? new Date(dt) : new Date();
@@ -135,8 +132,9 @@ export function buildSaleReceipt({
   if (business?.whatsapp) push({ text: business.whatsapp, align: 'center' });
   push({ type: 'divider' });
 
-  const ticketNumber = sale?.invoice_number ? `NV-${pad(sale.invoice_number)}` : `T-${Date.now().toString().slice(-6)}`;
-  push({ text: `Ticket: ${ticketNumber}` });
+  // Número interno asignado por el servidor; el navegador nunca inventa uno.
+  const ticketNumber = formatSaleNumber(sale?.invoice_number);
+  if (ticketNumber) push({ text: `Ticket: ${ticketNumber}` });
   push({ text: `Fecha: ${formatDateTime(createdAt)}` });
   // Cajero -- no hay hoy una fuente establecida (CrmTerminal no maneja
   // identidad de cajero); se soporta como parámetro opcional para no
@@ -216,6 +214,9 @@ export function buildSaleReceipt({
       if (legendLine.trim()) push({ text: stripDiacritics(legendLine), align: 'center' });
     }
   }
+  // Número interno al pie, discreto (sin negrita ni doble tamaño).
+  const footer = saleNumberFooterLine(sale?.invoice_number);
+  if (footer) push(footer);
 
   return {
     paperWidthMm,
