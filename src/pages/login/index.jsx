@@ -119,13 +119,13 @@ export default function Login() {
 
   return (
     <div
-      className="min-h-screen flex flex-col lg:flex-row lg:flex-row-reverse"
+      className="min-h-screen flex flex-col lg:flex-row"
       style={{
         background:
-          'linear-gradient(180deg, #fafafa 0%, #ffffff 35%, rgba(245,243,255,0.5) 100%)',
+          'radial-gradient(circle at 80% 20%, #f3e8ff 0%, #faf8ff 40%, #ffffff 100%)',
       }}
     >
-      <div className="flex-1 flex flex-col items-center justify-center px-5 py-10 md:px-10 md:py-12 lg:px-14 min-h-0">
+      <div className="flex-1 flex flex-col items-center justify-center px-5 py-10 md:px-10 md:py-12 lg:px-8 xl:px-12 min-h-screen lg:min-h-0">
         <LoginForm
           onSubmit={handleLogin}
           onGoogleLogin={handleGoogleLogin}

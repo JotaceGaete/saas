@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import GoogleIcon from 'components/GoogleIcon';
 import VentalinkLogo from 'components/branding/VentalinkLogo';
@@ -31,15 +30,15 @@ export default function LoginForm({ onSubmit, onGoogleLogin, onForgotPassword, i
   };
 
   return (
-    <div className="w-full max-w-md">
-      <div className="rounded-2xl border border-slate-200/90 bg-white/90 backdrop-blur-sm shadow-sm shadow-slate-200/50 px-6 py-8 sm:px-8 sm:py-9">
+    <div className="w-full max-w-[520px]">
+      <div className="rounded-[30px] border border-violet-100 bg-white px-6 py-9 shadow-[0_24px_80px_rgba(76,29,149,0.10)] sm:px-10 sm:py-12 xl:px-12 xl:py-14">
       {/* Marca centrada en móvil; en desktop el panel morado lleva el logo principal */}
       <div className="flex flex-col items-center w-full mb-9 lg:hidden">
         <VentalinkLogo variant="default" width={260} className="w-full max-w-[min(100%,280px)]" />
       </div>
 
-      <h1 className="text-2xl font-bold mb-1" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Iniciar sesión</h1>
-      <p className="text-sm mb-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Accede a tu panel para gestionar tu catálogo y pedidos.</p>
+      <h1 className="text-2xl sm:text-3xl font-extrabold mb-2 text-violet-950" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Iniciar sesión en Walinka</h1>
+      <p className="text-sm mb-6" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>Accede a tu negocio y sigue haciendo crecer tus ventas.</p>
 
       {/* Message from redirect (e.g. reset-password without session) */}
       {redirectMessage && (
@@ -212,9 +211,9 @@ export default function LoginForm({ onSubmit, onGoogleLogin, onForgotPassword, i
         <button
           type="submit"
           disabled={isLoading}
-          className="w-full h-12 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all mt-2 shadow-md"
+          className="w-full h-12 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 transition-all mt-2 shadow-lg hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
           style={{
-            backgroundColor: isLoading ? 'rgba(124,58,237,0.7)' : 'var(--color-primary)',
+            background: isLoading ? 'rgba(124,58,237,0.7)' : 'linear-gradient(110deg, #9013f5 0%, #5b0eaf 100%)',
             color: '#fff',
             fontFamily: 'var(--font-caption)',
             cursor: isLoading ? 'not-allowed' : 'pointer',
@@ -233,18 +232,6 @@ export default function LoginForm({ onSubmit, onGoogleLogin, onForgotPassword, i
         </button>
       </form>
 
-      {/* Divider + register link */}
-      <div className="mt-6">
-        <div className="relative flex items-center">
-          <div className="flex-1 border-t" style={{ borderColor: 'var(--color-border)' }} />
-        </div>
-        <p className="text-center text-sm mt-4" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
-          ¿No tienes cuenta?{' '}
-          <Link to="/business-registration" className="font-semibold hover:underline" style={{ color: 'var(--color-primary)' }}>
-            Crear cuenta gratis
-          </Link>
-        </p>
-      </div>
       </div>
     </div>
   );
