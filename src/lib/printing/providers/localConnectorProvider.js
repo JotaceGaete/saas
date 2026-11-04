@@ -135,6 +135,39 @@ export function createLocalConnectorProvider({
       return body;
     },
 
+    /**
+     * ¿Hay algo escuchando en el puerto del conector, aunque no autorice este
+     * origen? Petición `no-cors` sin credenciales ni token: el navegador no
+     * deja leer la respuesta (opaca), solo saber si llegó. Sirve para
+     * distinguir «conector cerrado» de «conector abierto que no autoriza este
+     * sitio» (p. ej. una Preview que falta en AllowedOrigins).
+     */
+    async probeListening() {
+      try {
+        await fetchImpl(`${base}/v1/health`, { method: 'GET', mode: 'no-cors', credentials: 'omit', cache: 'no-store' });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+
+    /**
+     * Pide al conector que autorice este sitio. El conector muestra una
+     * ventana en Windows y solo agrega el origen si el usuario pulsa «Sí».
+     * Petición simple `no-cors` (POST sin cuerpo ni cabeceras, sin token): el
+     * sitio todavía no está autorizado, así que no hay preflight ni se puede
+     * leer la respuesta. El resultado se ve al volver a consultar /v1/health.
+     * Devuelve false si no hay nada escuchando.
+     */
+    async requestOriginApproval() {
+      try {
+        await fetchImpl(`${base}/v1/origin-approval`, { method: 'POST', mode: 'no-cors', credentials: 'omit', cache: 'no-store' });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+
     async disconnect() {
       connected = false;
     },

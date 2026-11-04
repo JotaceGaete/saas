@@ -235,6 +235,107 @@ public static class SelfTests
             Check(Supervisor.NextAttempt(3, TimeSpan.FromMinutes(5)) == 0, "un proceso estable reinicia el contador");
             Check(Instances.ServeMutexName != Instances.WatchMutexName && Instances.StopEventName.StartsWith("Local\\", StringComparison.Ordinal),
                 "nombres de instancia y parada en el espacio Local (sin administrador)");
+
+            // --- 0.4: autorización de Previews con confirmación en Windows ---
+            const string preview = "https://saas-git-claude-project-thread-x9ut7z-juan-s-projects-afd7e18e.vercel.app";
+            Check(PreviewOrigins.IsApprovable(preview), "Preview de rama de Walinka se puede aprobar");
+            Check(PreviewOrigins.IsApprovable("https://saas-a1b2c3d4e-juan-s-projects-afd7e18e.vercel.app"), "Preview por hash de Walinka se puede aprobar");
+            Check(!PreviewOrigins.IsApprovable("https://evil.com"), "sitio ajeno no puede pedir aprobación");
+            Check(!PreviewOrigins.IsApprovable("https://saas-x-otro-equipo.vercel.app"), "Preview de otro equipo de Vercel no puede pedir aprobación");
+            Check(!PreviewOrigins.IsApprovable("http://saas-x-juan-s-projects-afd7e18e.vercel.app"), "Preview por http rechazada");
+            Check(!PreviewOrigins.IsApprovable(preview + "/"), "Preview con barra final rechazada");
+            Check(!PreviewOrigins.IsApprovable(preview + ":8443"), "Preview con puerto rechazada");
+            Check(!PreviewOrigins.IsApprovable("https://saas-a.evil.com-juan-s-projects-afd7e18e.vercel.app"), "punto en la parte variable rechazado");
+            Check(!PreviewOrigins.IsApprovable("https://evil.saas-x-juan-s-projects-afd7e18e.vercel.app"), "subdominio delante de la Preview rechazado");
+            Check(!PreviewOrigins.IsApprovable("https://saas--juan-s-projects-afd7e18e.vercel.app") && !PreviewOrigins.IsApprovable("https://saas-juan-s-projects-afd7e18e.vercel.app"),
+                "Preview sin parte variable rechazada");
+            Check(!PreviewOrigins.IsApprovable("https://SAAS-X-juan-s-projects-afd7e18e.vercel.app"), "mayúsculas rechazadas (los navegadores envían minúsculas)");
+            Check(!PreviewOrigins.IsApprovable("https://saas-" + new string('a', 40) + "-juan-s-projects-afd7e18e.vercel.app"), "etiqueta DNS de más de 63 caracteres rechazada");
+            Check(!PreviewOrigins.IsApprovable(null) && !PreviewOrigins.IsApprovable("null"), "origen ausente no puede pedir aprobación");
+
+            var appDir = Path.Combine(dir, "approval");
+            Directory.CreateDirectory(appDir);
+            var appCfgPath = Path.Combine(appDir, "config.json");
+            File.WriteAllText(appCfgPath, """
+                {
+                  "Port": 47801,
+                  "AllowLocalDevOrigin": true,
+                  "AllowedOrigins": ["https://go.ventalink.app", "https://go.walinka.com", "http://localhost:5173"],
+                  "NotaPropia": "no borrar"
+                }
+                """);
+            var saveErr = ConfigFile.AddAllowedOrigin(appDir, preview, out var saved);
+            var savedText = File.ReadAllText(appCfgPath);
+            Check(saveErr is null && saved.Count == 4 && saved[3] == preview, "agregar origen conserva los existentes y agrega el nuevo al final");
+            Check(savedText.Contains("NotaPropia") && savedText.Contains("localhost:5173") && savedText.Contains("\"AllowLocalDevOrigin\": true"),
+                "agregar origen conserva las demás claves de config.json");
+            Check(File.Exists(appCfgPath + ".bak") && File.ReadAllText(appCfgPath + ".bak").Contains("NotaPropia") && !File.ReadAllText(appCfgPath + ".bak").Contains("vercel"),
+                "se guarda copia config.json.bak con la versión anterior");
+            Check(ConnectorConfig.CheckFile(appDir) is null, "config.json resultante es válido para el conector");
+            Check(ConfigFile.AddAllowedOrigin(appDir, preview, out var again) is null && again.Count == 4, "aprobar dos veces no duplica el origen");
+
+            var noKeyDir = Path.Combine(dir, "approval-nokey");
+            Directory.CreateDirectory(noKeyDir);
+            File.WriteAllText(Path.Combine(noKeyDir, "config.json"), "{\"Port\": 47801}");
+            Check(ConfigFile.AddAllowedOrigin(noKeyDir, preview, out var withDefaults) is null
+                && withDefaults.Contains("https://go.ventalink.app") && withDefaults.Contains("https://go.walinka.com") && withDefaults.Contains(preview),
+                "sin AllowedOrigins en el archivo se conservan los de fábrica");
+
+            var brokenDir = Path.Combine(dir, "approval-broken");
+            Directory.CreateDirectory(brokenDir);
+            File.WriteAllText(Path.Combine(brokenDir, "config.json"), "{ roto");
+            Check(ConfigFile.AddAllowedOrigin(brokenDir, preview, out _) is not null && File.ReadAllText(Path.Combine(brokenDir, "config.json")) == "{ roto",
+                "config.json roto: no se modifica");
+
+            PromptAnswer nextAnswer = PromptAnswer.Approved;
+            var fake = new FakePrompt(() => nextAnswer);
+            var svcDir = Path.Combine(dir, "approval-svc");
+            var svcConfig = ConnectorConfig.LoadOrCreate(svcDir);
+            var svcPairing = new PairingStore(svcDir);
+            var svc = new OriginApprovalService(svcDir, svcConfig, fake, svcPairing, new Audit(svcDir), work => work());
+
+            Check(svc.Request("https://evil.com", now) == OriginApprovalService.Outcome.NotApprovable && fake.Asked == 0,
+                "sitio ajeno: no aparece ninguna ventana");
+            Check(svc.Request("https://go.walinka.com", now) == OriginApprovalService.Outcome.AlreadyAllowed && fake.Asked == 0,
+                "origen ya autorizado: no aparece ninguna ventana");
+
+            nextAnswer = PromptAnswer.Denied;
+            Check(svc.Request(preview, now) == OriginApprovalService.Outcome.Pending && fake.Asked == 1, "Preview: se pide confirmación en Windows");
+            Check(!OriginPolicy.IsAllowed(preview, svcConfig.AllowedOrigins) && !File.ReadAllText(Path.Combine(svcDir, "config.json")).Contains("vercel"),
+                "respuesta «No»: el origen no se agrega");
+            Check(svc.Request(preview, now) == OriginApprovalService.Outcome.RecentlyDenied && fake.Asked == 1,
+                "tras un «No» no se vuelve a preguntar durante 10 minutos");
+
+            nextAnswer = PromptAnswer.TimedOut;
+            var other = "https://saas-git-otra-rama-juan-s-projects-afd7e18e.vercel.app";
+            Check(svc.Request(other, now) == OriginApprovalService.Outcome.Pending && !OriginPolicy.IsAllowed(other, svcConfig.AllowedOrigins),
+                "sin respuesta (plazo vencido): no se autoriza");
+
+            nextAnswer = PromptAnswer.Approved;
+            Check(svc.Request(other, now) == OriginApprovalService.Outcome.Pending && OriginPolicy.IsAllowed(other, svcConfig.AllowedOrigins),
+                "respuesta «Sí»: el origen queda autorizado sin reiniciar el conector");
+            Check(File.ReadAllText(Path.Combine(svcDir, "config.json")).Contains(other)
+                && svcConfig.AllowedOrigins.Contains("https://go.ventalink.app") && svcConfig.AllowedOrigins.Contains("https://go.walinka.com"),
+                "respuesta «Sí»: se guarda en config.json y se conservan los orígenes de producción");
+            Check(fake.PairingCode is not null && svcPairing.TryRedeem(fake.PairingCode, other, "PC", DateTime.UtcNow, out var previewToken) == PairingStore.RedeemResult.Ok
+                && svcPairing.Authenticate(previewToken!, other),
+                "tras aprobar se muestra un código de emparejamiento válido para ese sitio");
+
+            var limited = new OriginApprovalService(svcDir, new ConnectorConfig(), new FakePrompt(() => PromptAnswer.TimedOut), svcPairing, new Audit(svcDir), work => work());
+            var outcomes = Enumerable.Range(0, OriginApprovalService.MaxPromptsPerHour + 1).Select(_ => limited.Request(preview, now)).ToList();
+            Check(outcomes.Take(OriginApprovalService.MaxPromptsPerHour).All(o => o == OriginApprovalService.Outcome.Pending)
+                && outcomes.Last() == OriginApprovalService.Outcome.RateLimited,
+                "como mucho 5 ventanas por hora");
+
+            var parked = new List<Action>();
+            var oneAtATime = new OriginApprovalService(svcDir, new ConnectorConfig(), new FakePrompt(() => PromptAnswer.TimedOut), svcPairing, new Audit(svcDir), parked.Add);
+            Check(oneAtATime.Request(preview, now) == OriginApprovalService.Outcome.Pending && oneAtATime.Request(other, now) == OriginApprovalService.Outcome.Busy,
+                "una sola ventana de confirmación a la vez");
+            parked[0]();
+            Check(oneAtATime.Request(other, now) == OriginApprovalService.Outcome.Pending, "al cerrar la ventana se puede pedir otra");
+
+            var disabled = new OriginApprovalService(svcDir, new ConnectorConfig { AllowPreviewApproval = false }, fake, svcPairing, new Audit(svcDir), work => work());
+            Check(disabled.Request(preview, now) == OriginApprovalService.Outcome.Disabled, "AllowPreviewApproval=false desactiva la ventana");
         }
         finally
         {
@@ -244,6 +345,24 @@ public static class SelfTests
         Console.WriteLine();
         Console.WriteLine(failures.Count == 0 ? $"Todo OK ({passed} pruebas)." : $"{failures.Count} prueba(s) fallaron de {passed + failures.Count}.");
         return failures.Count == 0 ? 0 : 1;
+    }
+
+    private sealed class FakePrompt : IApprovalPrompt
+    {
+        private readonly Func<PromptAnswer> _answer;
+        public FakePrompt(Func<PromptAnswer> answer) => _answer = answer;
+        public int Asked { get; private set; }
+        public string? PairingCode { get; private set; }
+
+        public PromptAnswer AskApproveOrigin(string origin)
+        {
+            Asked++;
+            return _answer();
+        }
+
+        public void ShowPairingCode(string origin, string code) => PairingCode = code;
+
+        public void ShowError(string message) { }
     }
 
     private static bool ContainsSequence(byte[] data, byte[] seq)
