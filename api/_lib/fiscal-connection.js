@@ -14,6 +14,8 @@ import { CANONICAL_PROVIDER } from '../../supabase/functions/fiscal-emit/lib/pro
 const KEY_VERSION = 1;
 const CONNECT_FIELDS = new Set(['action', 'apiKey', 'issuerRut']);
 const DISCONNECT_FIELDS = new Set(['action']);
+const TAX_DEFAULT_FIELDS = new Set(['action', 'category']);
+const TAX_CATEGORIES = new Set(['IVA_AFECTO_19', 'EXENTO', 'NO_AFECTO']);
 const SUBMIT_FIELDS = new Set(['action', 'apiKey', 'issuerRut', 'resolucionNumero', 'resolucionFecha', 'sucursalNombre', 'sucursalCodigo']);
 
 // RUT chileno: cuerpo + dígito verificador (módulo 11). Devuelve forma canónica "12345678-K" o null.
@@ -78,6 +80,7 @@ function mapDbError(err) {
   if (msg.includes('FISCAL_BUSINESS_INACTIVE')) return fail(403, 'BUSINESS_NOT_AUTHORIZED');
   if (msg.includes('FISCAL_CREDENTIALS_REQUIRED')) return fail(409, 'API_KEY_REQUIRED');
   if (msg.includes('FISCAL_APPLICATION_INVALID')) return fail(400, 'INVALID_APPLICATION');
+  if (msg.includes('FISCAL_TAX_INVALID')) return fail(400, 'INVALID_TAX_CATEGORY');
   return fail(503, 'SERVER_ERROR');
 }
 
@@ -94,6 +97,7 @@ function publicConnection(row) {
       connected: false, issuerRut: null, enabled: false, verified: false, keyVersion: null, updatedAt: null,
       reviewStatus: 'draft', reviewNote: null, submittedAt: null, reviewedAt: null,
       resolucionNumero: null, resolucionFecha: null, sucursalNombre: null, sucursalCodigo: null,
+      defaultTaxCategory: null,
     };
   }
   return {
@@ -111,6 +115,7 @@ function publicConnection(row) {
     resolucionFecha: row.resolucionFecha ?? null,
     sucursalNombre: row.sucursalNombre ?? null,
     sucursalCodigo: row.sucursalCodigo ?? null,
+    defaultTaxCategory: TAX_CATEGORIES.has(row.defaultTaxCategory) ? row.defaultTaxCategory : null,
   };
 }
 
@@ -214,5 +219,21 @@ export function createFiscalConnectionService({ admin, masterKey }) {
     return { status: 200, body: { connection: r.connection } };
   }
 
-  return Object.freeze({ status, connect, submit, disconnect });
+  // Tratamiento tributario por defecto del negocio (productos sin categoría y artículos manuales).
+  async function setTaxDefault({ businessId, actorId, body }) {
+    for (const key of Object.keys(body)) {
+      if (!TAX_DEFAULT_FIELDS.has(key)) return fail(400, 'UNKNOWN_FIELD');
+    }
+    const category = body.category === null || body.category === '' ? null : body.category;
+    if (category !== null && !TAX_CATEGORIES.has(category)) return fail(400, 'INVALID_TAX_CATEGORY');
+    const { error } = await admin.rpc('crm_fiscal_set_tax_default', {
+      p_business_id: businessId, p_actor_user_id: actorId, p_category: category,
+    });
+    if (error) return mapDbError(error);
+    const r = await readStatus(businessId);
+    if (!r.ok) return { status: r.status, body: r.body };
+    return { status: 200, body: { connection: r.connection } };
+  }
+
+  return Object.freeze({ status, connect, submit, setTaxDefault, disconnect });
 }

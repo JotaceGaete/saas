@@ -14,6 +14,7 @@
 import { supabase } from '../lib/supabase';
 import { emitFiscalSale, getFiscalSaleStatus } from './fiscalEmitService';
 import { buildSimulatedDteXml, saleItemsToDteLines, SIMULATED_FOLIO_RANGE } from '../lib/fiscal/dte/simulatedDte';
+import { dte39TaxBlocker, resolveLineTaxTreatment, TAX_TREATMENT } from '../lib/fiscal/taxTreatment';
 
 export function createLiveEmitter({ businessId, fetchImpl = (...a) => fetch(...a), client = supabase } = {}) {
   return Object.freeze({
@@ -68,7 +69,10 @@ export function simulatedEligibility(sale = {}) {
   const lines = saleItemsToDteLines(sale.items);
   const sum = lines.reduce((a, l) => a + l.monto, 0);
   if (sum !== Math.round(Number(sale.total || 0))) return 'PAYMENT_AMOUNT_MISMATCH';
-  return null;
+  // Mismo criterio tributario que el servidor. En la simulación, un producto sin tratamiento
+  // usa «afecto» como categoría por defecto del negocio (no hay emisor configurado en Preview).
+  const treatments = sale.items.map((it) => resolveLineTaxTreatment(it.tax_treatment ?? it.taxTreatment, TAX_TREATMENT.AFECTO));
+  return dte39TaxBlocker(treatments);
 }
 
 /**

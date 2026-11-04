@@ -111,3 +111,38 @@ test('venta de otro día (hora de Santiago) se rechaza: sin boletas retroactivas
   // 23:30 del 31-10 en Santiago (02:30 UTC del 1-11) sigue siendo el mismo día local.
   assert.doesNotThrow(() => run({ sale: { ...base().sale, paidAt }, now: new Date('2026-11-01T02:30:00Z') }));
 });
+
+// --- Tratamiento tributario (migración G) ---------------------------------------------------
+const lineOf = (category, unitPrice = 1190, quantity = 1, name = 'Café') => ({ name, unitPrice, quantity, discountPct: 0, category });
+
+test('todas las líneas afectas (distintos productos) -> elegible', () => {
+  const r = run({
+    sale: { ...base().sale, total: 2380 },
+    lines: [lineOf('IVA_AFECTO_19', 1190, 1, 'Café'), lineOf('IVA_AFECTO_19', 1190, 1, 'Té')],
+  });
+  assert.equal(r.payload.detalles.length, 2);
+  assert.ok(r.payload.detalles.every((d) => d.esExento === false));
+});
+
+test('venta mixta afecta + exenta -> FISCAL_NON_TAXABLE_NOT_SUPPORTED, sin payload', () => {
+  assert.throws(() => run({
+    lines: [lineOf('IVA_AFECTO_19', 1190, 1), lineOf('EXENTO', 1190, 1, 'Libro')],
+  }), { code: 'FISCAL_NON_TAXABLE_NOT_SUPPORTED' });
+});
+
+test('venta con un producto no afecto -> FISCAL_NON_TAXABLE_NOT_SUPPORTED', () => {
+  assert.throws(() => run({ lines: [lineOf('NO_AFECTO', 1190, 2, 'Servicio')] }), { code: 'FISCAL_NON_TAXABLE_NOT_SUPPORTED' });
+});
+
+test('venta totalmente exenta -> FISCAL_NON_TAXABLE_NOT_SUPPORTED (correspondería a DTE 41)', () => {
+  assert.throws(() => run({ lines: [lineOf('EXENTO', 1190, 2)] }), { code: 'FISCAL_NON_TAXABLE_NOT_SUPPORTED' });
+});
+
+test('línea sin tratamiento tributario -> FISCAL_TAX_LINES_NOT_VERIFIED, aunque la base diga lo contrario', () => {
+  assert.throws(() => run({ taxLinesVerified: true, lines: [lineOf(null, 1190, 2)] }), { code: 'FISCAL_TAX_LINES_NOT_VERIFIED' });
+  assert.throws(() => run({ taxLinesVerified: true, lines: [lineOf('OTRA', 1190, 2)] }), { code: 'FISCAL_TAX_LINES_NOT_VERIFIED' });
+});
+
+test('la base dice que faltan categorías -> FISCAL_TAX_LINES_NOT_VERIFIED aunque las líneas lleguen afectas', () => {
+  assert.throws(() => run({ taxLinesVerified: false }), { code: 'FISCAL_TAX_LINES_NOT_VERIFIED' });
+});

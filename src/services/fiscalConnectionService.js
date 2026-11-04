@@ -30,6 +30,7 @@ export const FISCAL_ERROR_MESSAGES = Object.freeze({
   INVALID_SUCURSAL: 'El código de sucursal del SII debe tener solo números.',
   API_KEY_REQUIRED: 'Ingresa tu API key de DTE Core.',
   INVALID_APPLICATION: 'Revisa los datos de la solicitud.',
+  INVALID_TAX_CATEGORY: 'Elige un tratamiento de IVA válido.',
 });
 
 export function describeFiscalError(err) {
@@ -92,6 +93,11 @@ export function submitFiscalApplication(businessId, {
   const body = { action: 'submit', issuerRut, resolucionNumero, resolucionFecha, sucursalNombre, sucursalCodigo };
   if (apiKey) body.apiKey = apiKey;
   return request(businessId, { method: 'POST', body });
+}
+
+/** category: 'IVA_AFECTO_19' | 'EXENTO' | 'NO_AFECTO' | null (sin categoría por defecto). */
+export function setFiscalTaxDefault(businessId, category) {
+  return request(businessId, { method: 'POST', body: { action: 'set-tax-default', category } });
 }
 
 export function disconnectFiscal(businessId) {

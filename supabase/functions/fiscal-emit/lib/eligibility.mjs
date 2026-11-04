@@ -37,7 +37,17 @@ export function evaluateEligibility({
   if (!emissionEnabled) {
     throw new FiscalError('FISCAL_EMISSION_DISABLED');
   }
-  if (!taxLinesVerified) {
+  // Tratamiento tributario (migración G). Solo DTE 39 con todas las líneas afectas: las líneas
+  // exentas o no afectas (IndExe = 1) no están verificadas con DTE Core, y una venta exenta
+  // corresponde a la boleta 41, que esta integración no emite. Sin categoría no se emite.
+  const categories = (lines ?? []).map((l) => l?.category ?? null);
+  if (categories.length === 0 || categories.some((c) => c == null)) {
+    throw new FiscalError('FISCAL_TAX_LINES_NOT_VERIFIED');
+  }
+  if (categories.some((c) => c === 'EXENTO' || c === 'NO_AFECTO')) {
+    throw new FiscalError('FISCAL_NON_TAXABLE_NOT_SUPPORTED');
+  }
+  if (!taxLinesVerified || categories.some((c) => c !== 'IVA_AFECTO_19')) {
     throw new FiscalError('FISCAL_TAX_LINES_NOT_VERIFIED');
   }
   if (Number(sale.discountAmount ?? 0) !== 0) {

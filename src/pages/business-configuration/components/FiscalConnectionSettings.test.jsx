@@ -5,6 +5,7 @@ import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/re
 const svc = vi.hoisted(() => ({
   getFiscalConnection: vi.fn(),
   submitFiscalApplication: vi.fn(),
+  setFiscalTaxDefault: vi.fn(),
   disconnectFiscal: vi.fn(),
 }));
 vi.mock('components/AppIcon', () => ({ default: () => null }));
@@ -97,5 +98,26 @@ describe('alta de facturación del comercio', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Enviar a revisión' }));
     expect(await screen.findByText('error:INVALID_RESOLUCION')).toBeInTheDocument();
     expect(screen.getByLabelText('API key de DTE Core')).toHaveValue('');
+  });
+});
+
+describe('IVA por defecto del negocio', () => {
+  it('conectado: elegir «todo afecto» guarda la categoría', async () => {
+    svc.getFiscalConnection.mockResolvedValue({ ...base, connected: true, issuerRut: '12345678-5', reviewStatus: 'approved', enabled: true, verified: true, resolucionNumero: 80, resolucionFecha: '2014-08-22', defaultTaxCategory: null });
+    svc.setFiscalTaxDefault.mockResolvedValue({ ...base, connected: true, issuerRut: '12345678-5', reviewStatus: 'approved', defaultTaxCategory: 'IVA_AFECTO_19', resolucionNumero: 80, resolucionFecha: '2014-08-22' });
+    render(<FiscalConnectionSettings businessId={BIZ} />);
+    const select = await screen.findByLabelText('IVA de tus productos');
+    expect(select).toHaveValue('');
+    expect(screen.getByText(/Sin IVA por defecto/)).toBeInTheDocument();
+    fireEvent.change(select, { target: { value: 'IVA_AFECTO_19' } });
+    await waitFor(() => expect(svc.setFiscalTaxDefault).toHaveBeenCalledWith(BIZ, 'IVA_AFECTO_19'));
+    await waitFor(() => expect(screen.getByLabelText('IVA de tus productos')).toHaveValue('IVA_AFECTO_19'));
+  });
+
+  it('sin cuenta conectada la sección no aparece', async () => {
+    svc.getFiscalConnection.mockResolvedValue(base);
+    render(<FiscalConnectionSettings businessId={BIZ} />);
+    await screen.findByTestId('fiscal-form');
+    expect(screen.queryByTestId('fiscal-tax-default')).toBeNull();
   });
 });

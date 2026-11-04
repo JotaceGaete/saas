@@ -36,7 +36,12 @@ P0 → A → B → C → D
   (estado de revisión, resolución SII por emisor, `crm_fiscal_submit_application`,
   `crm_fiscal_review_application`, `crm_fiscal_list_applications`). Redefine `crm_fiscal_connection_status`
   y `crm_fiscal_emission_context`. Un emisor solo queda `verified` con `review_status = 'approved'`;
-  cambiar o quitar la API key lo devuelve a `draft`. Debe ir al final.
+  cambiar o quitar la API key lo devuelve a `draft`.
+- **G = `proposed/20261104_fiscal_product_tax_category.sql`:** tratamiento tributario por producto
+  (`wa_products.tax_treatment`, nullable: afecto, exento o no afecto) y categoría por defecto del negocio
+  (`fiscal.issuers.default_tax_category`). Redefine `fiscal.sale_tax_lines_verified` (todas las líneas deben ser
+  afectas para DTE 39) y `crm_fiscal_emission_context`. Agrega una columna a `public.wa_products`: el editor
+  solo la envía con `VITE_FISCAL_CONNECTION_ENABLED=true`. Debe ir al final.
 
 ## 2. Respaldo (antes de cualquier paso)
 
@@ -67,6 +72,7 @@ Un paso por migración, con verificación después de cada uno:
 | D | columnas `sucursal_nombre`, `sucursal_codigo` en `fiscal.issuers`; `crm_fiscal_emission_context` devuelve `sucursal_nombre` |
 | E | columna `sii_status` en `crm_fiscal_issuances` |
 | F | columnas `review_status`, `resolucion_numero`, `resolucion_fecha` en `fiscal.issuers`; constraint `issuers_review_check`; las tres funciones de alta solo con `service_role` |
+| G | columna `tax_treatment` en `wa_products` con su check; `default_tax_category` en `fiscal.issuers`; trigger `wa_products_tax_treatment_audit`; `crm_fiscal_set_tax_default` solo con `service_role` |
 
 Todas las migraciones se aplican con `enabled=false` en `dte39_emission_control`. Nada emite con el interruptor apagado.
 
@@ -74,6 +80,9 @@ Todas las migraciones se aplican con `enabled=false` en `dte39_emission_control`
 
 Por paso, en orden inverso:
 
+- **G:** restaurar `fiscal.sale_tax_lines_verified` y `crm_fiscal_emission_context` de F; `drop trigger
+  wa_products_tax_treatment_audit`; `drop function crm_fiscal_set_tax_default, fiscal.line_tax_category`; las columnas
+  `tax_treatment` y `default_tax_category` se pueden dejar (nullable, sin efecto) o quitar.
 - **F:** `drop function` de `crm_fiscal_submit_application`, `crm_fiscal_review_application`, `crm_fiscal_list_applications`;
   `drop trigger business_credentials_reset_review`; restaurar `crm_fiscal_connection_status` y `crm_fiscal_emission_context`
   de E/D; quitar `issuers_review_check` y las columnas nuevas solo si ningún comercio fue aprobado.

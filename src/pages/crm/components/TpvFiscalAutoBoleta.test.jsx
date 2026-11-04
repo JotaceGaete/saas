@@ -141,3 +141,63 @@ describe('modo real: resolución SII del servidor', () => {
     expect(e.mode).toBe('live');
   });
 });
+
+describe('facturación opcional y tratamiento tributario', () => {
+  beforeEach(() => localStorage.clear());
+
+  function statusOnlyDeps(blockedReason) {
+    const emitter = {
+      mode: 'live',
+      status: vi.fn(async () => ({ ok: true, data: { state: 'none', canEmit: false, blockedReason } })),
+      emit: vi.fn(async () => ({ ok: true, folio: 1 })),
+      loadDte: vi.fn(),
+    };
+    const print = vi.fn(async () => ({ ok: true }));
+    const flow = createFiscalSaleFlow({ businessId: BIZ, emitter, print, marks: createFlowMarks({ businessId: BIZ, storage: localStorage }) });
+    return { emitter, flow, print };
+  }
+
+  it('comercio sin facturación electrónica: no muestra nada fiscal, imprime el comprobante interno y no emite', async () => {
+    for (const code of ['FISCAL_ISSUER_NOT_ENABLED', 'FISCAL_EMISSION_DISABLED']) {
+      const d = statusOnlyDeps(code);
+      const onPlainTicket = vi.fn();
+      const { container, unmount } = render(<TpvFiscalAutoBoleta businessId={BIZ} sale={{ id: `off-${code}` }} saleContext={ctx} deps={d} onPlainTicket={onPlainTicket} />);
+      await waitFor(() => expect(onPlainTicket).toHaveBeenCalledTimes(1));
+      expect(container.querySelector('[data-testid="fiscal-auto-boleta"]')).toBeNull();
+      expect(d.emitter.emit).not.toHaveBeenCalled();
+      unmount();
+    }
+  });
+
+  it.each([
+    ['FISCAL_NON_TAXABLE_NOT_SUPPORTED', /exentos o no afectos/],
+    ['FISCAL_TAX_LINES_NOT_VERIFIED', /tratamiento tributario/],
+    ['MIXED_PAYMENTS', /pago dividido/],
+    ['DISCOUNT_NOT_SUPPORTED', /descuento/],
+  ])('%s: sin boleta, comprobante interno rotulado, sin emitir ni reintentar', async (code, text) => {
+    const d = statusOnlyDeps(code);
+    const onPlainTicket = vi.fn();
+    render(<TpvFiscalAutoBoleta businessId={BIZ} sale={{ id: `ne-${code}` }} saleContext={ctx} deps={d} onPlainTicket={onPlainTicket} />);
+    expect(await screen.findByText(text)).toBeInTheDocument();
+    expect(screen.getByText(/no es un documento tributario/)).toBeInTheDocument();
+    expect(onPlainTicket).toHaveBeenCalledTimes(1);
+    expect(d.emitter.emit).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('fiscal-auto-retry')).toBeNull();
+  });
+
+  it('simulación: una venta con un producto exento o no afecto no emite boleta', async () => {
+    const onPlainTicket = vi.fn();
+    const mixed = { ...ctx, items: [{ name: 'Pan', quantity: 1, unit_price: 50, tax_treatment: 'IVA_AFECTO_19' }, { name: 'Libro', quantity: 1, unit_price: 50, tax_treatment: 'EXENTO' }] };
+    const d = deps({ printOk: () => true });
+    render(<TpvFiscalAutoBoleta businessId={BIZ} sale={{ id: 'sim-mixed' }} saleContext={mixed} deps={d} onPlainTicket={onPlainTicket} />);
+    expect(await screen.findByText(/exentos o no afectos/)).toBeInTheDocument();
+    expect(d.emitter.providerCalls).toBe(0);
+    expect(onPlainTicket).toHaveBeenCalledTimes(1);
+  });
+
+  it('simulación: productos sin tratamiento usan «afecto» y la venta emite', async () => {
+    const d = deps({ printOk: () => true });
+    render(<TpvFiscalAutoBoleta businessId={BIZ} sale={{ id: 'sim-default' }} saleContext={ctx} deps={d} />);
+    await screen.findByText(/Boleta 900001 emitida/);
+  });
+});

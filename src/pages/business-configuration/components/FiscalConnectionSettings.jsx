@@ -3,9 +3,11 @@ import Icon from 'components/AppIcon';
 import {
   getFiscalConnection,
   submitFiscalApplication,
+  setFiscalTaxDefault,
   disconnectFiscal,
   describeFiscalError,
 } from '../../../services/fiscalConnectionService';
+import { TAX_TREATMENT, TAX_TREATMENT_LABELS } from '../../../lib/fiscal/taxTreatment';
 
 /**
  * FiscalConnectionSettings — Configuración → Facturación.
@@ -65,6 +67,7 @@ export default function FiscalConnectionSettings({ businessId }) {
   const [notice, setNotice] = useState('');
   const [confirm, setConfirm] = useState(null); // null | 'disconnect'
   const [disconnecting, setDisconnecting] = useState(false);
+  const [taxSaving, setTaxSaving] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -120,6 +123,22 @@ export default function FiscalConnectionSettings({ businessId }) {
       setFormError(describeFiscalError(err));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTaxDefault = async (value) => {
+    if (taxSaving) return;
+    setTaxSaving(true);
+    setFormError('');
+    setNotice('');
+    try {
+      const next = await setFiscalTaxDefault(businessId, value || null);
+      setConnection(next);
+      setNotice(value ? 'Listo: el IVA por defecto quedó guardado.' : 'Ahora el IVA se define en cada producto.');
+    } catch (err) {
+      setFormError(describeFiscalError(err));
+    } finally {
+      setTaxSaving(false);
     }
   };
 
@@ -325,6 +344,40 @@ export default function FiscalConnectionSettings({ businessId }) {
             )}
           </div>
         </form>
+      )}
+
+      {connected && (
+        <div className="rounded-xl border p-4 space-y-2" style={cardStyle} data-testid="fiscal-tax-default">
+          <label htmlFor="fiscal-tax-default" className="block text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>
+            IVA de tus productos
+          </label>
+          <select
+            id="fiscal-tax-default"
+            value={connection?.defaultTaxCategory || ''}
+            disabled={taxSaving}
+            onChange={(e) => handleTaxDefault(e.target.value)}
+            className={inputClass}
+            style={inputStyle}
+          >
+            <option value={TAX_TREATMENT.AFECTO}>Todo lo que vendo está {TAX_TREATMENT_LABELS[TAX_TREATMENT.AFECTO].toLowerCase()} — lo habitual</option>
+            <option value="">Lo defino en cada producto</option>
+            <option value={TAX_TREATMENT.EXENTO}>Todo lo que vendo está exento de IVA</option>
+            <option value={TAX_TREATMENT.NO_AFECTO}>Todo lo que vendo es no afecto a IVA</option>
+          </select>
+          <p className="text-xs" style={labelStyle}>
+            Los precios incluyen IVA. Se aplica a los productos sin un tratamiento propio y a los artículos manuales del TPV;
+            si un producto es distinto, cámbialo en su ficha. No se elige en cada venta.
+          </p>
+          {!connection?.defaultTaxCategory && (
+            <p className="text-xs font-semibold text-amber-700">
+              Sin IVA por defecto, solo emiten boleta las ventas cuyos productos tengan su tratamiento definido.
+            </p>
+          )}
+          <p className="text-xs" style={labelStyle}>
+            Por ahora Walinka emite boletas solo con productos afectos. Las ventas con productos exentos o no afectos
+            imprimen el comprobante interno y debes emitir su documento tributario por otro medio.
+          </p>
+        </div>
       )}
 
       {connected && (

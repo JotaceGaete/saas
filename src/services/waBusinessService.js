@@ -418,6 +418,8 @@ const mapProductFromDb = (row) => {
     publicCode: row?.public_code ?? null,
     sku:        row?.sku        ?? null,
     barcode:    row?.barcode    ?? null,
+    // Tratamiento tributario para boletas electrónicas (migración G). undefined si la columna no existe.
+    taxTreatment: row?.tax_treatment ?? null,
     description: row?.description,
     price: parseFloat(row?.price),
     imageUrl: row?.image_url || imagesArray?.[0] || null,
@@ -1118,6 +1120,9 @@ export const createProduct = async (businessId, productData) => {
     pos_sort_order: productData?.posSortOrder ?? 0,
     ...(productData?.sku     != null ? { sku:     productData.sku     || null } : {}),
     ...(productData?.barcode != null ? { barcode: productData.barcode || null } : {}),
+    // Solo se envía si el editor lo pasa (facturación electrónica activada): sin la columna en la
+    // base, enviarlo rompería el guardado.
+    ...(productData?.taxTreatment !== undefined ? { tax_treatment: productData.taxTreatment || null } : {}),
   })?.select()?.single();
   if (error) {
     if (error?.message?.includes('Límite de productos alcanzado')) {
@@ -1232,6 +1237,7 @@ export const updateProduct = async (productId, productData) => {
   }
   if (productData?.sku          !== undefined) dbUpdates.sku           = productData.sku     || null;
   if (productData?.barcode      !== undefined) dbUpdates.barcode       = productData.barcode || null;
+  if (productData?.taxTreatment !== undefined) dbUpdates.tax_treatment = productData.taxTreatment || null;
   if (productData?.showInPos    !== undefined) dbUpdates.show_in_pos   = productData.showInPos === true;
   if (productData?.posSortOrder !== undefined) dbUpdates.pos_sort_order = productData.posSortOrder ?? 0;
   if (productData?.isMainFeatured === true) {

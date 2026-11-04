@@ -31,9 +31,20 @@ export const PHASE = Object.freeze({
   ERROR: 'error', // no se pudo consultar el estado: no se emitió
 });
 
-// Motivos por los que la venta simplemente no lleva boleta: el TPV imprime el ticket de siempre.
+// El comercio no usa facturación electrónica (módulo opcional): no se emite ni se muestra nada
+// fiscal; el TPV imprime el comprobante interno de siempre.
+export const MODULE_OFF_CODES = Object.freeze(new Set([
+  'FISCAL_ISSUER_NOT_ENABLED', 'FISCAL_EMISSION_DISABLED', 'COUNTRY_NOT_SUPPORTED',
+]));
+
+// Motivos por los que la venta no lleva boleta electrónica: el TPV imprime el comprobante
+// interno de siempre y nunca se reintenta la emisión sola. No incluye los bloqueos que se
+// arreglan en el equipo (conector, impresora, resolución), que sí se reintentan.
 export const NOT_ELIGIBLE_CODES = Object.freeze(new Set([
   'SALE_NOT_ELIGIBLE', 'NO_CONFIRMED_PAYMENT', 'POINT_NOT_CONFIRMED', 'SALE_NOT_SAME_DAY', 'FISCAL_SALE_NOT_SAME_DAY',
+  ...MODULE_OFF_CODES,
+  'FISCAL_NON_TAXABLE_NOT_SUPPORTED', 'FISCAL_TAX_LINES_NOT_VERIFIED', 'DISCOUNT_NOT_SUPPORTED', 'MIXED_PAYMENTS',
+  'UNSUPPORTED_PAYMENT_METHOD', 'PAYMENT_AMOUNT_MISMATCH', 'FISCAL_ROLE_REQUIRED', 'FISCAL_RETROACTIVE_BLOCKED',
 ]));
 
 const MESSAGES = Object.freeze({
@@ -42,6 +53,12 @@ const MESSAGES = Object.freeze({
   CONNECTOR_REQUIRED: 'El Walinka Print Connector no está activo y emparejado en este equipo. No se emitió la boleta.',
   MISSING_PRINTER: 'El conector no tiene impresora elegida. No se emitió la boleta.',
   STATUS_UNAVAILABLE: 'No se pudo consultar el estado fiscal de la venta. No se emitió ninguna boleta.',
+  FISCAL_NON_TAXABLE_NOT_SUPPORTED: 'La venta incluye productos exentos o no afectos a IVA: Walinka todavía no emite esas boletas. Emite el documento tributario por otro medio.',
+  FISCAL_TAX_LINES_NOT_VERIFIED: 'Falta el tratamiento tributario (IVA) de algún producto. Configúralo en el editor de productos o en Configuración > Facturación.',
+  DISCOUNT_NOT_SUPPORTED: 'Las ventas con descuento todavía no generan boleta electrónica. Emite el documento tributario por otro medio.',
+  MIXED_PAYMENTS: 'Las ventas con pago dividido todavía no generan boleta electrónica. Emite el documento tributario por otro medio.',
+  UNSUPPORTED_PAYMENT_METHOD: 'Este medio de pago todavía no genera boleta electrónica (solo efectivo o Point). Emite el documento tributario por otro medio.',
+  FISCAL_ROLE_REQUIRED: 'Tu usuario no tiene permiso para emitir boletas en este negocio.',
 });
 
 export function describeFlowCode(code) {

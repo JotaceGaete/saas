@@ -91,6 +91,24 @@ verificado, control global encendido, resolución SII ingresada y `VITE_FISCAL_A
 Pruebas que fijan el contrato: `test/contract/accepted-boletas.contract.test.mjs`. Con
 `FISCAL_ACCEPTED_XML_DIR` apuntando a los XML originales, también compara contra ellos.
 
+## Tratamiento tributario de productos (migración G)
+
+| Punto | Evidencia | Decisión |
+|---|---|---|
+| Campos existentes | Producción (solo lectura, 2026-11-04): ningún campo de impuesto en `wa_products`, `crm_invoice_items` ni `crm_invoices` | Columna nueva `wa_products.tax_treatment`, nullable: nada cambia para productos y ventas existentes. |
+| Categorías | SII, Formato Boletas Electrónicas v4.2: `IndExe = 1` = ítem "exento o no afecto"; la boleta no afecta o exenta es el tipo 41 | `IVA_AFECTO_19`, `EXENTO`, `NO_AFECTO`. Exento y no afecto se guardan aparte, pero en la boleta irían ambos con `IndExe = 1`. |
+| Precio | XML 51105/51106: precio bruto; neto = round(afecto / 1,19), IVA = afecto − neto, a nivel de documento | `src/lib/fiscal/taxTreatment.js` (`computeTaxBreakdown`) y `expectedTotals` del servidor dan lo mismo (probado). |
+| Líneas exentas en DTE Core | El cuerpo tiene `esExento`, pero **no hay ninguna emisión con línea exenta probada** | **No se emiten.** Una venta con alguna línea exenta o no afecta → `FISCAL_NON_TAXABLE_NOT_SUPPORTED` y comprobante interno. Habilitarlo exige una emisión de prueba controlada con DTE Core (mixta en DTE 39, y DTE 41). |
+| Categoría efectiva | — | Verificación manual del piloto > producto > categoría por defecto del negocio. Sin ninguna, no se emite (`FISCAL_TAX_LINES_NOT_VERIFIED`). |
+
+## Facturación electrónica opcional
+
+Un comercio sin el módulo configurado y aprobado (`FISCAL_ISSUER_NOT_ENABLED`), o con la emisión global apagada
+(`FISCAL_EMISSION_DISABLED`), usa el TPV igual que hoy: el panel de boleta no aparece y se imprime el
+comprobante interno. Cualquier motivo de negocio que impida la boleta (medio de pago, descuento, productos
+exentos, sin IVA definido, sin rol) también imprime el comprobante interno, rotulado en pantalla como «no es un
+documento tributario». Solo los bloqueos del equipo (conector, impresora, resolución) se reintentan.
+
 ## Idempotencia
 
 - Clave de operación determinista `WLK-<negocio>-<venta>` (también `idBoletaOperacion` en DTE Core).

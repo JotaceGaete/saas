@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { FISCAL_AUTO_MODE } from '../../../services/fiscalAutoMode';
 import { createLiveEmitter, createSimulatedEmitter, SIM_SCENARIO_STORAGE_KEY, SIM_SCENARIOS } from '../../../services/fiscalEmitters';
-import { createFiscalSaleFlow, describeFlowCode, PHASE } from '../../../services/fiscalSaleFlow';
+import { createFiscalSaleFlow, describeFlowCode, MODULE_OFF_CODES, PHASE } from '../../../services/fiscalSaleFlow';
 import { fiscalPrintBlocker, printIssuedBoleta, readFiscalPrintSettings } from '../../../services/fiscalThermalPrintService';
 import { POINT_PREVIEW } from '../../../services/pointClient';
 
@@ -182,6 +182,9 @@ export default function TpvFiscalAutoBoleta({ businessId, sale, saleContext, onP
   }, [built, saleId, run]);
 
   if (!built || !saleId) return null;
+  // Facturación electrónica es opcional: sin el módulo configurado no se muestra nada fiscal
+  // (el comprobante interno ya se imprimió por onPlainTicket).
+  if (state.phase === PHASE.NOT_ELIGIBLE && MODULE_OFF_CODES.has(state.code)) return null;
   const simulated = built.emitter.mode === 'simulated';
   const { phase, folio, code, message } = state;
 
@@ -205,7 +208,7 @@ export default function TpvFiscalAutoBoleta({ businessId, sale, saleContext, onP
       body = `Boleta ${folio} emitida, pero no se imprimió: ${message || describeFlowCode(code)} Reintentar no emite otra boleta.`;
       break;
     case PHASE.NOT_ELIGIBLE:
-      body = `Sin boleta electrónica: ${describeFlowCode(code)} Se imprimió el ticket de venta.`;
+      body = `Sin boleta electrónica: ${describeFlowCode(code)} Se imprimió el comprobante interno (no es un documento tributario).`;
       break;
     case PHASE.UNCERTAIN:
       tone = '#92400e';

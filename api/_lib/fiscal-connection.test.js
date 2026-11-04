@@ -10,7 +10,7 @@ const MASTER = randomBytes(32);
 const API_KEY = 'dtc_live_EXAMPLE_KEY_0123456789abcdef';
 
 // Cliente admin falso: registra llamadas y responde según el nombre de la RPC.
-function fakeAdmin({ save = { data: true, error: null }, disconnect = { data: true, error: null }, row = null, submitResult = { data: true, error: null } } = {}) {
+function fakeAdmin({ save = { data: true, error: null }, disconnect = { data: true, error: null }, row = null, submitResult = { data: true, error: null }, taxResult = { data: true, error: null } } = {}) {
   const calls = [];
   return {
     calls,
@@ -20,6 +20,7 @@ function fakeAdmin({ save = { data: true, error: null }, disconnect = { data: tr
       if (fn === 'crm_fiscal_disconnect') return disconnect;
       if (fn === 'crm_fiscal_connection_status') return { data: row, error: null };
       if (fn === 'crm_fiscal_submit_application') return submitResult;
+      if (fn === 'crm_fiscal_set_tax_default') return taxResult;
       throw new Error(`unexpected rpc ${fn}`);
     },
   };
@@ -142,7 +143,7 @@ test('estado: nunca contiene la clave ni el texto cifrado', async () => {
   const text = JSON.stringify(r.body);
   assert.equal(/ciphertext|iv|auth_tag|apiKey/.test(text), false);
   assert.deepEqual(Object.keys(r.body.connection).sort(), [
-    'connected', 'enabled', 'issuerRut', 'keyVersion', 'resolucionFecha', 'resolucionNumero', 'reviewNote',
+    'connected', 'defaultTaxCategory', 'enabled', 'issuerRut', 'keyVersion', 'resolucionFecha', 'resolucionNumero', 'reviewNote',
     'reviewStatus', 'reviewedAt', 'submittedAt', 'sucursalCodigo', 'sucursalNombre', 'updatedAt', 'verified',
   ]);
 });
@@ -225,4 +226,23 @@ test('submit: errores de la base se traducen sin detalles', async () => {
   const admin = fakeAdmin({ row: CONNECTED_ROW, submitResult: { data: null, error: { message: 'FISCAL_OPERATION_IN_PROGRESS' } } });
   const r = await createFiscalConnectionService({ admin, masterKey: MASTER }).submit({ businessId: BIZ, actorId: ACTOR, body: SUBMIT });
   assert.deepEqual([r.status, r.body.error], [409, 'FISCAL_OPERATION_IN_PROGRESS']);
+});
+
+// --- Tratamiento tributario por defecto -------------------------------------------------------
+test('categoría por defecto: valida, llama a la RPC con el actor y devuelve el estado', async () => {
+  const admin = fakeAdmin({ row: { ...CONNECTED_ROW, defaultTaxCategory: 'IVA_AFECTO_19' } });
+  const svc = createFiscalConnectionService({ admin, masterKey: MASTER });
+  const r = await svc.setTaxDefault({ businessId: BIZ, actorId: ACTOR, body: { action: 'set-tax-default', category: 'IVA_AFECTO_19' } });
+  assert.equal(r.status, 200);
+  assert.equal(r.body.connection.defaultTaxCategory, 'IVA_AFECTO_19');
+  assert.deepEqual(admin.calls[0], { fn: 'crm_fiscal_set_tax_default', args: { p_business_id: BIZ, p_actor_user_id: ACTOR, p_category: 'IVA_AFECTO_19' } });
+  for (const [body, code] of [[{ action: 'set-tax-default', category: 'IVA_10' }, 'INVALID_TAX_CATEGORY'], [{ action: 'set-tax-default', category: 'EXENTO', x: 1 }, 'UNKNOWN_FIELD']]) {
+    const bad = fakeAdmin();
+    const rr = await createFiscalConnectionService({ admin: bad, masterKey: MASTER }).setTaxDefault({ businessId: BIZ, actorId: ACTOR, body });
+    assert.deepEqual([rr.status, rr.body.error], [400, code]);
+    assert.equal(bad.calls.length, 0);
+  }
+  const cleared = fakeAdmin({ row: CONNECTED_ROW });
+  await createFiscalConnectionService({ admin: cleared, masterKey: MASTER }).setTaxDefault({ businessId: BIZ, actorId: ACTOR, body: { action: 'set-tax-default', category: '' } });
+  assert.equal(cleared.calls[0].args.p_category, null);
 });
