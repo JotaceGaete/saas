@@ -4,7 +4,7 @@
 --
 -- Estado del historial al capturar: última migración 20261104183454 fiscal_g_manual_sql_editor_verified;
 -- H no registrada y sin objetos (fiscal.rut_confirmations, fiscal.document_folios, fiscal.credit_notes,
--- crm_fiscal_issuances.issuer_rut y fiscal.normalize_rut no existen). Ver MANIFEST.tsv.
+-- crm_fiscal_issuances.issuer_rut y fiscal.normalize_rut no existen). Ver PRODUCTION-MIGRATION-LEDGER-2026-11-04.md.
 -- Emisión global apagada; 0 filas en sending; 0 transacciones de más de 1 minuto.
 --
 -- Datos que H toca (conteos): 1 emisor (su RUT no cambia al normalizar); 1 documento issued que H

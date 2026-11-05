@@ -33,7 +33,7 @@ siguientes describen la ronda anterior y pueden citar supuestos ya corregidos (p
 | `test/db/` | Pruebas contra Postgres real `walinka_test` (`npm run test:db`). |
 | `test/deno/` | Cableado de la Edge Function en Deno (`npm run test:deno`). |
 
-Migración asociada: `supabase/fiscal-recovery/proposed/20261031_fiscal_single_ledger_guard.sql` (A; aplicada en producción el 4-11-2026 como `20261104164731 fiscal_a_single_ledger_guard`, ver `supabase/fiscal-recovery/MANIFEST.tsv`).
+Migración asociada: `supabase/fiscal-recovery/proposed/20261031_fiscal_single_ledger_guard.sql` (A; aplicada en producción el 4-11-2026 como `20261104164731 fiscal_a_single_ledger_guard`, ver `supabase/fiscal-recovery/PRODUCTION-MIGRATION-LEDGER-2026-11-04.md`).
 
 ## Modelo de permisos
 
@@ -155,7 +155,7 @@ NO verificado:
 - Proveedor real DTECore: bloqueado hasta verificar el contrato por escrito.
 - Impresión: `lib/print-plan.mjs` prepara el plan desde el PDF guardado; no envía nada. Rasterizar el
   PDF a GS v 0 y la prueba de PDF417 en XP-80C están pendientes. Print Connector no se modificó.
-- Migraciones A–H aplicadas en producción (A–G el 4-11-2026, H el 5-11-2026). Estado y correspondencia con los archivos: `supabase/fiscal-recovery/MANIFEST.tsv`.
+- Migraciones A–H aplicadas en producción (A–G el 4-11-2026, H el 5-11-2026). Estado y correspondencia con los archivos: `supabase/fiscal-recovery/PRODUCTION-MIGRATION-LEDGER-2026-11-04.md`.
 - Endpoints de PDF y descarga en `main` (`api/fiscal/document.js`, `download.js`, `pdf.js`): siguen
   usando el guard solo de dueño (`api/_lib/siisolutions-owner-guard.js`). No se cambiaron en esta rama.
 

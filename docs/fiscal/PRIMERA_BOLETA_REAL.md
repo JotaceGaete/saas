@@ -8,7 +8,7 @@ Cada etapa necesita autorización expresa antes de ejecutarse.
 
 | # | Bloqueo | Quién lo resuelve |
 |---|---|---|
-| 1 | ~~Migraciones~~ **Resuelto 2026-11-05:** A–H aplicadas y registradas (H = `20261105200532 fiscal_h_identity_integrity`, md5 verificado, 18 comprobaciones en `true`). Ver `supabase/fiscal-recovery/MANIFEST.tsv`. | — |
+| 1 | ~~Migraciones~~ **Resuelto 2026-11-05:** A–H aplicadas y registradas (H = `20261105200532 fiscal_h_identity_integrity`, md5 verificado, 18 comprobaciones en `true`). Ver `supabase/fiscal-recovery/PRODUCTION-MIGRATION-LEDGER-2026-11-04.md`. | — |
 | 2 | `fiscal-emit` no desplegada. Pruebas Deno (`npm run test:deno`, `deno check index.ts`) sin ejecutar: este entorno no tiene `deno`. | Ejecutar en un equipo con Deno o CLI de Supabase |
 | 3 | Secretos: `FISCAL_MASTER_KEY` (32 bytes base64), **la misma** en Supabase (descifra) y Vercel (cifra); `FISCAL_ALLOWED_ISSUERS="<uuid>=<rut>"` igual en ambos; `FISCAL_PROVIDER=dtecore` solo en Supabase. | Juan |
 | 4 | Cuenta DTE Core de la empresa piloto: CAF de boletas (tipo 39) con folios disponibles, certificado activo, ambiente de producción. Confirmar que la "validación de operación" (409 `folioExistente` con `idBoletaOperacion` repetido) esté activa. | Juan con DTE Core |
@@ -21,7 +21,7 @@ Cada etapa necesita autorización expresa antes de ejecutarse.
 ## Plan
 
 **Etapa 1 — Base de datos (con autorización).**
-**Hecho (2026-11-05).** A–H aplicadas y registradas en producción (`MANIFEST.tsv`). H se aplicó con
+**Hecho (2026-11-05).** A–H aplicadas y registradas en producción (`supabase/fiscal-recovery/PRODUCTION-MIGRATION-LEDGER-2026-11-04.md`). H se aplicó con
 `apply_migration` tras repetir el prechequeo, con respaldo físico del 5-11-2026 11:22:09 UTC; historial con el
 md5 del archivo y las 18 comprobaciones de `03-verificacion-post-H.sql` en `true`.
 4. Correr `test-flujos-criticos.sql` en una copia o verificar a mano TPV, Point y numeración.
