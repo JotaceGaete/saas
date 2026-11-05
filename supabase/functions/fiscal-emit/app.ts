@@ -10,6 +10,7 @@ import { createHttpHandler } from './lib/http.mjs';
 import { createRecovery } from './lib/recovery.mjs';
 import { readRecoveryConfig } from './lib/config.mjs';
 import { EMPTY_ALLOWLIST } from './lib/allowlist.mjs';
+import { classifyOrigin, corsHeadersFor } from './lib/cors.mjs';
 
 // Interfaz mínima de supabase-js que usa la aplicación (compatible con el cliente real).
 export interface FiscalDbClient {
@@ -41,17 +42,32 @@ export function buildFiscalHandler(deps: FiscalAppDeps) {
   };
   const handle = createHttpHandler({ emitter, resolveUser });
 
+  // CORS (lib/cors.mjs): toda respuesta, incluidos los errores, lleva las cabeceras del origen.
+  // Un origen no autorizado se rechaza antes de autenticar y sin tocar la base.
   return async (req: Request): Promise<Response> => {
-    let body: unknown = null;
-    if (req.method === 'POST') {
-      try {
-        body = await req.json();
-      } catch {
-        return json(400, { error: 'BAD_REQUEST' });
-      }
+    const origin = req.headers.get('origin');
+    const cors = corsHeadersFor(origin);
+    if (classifyOrigin(origin) === 'rejected') return json(403, { error: 'ORIGIN_NOT_ALLOWED' }, cors);
+    if (req.method === 'OPTIONS') {
+      // Preflight: sin cuerpo, sin autenticación y sin efectos (el navegador no envía el JWT aquí).
+      return new Response(null, { status: 204, headers: { ...cors, allow: 'POST, OPTIONS', 'cache-control': 'no-store' } });
     }
-    const out = await handle({ method: req.method, authHeader: req.headers.get('authorization'), body });
-    return json(out.status, out.body);
+    try {
+      let body: unknown = null;
+      if (req.method === 'POST') {
+        try {
+          body = await req.json();
+        } catch {
+          return json(400, { error: 'BAD_REQUEST' }, cors);
+        }
+      }
+      const out = await handle({ method: req.method, authHeader: req.headers.get('authorization'), body });
+      return json(out.status, out.body, cors);
+    } catch (err) {
+      // Fallo inesperado fuera del manejador (p. ej. auth.getUser sin red): código estable, sin detalles.
+      console.error('fiscal-emit internal error', (err as { name?: string })?.name ?? 'Error');
+      return json(500, { error: 'INTERNAL' }, cors);
+    }
   };
 }
 
@@ -65,9 +81,9 @@ export function buildRecoveryRunner(deps: { db: FiscalDbClient; env: Record<stri
   return Object.freeze({ recovery: createRecovery({ store, staleAfterMs }), staleAfterMs, source });
 }
 
-function json(status: number, body: unknown): Response {
+function json(status: number, body: unknown, cors: Record<string, string>): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'content-type': 'application/json', 'cache-control': 'no-store' },
+    headers: { ...cors, 'content-type': 'application/json', 'cache-control': 'no-store' },
   });
 }

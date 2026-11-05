@@ -35,6 +35,23 @@ siguientes describen la ronda anterior y pueden citar supuestos ya corregidos (p
 
 Migración asociada: `supabase/fiscal-recovery/proposed/20261031_fiscal_single_ledger_guard.sql` (A; aplicada en producción el 4-11-2026 como `20261104164731 fiscal_a_single_ledger_guard`, ver `supabase/fiscal-recovery/PRODUCTION-MIGRATION-LEDGER-2026-11-04.md`).
 
+## CORS y autenticación de la plataforma
+
+- `verify_jwt = true` (`supabase/config.toml`). La plataforma rechaza con 401 cualquier POST sin JWT
+  de usuario válido (HS256 o claves de firma asimétricas) antes de ejecutar el código. Las claves
+  publicables/secretas nuevas no son JWT y no pasan esta comprobación: la función no las acepta.
+- El preflight `OPTIONS` llega a la función (precedente en producción: `mp-point-terminal-preference`,
+  `verify_jwt=true`, OPTIONS 200 y POST 200 desde el navegador).
+- `lib/cors.mjs`: lista cerrada de orígenes exactos (producción `go.walinka.com`, `go.ventalink.app`;
+  alias de rama de las Preview de #119 y #123). Sin comodines; las URL por despliegue de Vercel no se
+  admiten. Origen fuera de la lista → 403 `ORIGIN_NOT_ALLOWED`, sin cabeceras CORS, antes de
+  autenticar y sin tocar la base. Sin `Origin` (no navegador) → sin cabeceras CORS y autenticación
+  igual de obligatoria. Todas las respuestas de la función, errores incluidos, llevan `Vary: Origin`
+  y, si el origen está autorizado, las cabeceras `Access-Control-*`. No se usan cookies
+  (`Access-Control-Allow-Credentials` ausente).
+- Añadir un origen = cambio de código revisado + nuevo despliegue.
+- Pruebas: `test/deno/cors.test.ts`.
+
 ## Modelo de permisos
 
 - **Tenant**: el `business_id` sale siempre de la venta. Un usuario sin rol fiscal activo en ese negocio
