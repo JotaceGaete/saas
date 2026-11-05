@@ -82,14 +82,11 @@ privilegios de `service_role` (en Supabase vienen por defecto; en la base de pru
 `supabase/fiscal-recovery/proposed/20261105_fiscal_identity_integrity.sql` (después de G). Prechequeo,
 recuperación y verificación en `supabase/fiscal-recovery/backups/2026-11-05-H/`.
 
-- **C1 vinculación fiscal (Walinka verifica, sin revisión manual).** Al guardar la API key,
-  `api/_lib/fiscal-connection.js` pregunta al proveedor a qué RUT pertenece (`lib/identity.mjs`) y la
-  base lo compara con el RUT del comercio. Sin coincidencia vigente no se aprueba la solicitud ni pasa
-  ninguna fila a `sending`; cambiar la key o el RUT invalida la verificación. DTE Core no documenta un
-  endpoint de identidad (`docs/CONTRATO-DTECORE.md` §2): la integración está lista y bloqueada en el
-  código (`identityContractVerified: false`, sin red) y en la base
-  (`dte39_emission_control.identity_contract_verified = false`). **Con H aplicada nadie se aprueba ni
-  emite hasta tener ese contrato.**
+- **C1 RUT del comercio.** DTE Core (servicio individual): una API key = un RUT y no hay endpoint para
+  consultarlo. El comercio ingresa RUT y key; antes de la primera boleta el propietario confirma el RUT
+  mostrado (`crm_fiscal_confirm_issuer_rut`, atado a la huella de la credencial: cambiar key o RUT
+  exige confirmar de nuevo). Sin confirmación no pasa nada a `sending`. Si el XML devuelto trae otro
+  `<RUTEmisor>`, la venta queda `unknown` (conciliación) sin reemitir. Ver `docs/CONTRATO-DTECORE.md`.
 - **A1 RUT único.** RUT canónico con dígito verificador; un RUT por comercio salvo grupo de RUT
   compartido creado por un administrador para comercios del mismo dueño. API: `RUT_NOT_AVAILABLE`.
   La lista `FISCAL_ALLOWED_ISSUERS` sigue rechazando RUT repetidos: un grupo compartido no puede estar en

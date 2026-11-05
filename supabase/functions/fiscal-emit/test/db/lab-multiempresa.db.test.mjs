@@ -5,7 +5,8 @@
 // Garantías que se demuestran (numeradas como en el pedido):
 //   1. A nunca emite con la identidad fiscal de B.
 //   2. B no accede a los documentos de A.
-//   3. Una API key de otro RUT se rechaza antes de emitir (y no se puede aprobar la vinculación).
+//   3. Una API key de otro RUT: exige confirmación expresa del RUT antes de emitir y, si el XML
+//      devuelto declara otro RUT, la venta queda en conciliación sin reemitir.
 //   4. Un RUT duplicado no se registra indebidamente.
 //   5. Un folio repetido del mismo emisor se rechaza.
 //   6. Dos emisores distintos pueden usar el mismo número de folio.
@@ -22,9 +23,9 @@ import { createFiscalEmitter, operationIdFor } from '../../lib/emit.mjs';
 import { createSimulatedProvider } from '../../lib/providers/simulated.mjs';
 import { createSiisolutionsHttpProvider } from '../../lib/providers/siisolutions-http.mjs';
 import { parseAllowedIssuers } from '../../lib/allowlist.mjs';
-import { resolveKeyOwnerRut } from '../../lib/identity.mjs';
+import { syntheticDocument } from '../helpers/dte-fixtures.mjs';
 import { seal } from '../../lib/secrets.mjs';
-import { CFG, TEST_MASTER_KEY, makeFixture, setEmissionControl, uniqueRut, verifyIdentity, otherUser } from './fixtures.mjs';
+import { CFG, TEST_MASTER_KEY, makeFixture, setEmissionControl, uniqueRut, confirmRut, otherUser } from './fixtures.mjs';
 
 let c;
 let store;
@@ -33,26 +34,24 @@ let savedControl;
 before(async () => {
   c = new pg.Client(assertLocalTestConfig(CFG));
   await c.connect();
-  savedControl = (await c.query(`select enabled, identity_contract_verified from fiscal.dte39_emission_control where singleton`)).rows[0];
+  savedControl = (await c.query(`select enabled from fiscal.dte39_emission_control where singleton`)).rows[0];
   await setEmissionControl(c, true);
   store = createPgStore(CFG);
 });
 after(async () => {
-  await setEmissionControl(c, savedControl?.enabled ?? false, savedControl?.identity_contract_verified ?? true);
+  await setEmissionControl(c, savedControl?.enabled ?? false);
   await store.end();
   await c.end();
 });
 
 // Proveedor simulado con identidad: cada API key pertenece a un RUT (como una cuenta DTE Core).
 function simProvider({ keyOwners = new Map(), scenario = 'ok', folioStart = randomInt(100_000, 900_000), delayMs = 20 } = {}) {
-  const sim = createSimulatedProvider({ scenario, folioStart, delayMs, identityFor: (k) => keyOwners.get(k) ?? null });
+  const sim = createSimulatedProvider({ scenario, folioStart, delayMs });
   const seen = [];
   return {
-    name: 'dtecore', ready: true, identityContractVerified: true, seen,
+    name: 'dtecore', ready: true, seen,
     get calls() { return sim.calls; },
-    get identityCalls() { return sim.identityCalls; },
     async emit(a) { seen.push({ rutEmisor: a.payload?.rutEmisor ?? a.payload?.rutOperador ?? null, apiKey: a.credentials?.apiKey, expect: a.expect }); return sim.emit(a); },
-    verifyIdentity: (a) => sim.verifyIdentity(a),
     async lookupOperation() { return { result: 'not_found' }; },
     async retrieveDocuments() { return null; },
   };
@@ -179,82 +178,83 @@ test('2. B no accede a los documentos de A', async () => {
   assert.equal(p.calls, 1);
 });
 
-test('3. Una API key de otro RUT se rechaza antes de emitir', async () => {
+// Proveedor REAL (adaptador DTE Core) con un fetch simulado: la cuenta dueña de cada API key
+// responde con un DTE cuyo <RUTEmisor> es el RUT de ESA cuenta. Ninguna llamada de red.
+function realAdapterFor(keyOwners, folioStart = randomInt(100_000, 900_000)) {
+  let next = folioStart;
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    const apiKey = init?.headers?.['X-Api-Key'] ?? init?.headers?.get?.('X-Api-Key');
+    const body = JSON.parse(init.body);
+    calls.push({ url, apiKey, rutOperador: body.rutOperador });
+    const folio = next++;
+    const total = Number(body.montoPago);
+    const doc = syntheticDocument({ folio, total, rutEmisor: keyOwners.get(apiKey) });
+    return new Response(JSON.stringify({ folio, esSimulacion: false, ...doc }), { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  const p = createSiisolutionsHttpProvider({ baseUrl: 'http://127.0.0.1:9', fetchImpl, ready: true });
+  return Object.assign(p, { httpCalls: calls });
+}
+
+test('3. Una API key de otro RUT: confirmación previa, y si el XML trae otro RUT queda en conciliación sin reemitir', async () => {
+  const { A, B, keyOwners, allow } = await pair();
+  const p = realAdapterFor(keyOwners);
+  const e = emitterFor(p, allow);
+  // A pega por error la API key de la cuenta de B. Guardar la key anula la confirmación anterior.
+  await saveCredentials(A.businessId, A.userId, A.issuerRut, B.apiKey);
+  await c.query(`update fiscal.issuers set review_status = 'approved', enabled = true, verified = true where business_id = $1`, [A.businessId]);
+  assert.equal((await c.query(`select fiscal.identity_block_reason($1) r`, [A.businessId])).rows[0].r, 'credentials_changed');
+  // Antes de la primera boleta con esa key, el propietario debe confirmar el RUT mostrado.
+  await assert.rejects(e.emitSale({ actorUserId: A.userId, saleId: A.saleId }), { code: 'FISCAL_RUT_NOT_CONFIRMED' });
+  assert.equal(p.httpCalls.length, 0, 'sin confirmación no se llama a DTE Core');
+  // El propietario confirma su RUT (sin notar que la key es de otra empresa) y se emite.
+  await confirmRut(c, A.businessId, A.userId, A.issuerRut);
+  const r = await e.emitSale({ actorUserId: A.userId, saleId: A.saleId });
+  // DTE Core emitió con la cuenta de B: el XML declara el RUT de B. No queda emitida: unknown.
+  assert.equal(r.status, 'unknown');
+  assert.equal(r.reason, 'XML_ISSUER_MISMATCH');
+  const row = (await ledger(A.saleId))[0];
+  assert.equal(row.status, 'unknown');
+  assert.equal(row.issuer_rut, A.issuerRut, 'el ledger conserva el RUT del comercio');
+  // Nunca se reemite: ni el TPV ni la base vuelven a llamar a DTE Core.
+  await assert.rejects(e.emitSale({ actorUserId: A.userId, saleId: A.saleId }), { code: 'UNKNOWN_REQUIRES_RECONCILIATION' });
+  assert.equal(p.httpCalls.length, 1);
+  assert.equal(p.httpCalls[0].apiKey, B.apiKey);
+  // Con la key correcta (y confirmada de nuevo) A emite: el XML declara el RUT de A.
+  const A3 = await extraSale(A);
+  await saveCredentials(A.businessId, A.userId, A.issuerRut, A.apiKey);
+  await c.query(`update fiscal.issuers set review_status = 'approved', enabled = true, verified = true where business_id = $1`, [A.businessId]);
+  await confirmRut(c, A.businessId, A.userId, A.issuerRut);
+  const ok = await e.emitSale({ actorUserId: A.userId, saleId: A3.saleId });
+  assert.equal(ok.status, 'issued');
+  assert.equal(p.httpCalls.at(-1).apiKey, A.apiKey);
+  assert.equal(p.httpCalls.at(-1).rutOperador, A.issuerRut);
+
+  // Y la base tampoco acepta marcar como emitido un XML de otro emisor aunque se intente directo.
+  const xmlB = syntheticDocument({ folio: 5, total: 2380, rutEmisor: B.issuerRut });
+  const A2 = await extraSale(A);
+  await c.query(`select public.crm_fiscal_claim_with_credentials($1, $2, $3)`, [A2.businessId, A2.saleId, A2.operationId]);
+  await assert.rejects(c.query(
+    `update public.crm_fiscal_issuances set status = 'issued', folio = 5, xml_base64 = $2, pdf_base64 = $3 where sale_id = $1`,
+    [A2.saleId, xmlB.xmlBase64, xmlB.pdfBase64]), /FISCAL_DOCUMENT_ISSUER_MISMATCH/);
+});
+
+test('3b. Cambiar la API key o el RUT exige confirmar de nuevo; nadie más puede confirmar', async () => {
   const { A, B, keyOwners, allow } = await pair();
   const p = simProvider({ keyOwners });
   const e = emitterFor(p, allow);
-  // Vinculación como la hace api/_lib/fiscal-connection.js: guardar la key y preguntar al
-  // proveedor a qué RUT pertenece; la base compara y registra.
-  const link = async (f, apiKey) => {
-    await saveCredentials(f.businessId, f.userId, f.issuerRut, apiKey);
-    const r = await resolveKeyOwnerRut({ provider: p, apiKey });
-    return verifyIdentity(c, f.businessId, f.userId, r.status === 'resolved' ? r.rut : null);
-  };
-  const approve = (f) => c.query(
-    `update fiscal.issuers set review_status = 'approved', enabled = true, verified = true where business_id = $1`, [f.businessId]);
-
-  // A guarda por error la API key de la cuenta de B: la vinculación lo detecta.
-  const v = await link(A, B.apiKey);
-  assert.equal(v.outcome, 'mismatch');
-  assert.equal(v.block_reason, 'last_check_mismatch');
-  // Walinka no puede aprobarla.
-  await assert.rejects(approve(A), /FISCAL_IDENTITY_NOT_VERIFIED: last_check_mismatch/);
-  await assert.rejects(e.emitSale({ actorUserId: A.userId, saleId: A.saleId }), { code: 'FISCAL_ISSUER_NOT_ENABLED' });
-  // Aunque alguien aprobara saltándose los triggers, ni el servidor ni la base dejan emitir.
-  await c.query('begin');
-  await c.query('set local session_replication_role = replica');
-  await approve(A);
-  await c.query('commit');
-  await assert.rejects(e.emitSale({ actorUserId: A.userId, saleId: A.saleId }), { code: 'FISCAL_IDENTITY_NOT_VERIFIED' });
-  await assert.rejects(c.query(`select public.crm_fiscal_claim_with_credentials($1, $2, $3)`, [A.businessId, A.saleId, A.operationId]),
-    /FISCAL_IDENTITY_NOT_VERIFIED: last_check_mismatch/);
-  assert.equal(p.calls, 0, 'cero emisiones');
-  assert.deepEqual(await ledger(A.saleId), [], 'ninguna fila en el ledger');
-
-  // Con la key correcta: coincide, se aprueba y emite con la identidad de A.
-  assert.equal((await link(A, A.apiKey)).outcome, 'match');
-  await approve(A);
-  assert.equal((await e.emitSale({ actorUserId: A.userId, saleId: A.saleId })).status, 'issued');
-  assert.equal(p.seen.at(-1).apiKey, A.apiKey);
-
-  // Adaptador real de DTE Core (sin contrato de identidad): contract_pending sin ninguna llamada de red.
-  let fetched = 0;
-  const real = createSiisolutionsHttpProvider({ ready: true, fetchImpl: () => { fetched += 1; throw new Error('NO NETWORK IN TESTS'); } });
-  assert.deepEqual(await resolveKeyOwnerRut({ provider: real, apiKey: B.apiKey }), { status: 'contract_pending' });
-  assert.equal(fetched, 0);
-});
-
-test('3b. Cambiar la API key o el RUT invalida la verificación anterior automáticamente', async () => {
-  const { A, keyOwners, allow } = await pair();
-  const p = simProvider({ keyOwners });
-  const e = emitterFor(p, allow);
   const s2 = await extraSale(A);
-  // Nueva key (aunque sea la misma API key, re-sellada): la huella cambia.
   await saveCredentials(A.businessId, A.userId, A.issuerRut, A.apiKey);
+  await c.query(`update fiscal.issuers set review_status = 'approved', enabled = true, verified = true where business_id = $1`, [A.businessId]);
   assert.equal((await c.query(`select fiscal.identity_block_reason($1) r`, [A.businessId])).rows[0].r, 'credentials_changed');
-  assert.equal((await c.query(`select verified from fiscal.issuers where business_id = $1`, [A.businessId])).rows[0].verified, false);
-  await assert.rejects(e.emitSale({ actorUserId: A.userId, saleId: s2.saleId }), { code: 'FISCAL_ISSUER_NOT_ENABLED' });
-  // Verificada de nuevo; luego cambia el RUT: vuelve a quedar sin verificar.
-  await verifyIdentity(c, A.businessId, A.userId, A.issuerRut);
+  await assert.rejects(e.emitSale({ actorUserId: A.userId, saleId: s2.saleId }), { code: 'FISCAL_RUT_NOT_CONFIRMED' });
+  // El dueño de B no puede confirmar el RUT de A, ni A puede confirmar un RUT que no es el guardado.
+  await assert.rejects(confirmRut(c, A.businessId, B.userId, A.issuerRut), /FISCAL_ROLE_REQUIRED/);
+  await assert.rejects(confirmRut(c, A.businessId, A.userId, B.issuerRut), /FISCAL_RUT_CONFIRMATION_STALE/);
+  await confirmRut(c, A.businessId, A.userId, A.issuerRut);
   await c.query(`update fiscal.issuers set issuer_rut = $2 where business_id = $1`, [A.businessId, uniqueRut()]);
   assert.equal((await c.query(`select fiscal.identity_block_reason($1) r`, [A.businessId])).rows[0].r, 'rut_changed');
   assert.equal(p.calls, 0);
-});
-
-test('3c. Sin contrato de identidad del proveedor (estado inicial de producción) nadie emite', async () => {
-  const { A, keyOwners, allow } = await pair();
-  const p = simProvider({ keyOwners });
-  const e = emitterFor(p, allow);
-  await setEmissionControl(c, true, false);
-  try {
-    await assert.rejects(e.emitSale({ actorUserId: A.userId, saleId: A.saleId }), { code: 'FISCAL_IDENTITY_NOT_VERIFIED' });
-    await assert.rejects(c.query(`select public.crm_fiscal_claim_with_credentials($1, $2, $3)`, [A.businessId, A.saleId, A.operationId]),
-      /FISCAL_IDENTITY_NOT_VERIFIED: contract_pending/);
-    await assert.rejects(verifyIdentity(c, A.businessId, A.userId, A.issuerRut), /FISCAL_IDENTITY_CONTRACT_PENDING/);
-    assert.equal(p.calls, 0);
-  } finally {
-    await setEmissionControl(c, true);
-  }
 });
 
 test('4. Un RUT duplicado no se registra indebidamente; RUT compartido solo por administrador y mismo dueño', async () => {

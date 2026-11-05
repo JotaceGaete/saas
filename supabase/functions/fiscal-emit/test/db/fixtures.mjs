@@ -13,26 +13,12 @@ export const CFG = Object.freeze({
   database: process.env.FISCAL_TEST_PG_DB ?? 'walinka_test',
 });
 
-// Migración H: verificar identidad, aprobar y emitir exigen que el contrato de identidad de DTE
-// Core esté marcado como verificado. En las pruebas se marca (proveedor simulado); en producción
-// nace en false.
-export async function setEmissionControl(c, enabled, identityContractVerified = true) {
+export async function setEmissionControl(c, enabled) {
   await c.query(
-    `insert into fiscal.dte39_emission_control (singleton, enabled, payment_voucher_policy_approved,
-                                                identity_contract_verified)
-     values (true, $1, true, $2)
-     on conflict (singleton) do update set enabled = excluded.enabled,
-                                           identity_contract_verified = excluded.identity_contract_verified`,
-    [enabled, identityContractVerified],
-  );
-}
-
-export async function ensureIdentityContract(c, verified = true) {
-  await c.query(
-    `insert into fiscal.dte39_emission_control (singleton, enabled, payment_voucher_policy_approved, identity_contract_verified)
-     values (true, false, true, $1)
-     on conflict (singleton) do update set identity_contract_verified = excluded.identity_contract_verified`,
-    [verified],
+    `insert into fiscal.dte39_emission_control (singleton, enabled, payment_voucher_policy_approved)
+     values (true, $1, true)
+     on conflict (singleton) do update set enabled = excluded.enabled`,
+    [enabled],
   );
 }
 
@@ -54,26 +40,21 @@ export function uniqueRut() {
   return `${body}-${rutDv(body)}`;
 }
 
-// Verificación vigente sembrada directamente (como postgres, sin fila de auditoría) para que las
-// pruebas previas a H no cambien sus conteos de fiscal.admin_audit.
-export async function seedIdentity(c, businessId, actorUserId) {
+// Confirmación del RUT por el propietario sembrada directamente (como postgres, sin fila de
+// auditoría) para que las pruebas previas a H no cambien sus conteos de fiscal.admin_audit.
+export async function seedRutConfirmation(c, businessId, actorUserId) {
   await c.query(
-    `insert into fiscal.identity_checks (business_id, provider, key_version, credential_fp, expected_rut,
-                                         observed_rut, outcome, actor_user_id, detail)
-     select c.business_id, c.provider, c.key_version, fiscal.credential_fp(c.business_id), i.issuer_rut,
-            i.issuer_rut, 'match', $2, '{"seeded": true}'::jsonb
+    `insert into fiscal.rut_confirmations (business_id, provider, key_version, credential_fp, confirmed_rut, actor_user_id)
+     select c.business_id, c.provider, c.key_version, fiscal.credential_fp(c.business_id), i.issuer_rut, $2
        from fiscal.business_credentials c join fiscal.issuers i on i.business_id = c.business_id
       where c.business_id = $1`,
     [businessId, actorUserId],
   );
 }
 
-// RUT informado por el proveedor (simulado) registrado vía RPC; ninguna llamada real.
-export async function verifyIdentity(c, businessId, actorUserId, observedRut) {
-  const r = await c.query(
-    `select public.crm_fiscal_record_identity_check($1, $2, $3, '{"simulated": true}'::jsonb) as res`,
-    [businessId, actorUserId, observedRut],
-  );
+// Confirmación del RUT por el propietario vía RPC (como la hace api/_lib/fiscal-connection.js).
+export async function confirmRut(c, businessId, actorUserId, rut) {
+  const r = await c.query(`select public.crm_fiscal_confirm_issuer_rut($1, $2, $3) as res`, [businessId, actorUserId, rut]);
   return r.rows[0].res;
 }
 
@@ -101,13 +82,10 @@ export async function makeFixture(c, opts = {}) {
     total: 2380,
     withCredentials: true,
     issuerRut: null,
-    identityVerified: true,
+    rutConfirmed: true,
     ...opts,
   };
   o.issuerRut = o.issuerRut ?? uniqueRut();
-  if (o.issuerVerified && !(o.withCredentials && o.identityVerified)) {
-    throw new Error('fixture: un emisor aprobado exige credenciales con identidad verificada (migración H)');
-  }
   const businessId = randomUUID();
   const userId = randomUUID();
   const saleId = randomUUID();
@@ -135,10 +113,9 @@ export async function makeFixture(c, opts = {}) {
              case when $3::boolean then 'approved' else 'draft' end, 80, date '2014-08-22')`,
     [businessId, false, false, o.issuerRut],
   );
-  // Migración H: aprobar exige identidad verificada, así que se verifica antes de aprobar.
-  if (o.withCredentials && o.identityVerified) {
-    await ensureIdentityContract(c);
-    await seedIdentity(c, businessId, userId);
+  // Migración H: el propietario confirmó el RUT para esta credencial.
+  if (o.withCredentials && o.rutConfirmed) {
+    await seedRutConfirmation(c, businessId, userId);
   }
   if (o.issuerEnabled || o.issuerVerified) {
     await c.query(

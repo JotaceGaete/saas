@@ -35,8 +35,8 @@ export function createFiscalConnectionHandler({ service, assertAccess }) {
       if (!body || typeof body !== 'object' || Array.isArray(body)) return res.status(400).json({ error: 'BAD_REQUEST' });
       if (body.action === 'connect') {
         result = await service.connect({ businessId, actorId: guard.actorId, body });
-      } else if (body.action === 'verify') {
-        result = await service.verify({ businessId, actorId: guard.actorId, body });
+      } else if (body.action === 'confirm-rut') {
+        result = await service.confirmRut({ businessId, actorId: guard.actorId, body });
       } else if (body.action === 'set-tax-default') {
         result = await service.setTaxDefault({ businessId, actorId: guard.actorId, body });
       } else if (body.action === 'submit') {

@@ -33,14 +33,12 @@
 --      dentro del mismo emisor y tipo, pero dos contribuyentes distintos sí pueden usar el mismo
 --      número. Un XML emitido cuyo <RUTEmisor> no es el del emisor no se acepta como issued.
 --      La numeración interna de ventas (crm_invoices.invoice_number) no se toca.
---   4. C1 — Verificación de identidad credencial↔RUT (fiscal.identity_checks, solo inserción).
---      Cada verificación queda atada a la huella de la credencial vigente y al RUT esperado.
---      Cambiar la API key o el RUT la invalida sin que nadie tenga que acordarse. Ninguna fila
---      pasa a sending (ningún reclamo, ninguna llamada al proveedor) y ningún emisor se aprueba
---      sin una verificación vigente con resultado "match" obtenida del proveedor. Sin verificación
---      manual. fiscal.dte39_emission_control.identity_contract_verified nace en false: mientras
---      DTE Core no documente su endpoint de identidad, la vinculación queda bloqueada para todos
---      (ver CONTRATO-DTECORE.md).
+--   4. C1 — Confirmación expresa del RUT por el propietario (fiscal.rut_confirmations, solo inserción).
+--      DTE Core (servicio individual) no ofrece un endpoint que diga a qué RUT pertenece una key:
+--      el comercio ingresa RUT y key; antes de la primera emisión el propietario confirma el RUT
+--      mostrado. La confirmación queda ligada a la huella de la credencial y al RUT: cambiar
+--      cualquiera de los dos exige confirmar de nuevo. Ninguna fila pasa a sending sin ella. Un XML
+--      cuyo <RUTEmisor> no coincide no queda emitido (sección 6).
 --   5. A4 — Ventas fiscalizadas inmutables en PostgreSQL. Si la venta tiene una fila fiscal en
 --      sending, unknown, issued o cancelled, se rechazan cambios a: total, subtotal, descuento,
 --      estado, fecha, pagado, origen y comercio de crm_invoices; cualquier alta, baja o cambio
@@ -226,7 +224,7 @@ alter table fiscal.admin_audit add constraint admin_audit_action_check
   check (action in ('reconcile_attempt', 'reconcile_result', 'owner_changed', 'credentials_saved',
                     'credentials_removed', 'application_submitted', 'application_approved',
                     'application_rejected', 'application_suspended', 'tax_default_set', 'tax_product_set',
-                    'identity_checked', 'rut_share_created', 'tributary_correction_authorized',
+                    'rut_confirmed', 'rut_share_created', 'tributary_correction_authorized',
                     'tributary_correction_change', 'credit_note_drafted'));
 
 create or replace function fiscal.is_walinka_admin(p_user_id uuid)
@@ -305,35 +303,30 @@ begin
 end;
 $$;
 
--- 5. C1 — Vinculación fiscal: la API key debe pertenecer al RUT del comercio -------------
--- Walinka verifica, con un mecanismo documentado de DTE Core, a qué RUT pertenece la API key y lo
--- compara con el RUT que registró el comercio. No hay verificación manual.
--- identity_contract_verified: se enciende (como postgres, con autorización) solo cuando DTE Core
--- documente por escrito su endpoint de identidad. Mientras esté en false nadie emite y nadie se
--- aprueba, aunque exista una verificación registrada.
-alter table fiscal.dte39_emission_control
-  add column if not exists identity_contract_verified boolean not null default false;
-comment on column fiscal.dte39_emission_control.identity_contract_verified is
-  'true solo cuando el endpoint de identidad de DTE Core (API key -> RUT) está verificado por escrito. false = vinculación bloqueada para todos.';
-
-create table if not exists fiscal.identity_checks (
+-- 5. C1 — Confirmación del RUT por el propietario antes de emitir --------------------------
+-- DTE Core (servicio individual): cada API key pertenece a un único RUT y cada comercio contrata su
+-- propia cuenta. No existe un endpoint para preguntar a qué RUT pertenece una key, así que el
+-- comercio es responsable de ingresar RUT y key correctos. Walinka:
+--   - valida formatos, cifra la key ligada al negocio y nunca la usa para otro negocio;
+--   - antes de la PRIMERA emisión con una key/RUT, exige que el propietario (fiscal_owner) confirme
+--     expresamente el RUT mostrado. La confirmación queda atada a la huella de la credencial y al
+--     RUT: cambiar cualquiera de los dos exige confirmar de nuevo;
+--   - compara el <RUTEmisor> del XML devuelto con el RUT del comercio (sección 6): si no coincide,
+--     el documento no queda emitido y pasa a conciliación, sin reemitir.
+create table if not exists fiscal.rut_confirmations (
   id bigint generated always as identity primary key,
   business_id uuid not null references public.wa_businesses(id) on delete restrict,
   provider text not null check (provider = 'dtecore'),
   key_version integer not null,
   credential_fp text not null check (credential_fp ~ '^[0-9a-f]{64}$'),
-  expected_rut text not null check (expected_rut ~ '^[0-9]{1,8}-[0-9K]$'),
-  observed_rut text check (observed_rut is null or length(observed_rut) <= 16),
-  outcome text not null check (outcome in ('match', 'mismatch', 'unavailable')),
+  confirmed_rut text not null check (confirmed_rut ~ '^[0-9]{1,8}-[0-9K]$'),
   actor_user_id uuid not null,
-  detail jsonb not null default '{}'::jsonb,
-  checked_at timestamptz not null default clock_timestamp(),
-  check ((outcome = 'unavailable') = (observed_rut is null))
+  confirmed_at timestamptz not null default clock_timestamp()
 );
-create index if not exists identity_checks_business_idx on fiscal.identity_checks (business_id, id desc);
-alter table fiscal.identity_checks enable row level security;
-drop trigger if exists identity_checks_append_only on fiscal.identity_checks;
-create trigger identity_checks_append_only before update or delete on fiscal.identity_checks
+create index if not exists rut_confirmations_business_idx on fiscal.rut_confirmations (business_id, id desc);
+alter table fiscal.rut_confirmations enable row level security;
+drop trigger if exists rut_confirmations_append_only on fiscal.rut_confirmations;
+create trigger rut_confirmations_append_only before update or delete on fiscal.rut_confirmations
   for each row execute function fiscal.dte39_evidence_append_only();
 
 -- Huella de la credencial cifrada vigente (no revela la clave: es un hash del sobre cifrado).
@@ -348,8 +341,7 @@ as $$
     from fiscal.business_credentials c where c.business_id = p_business_id;
 $$;
 
--- Motivo por el que el comercio NO puede emitir por identidad, o NULL si puede. Cambiar la API key
--- (huella) o el RUT invalida la verificación anterior sin ningún paso adicional.
+-- Motivo por el que el comercio NO puede emitir todavía, o NULL si puede.
 create or replace function fiscal.identity_block_reason(p_business_id uuid)
 returns text
 language sql
@@ -360,30 +352,23 @@ as $$
   select case
            when i.business_id is null then 'issuer_missing'
            when c.business_id is null then 'credentials_missing'
-           when not exists (select 1 from fiscal.dte39_emission_control ctl
-                             where ctl.singleton and ctl.identity_contract_verified) then 'contract_pending'
-           when k.id is null then 'not_checked'
-           when k.outcome <> 'match' then 'last_check_' || k.outcome
+           when k.id is null then 'not_confirmed'
            when k.credential_fp <> fiscal.credential_fp(p_business_id) then 'credentials_changed'
-           when k.expected_rut <> i.issuer_rut or k.observed_rut is distinct from i.issuer_rut then 'rut_changed'
+           when k.confirmed_rut <> i.issuer_rut then 'rut_changed'
            else null
          end
     from (select p_business_id as bid) b
     left join fiscal.issuers i on i.business_id = b.bid
     left join fiscal.business_credentials c on c.business_id = b.bid
-    -- Una consulta "unavailable" (proveedor sin respuesta) no anula la última verificación concluyente.
-    left join lateral (select * from fiscal.identity_checks x where x.business_id = b.bid
-                          and x.outcome <> 'unavailable'
+    left join lateral (select * from fiscal.rut_confirmations x where x.business_id = b.bid
                         order by x.id desc limit 1) k on true;
 $$;
 
--- Registra lo que el proveedor informó como RUT dueño de la API key VIGENTE del comercio. El
--- resultado (match / mismatch / unavailable) lo calcula la base contra el RUT del emisor, bajo el
--- mismo candado que guardar, cambiar o desconectar credenciales y que el reclamo de emisión.
--- Solo service_role (api/_lib/fiscal-connection.js). Rechaza registrar si el contrato de identidad
--- no está verificado: ningún código puede "fabricar" una verificación antes de tiempo.
-create or replace function public.crm_fiscal_record_identity_check(
-  p_business_id uuid, p_actor_user_id uuid, p_observed_rut text, p_detail jsonb default '{}'::jsonb)
+-- El propietario confirma el RUT que ve en pantalla para la credencial vigente. p_confirmed_rut
+-- debe ser el RUT guardado: si la pantalla quedó desactualizada (otro cambió el RUT o la key),
+-- se rechaza. Solo service_role (api/_lib/fiscal-connection.js), actor con rol fiscal_owner.
+create or replace function public.crm_fiscal_confirm_issuer_rut(
+  p_business_id uuid, p_actor_user_id uuid, p_confirmed_rut text)
 returns jsonb
 language plpgsql
 security definer
@@ -392,65 +377,31 @@ as $$
 declare
   v_issuer fiscal.issuers%rowtype;
   v_cred fiscal.business_credentials%rowtype;
-  v_observed text;
-  v_outcome text;
+  v_rut text := fiscal.normalize_rut(p_confirmed_rut);
 begin
-  if p_business_id is null or p_actor_user_id is null
-     or (p_detail is not null and jsonb_typeof(p_detail) <> 'object') then
-    raise exception 'FISCAL_IDENTITY_CHECK_INVALID';
+  if p_business_id is null or p_actor_user_id is null or v_rut is null then
+    raise exception 'FISCAL_RUT_CONFIRMATION_INVALID';
   end if;
-  if not exists (select 1 from fiscal.dte39_emission_control c where c.singleton and c.identity_contract_verified) then
-    raise exception 'FISCAL_IDENTITY_CONTRACT_PENDING';
+  if not fiscal.has_role(p_business_id, p_actor_user_id, 'fiscal_owner') then
+    raise exception 'FISCAL_ROLE_REQUIRED';
   end if;
-  if p_observed_rut is not null then
-    v_observed := fiscal.normalize_rut(p_observed_rut);
-    if v_observed is null then raise exception 'FISCAL_IDENTITY_CHECK_INVALID'; end if;
-  end if;
-
   perform pg_advisory_xact_lock(hashtextextended('fiscal_connection:' || p_business_id::text, 0));
   select * into v_issuer from fiscal.issuers where business_id = p_business_id;
   select * into v_cred from fiscal.business_credentials where business_id = p_business_id;
   if v_issuer.business_id is null or v_cred.business_id is null then
     raise exception 'FISCAL_CREDENTIALS_MISSING';
   end if;
-
-  v_outcome := case when v_observed is null then 'unavailable'
-                    when v_observed = v_issuer.issuer_rut then 'match' else 'mismatch' end;
-  insert into fiscal.identity_checks (business_id, provider, key_version, credential_fp, expected_rut,
-                                      observed_rut, outcome, actor_user_id, detail)
-  values (p_business_id, v_cred.provider, v_cred.key_version, fiscal.credential_fp(p_business_id),
-          v_issuer.issuer_rut, v_observed, v_outcome, p_actor_user_id, coalesce(p_detail, '{}'::jsonb));
-  insert into fiscal.admin_audit (business_id, sale_id, actor_user_id, action, outcome, detail)
-  values (p_business_id, null, p_actor_user_id, 'identity_checked', v_outcome,
-          jsonb_build_object('expected_rut', v_issuer.issuer_rut, 'observed_rut', v_observed,
-                             'key_version', v_cred.key_version));
-  return jsonb_build_object('outcome', v_outcome, 'block_reason', fiscal.identity_block_reason(p_business_id));
-end;
-$$;
-
--- Aprobar la vinculación exige que la API key vigente pertenezca al RUT del comercio. Cubre
--- crm_fiscal_review_application y cualquier escritura directa (verified = true).
-create or replace function fiscal.guard_issuer_identity_on_approve()
-returns trigger
-language plpgsql
-security definer
-set search_path = pg_catalog, public, fiscal
-as $$
-begin
-  if new.verified and (tg_op = 'INSERT' or not old.verified) then
-    if fiscal.identity_block_reason(new.business_id) is not null then
-      raise exception 'FISCAL_IDENTITY_NOT_VERIFIED: %', fiscal.identity_block_reason(new.business_id)
-        using errcode = 'P0001';
-    end if;
+  if v_issuer.issuer_rut <> v_rut then
+    raise exception 'FISCAL_RUT_CONFIRMATION_STALE';
   end if;
-  return new;
+  insert into fiscal.rut_confirmations (business_id, provider, key_version, credential_fp, confirmed_rut, actor_user_id)
+  values (p_business_id, v_cred.provider, v_cred.key_version, fiscal.credential_fp(p_business_id), v_rut, p_actor_user_id);
+  insert into fiscal.admin_audit (business_id, sale_id, actor_user_id, action, outcome, detail)
+  values (p_business_id, null, p_actor_user_id, 'rut_confirmed', 'confirmed',
+          jsonb_build_object('issuer_rut', v_rut, 'key_version', v_cred.key_version));
+  return jsonb_build_object('confirmed', true, 'block_reason', fiscal.identity_block_reason(p_business_id));
 end;
 $$;
-
-drop trigger if exists issuers_identity_on_approve on fiscal.issuers;
-create trigger issuers_identity_on_approve
-  before insert or update of verified on fiscal.issuers
-  for each row execute function fiscal.guard_issuer_identity_on_approve();
 
 -- 6. A2 — RUT emisor permanente en cada documento y registro de folios ---------------------
 alter table public.crm_fiscal_issuances add column if not exists issuer_rut text;
@@ -571,7 +522,7 @@ begin
     new.issuer_rut := v_rut;
     v_reason := fiscal.identity_block_reason(new.business_id);
     if v_reason is not null then
-      raise exception 'FISCAL_IDENTITY_NOT_VERIFIED: %', v_reason using errcode = 'P0001';
+      raise exception 'FISCAL_RUT_NOT_CONFIRMED: %', v_reason using errcode = 'P0001';
     end if;
   end if;
 
@@ -938,8 +889,8 @@ as $$
                         'issuer_rut', s.issuer_rut, 'enabled', s.enabled, 'verified', s.verified,
                         'sucursal_nombre', s.sucursal_nombre, 'sucursal_codigo', s.sucursal_codigo,
                         'resolucion_numero', s.resolucion_numero, 'resolucion_fecha', s.resolucion_fecha,
-                        'identity_verified', fiscal.identity_block_reason(p_business_id) is null,
-                        'identity_block_reason', fiscal.identity_block_reason(p_business_id))
+                        'rut_confirmed', fiscal.identity_block_reason(p_business_id) is null,
+                        'rut_confirmation_reason', fiscal.identity_block_reason(p_business_id))
                  from fiscal.issuers s where s.business_id = p_business_id),
     'emission_enabled', exists (select 1 from fiscal.dte39_emission_control c where c.singleton and c.enabled),
     'tax_lines_verified', fiscal.sale_tax_lines_verified(p_business_id, p_sale_id),
@@ -986,8 +937,8 @@ as $$
     'sucursalNombre', i.sucursal_nombre,
     'sucursalCodigo', i.sucursal_codigo,
     'defaultTaxCategory', i.default_tax_category,
-    'identityVerified', fiscal.identity_block_reason(b.bid) is null,
-    'identityBlockReason', fiscal.identity_block_reason(b.bid),
+    'rutConfirmed', fiscal.identity_block_reason(b.bid) is null,
+    'rutConfirmationReason', fiscal.identity_block_reason(b.bid),
     'rutShared', i.rut_share_group is not null)
   from (select p_business_id as bid) b
   left join fiscal.business_credentials c on c.business_id = b.bid
@@ -1008,9 +959,9 @@ $$;
 -- 10. Permisos --------------------------------------------------------------------------------
 -- Tablas nuevas: sin acceso directo para anon/authenticated (el esquema fiscal no les da USAGE);
 -- service_role solo lee. Todas las escrituras pasan por funciones SECURITY DEFINER.
-revoke all on fiscal.rut_share_groups, fiscal.identity_checks, fiscal.document_folios,
+revoke all on fiscal.rut_share_groups, fiscal.rut_confirmations, fiscal.document_folios,
               fiscal.tributary_corrections, fiscal.credit_notes from public, anon, authenticated, service_role;
-grant select on fiscal.rut_share_groups, fiscal.identity_checks, fiscal.document_folios,
+grant select on fiscal.rut_share_groups, fiscal.rut_confirmations, fiscal.document_folios,
                 fiscal.tributary_corrections, fiscal.credit_notes to service_role;
 
 revoke all on function fiscal.normalize_rut(text) from public, anon, authenticated;
@@ -1019,7 +970,6 @@ revoke all on function fiscal.guard_issuer_rut() from public, anon, authenticate
 revoke all on function fiscal.is_walinka_admin(uuid) from public, anon, authenticated;
 revoke all on function fiscal.credential_fp(uuid) from public, anon, authenticated;
 revoke all on function fiscal.identity_block_reason(uuid) from public, anon, authenticated;
-revoke all on function fiscal.guard_issuer_identity_on_approve() from public, anon, authenticated;
 revoke all on function fiscal.register_folio(text, integer, integer, uuid, text, uuid) from public, anon, authenticated;
 revoke all on function fiscal.guard_issuance_identity() from public, anon, authenticated;
 revoke all on function fiscal.register_issuance_folio() from public, anon, authenticated;
@@ -1027,7 +977,7 @@ revoke all on function fiscal.sale_is_fiscalized(uuid) from public, anon, authen
 revoke all on function fiscal.guard_fiscalized_sale() from public, anon, authenticated;
 revoke all on function fiscal.guard_credit_note() from public, anon, authenticated;
 revoke all on function public.crm_fiscal_create_rut_share(uuid, text, uuid[], text, text) from public, anon, authenticated;
-revoke all on function public.crm_fiscal_record_identity_check(uuid, uuid, text, jsonb) from public, anon, authenticated;
+revoke all on function public.crm_fiscal_confirm_issuer_rut(uuid, uuid, text) from public, anon, authenticated;
 revoke all on function public.crm_fiscal_authorize_tributary_correction(uuid, uuid, uuid, text, text) from public, anon, authenticated;
 revoke all on function public.crm_fiscal_draft_credit_note(uuid, uuid, uuid, integer, text, numeric, jsonb) from public, anon, authenticated;
 revoke all on function public.crm_fiscal_emission_context(uuid, uuid) from public, anon, authenticated;
@@ -1037,7 +987,7 @@ revoke all on function public.crm_fiscal_get_issuance(uuid, uuid) from public, a
 grant execute on function fiscal.normalize_rut(text) to service_role;
 grant execute on function fiscal.identity_block_reason(uuid) to service_role;
 grant execute on function public.crm_fiscal_create_rut_share(uuid, text, uuid[], text, text) to service_role;
-grant execute on function public.crm_fiscal_record_identity_check(uuid, uuid, text, jsonb) to service_role;
+grant execute on function public.crm_fiscal_confirm_issuer_rut(uuid, uuid, text) to service_role;
 grant execute on function public.crm_fiscal_authorize_tributary_correction(uuid, uuid, uuid, text, text) to service_role;
 grant execute on function public.crm_fiscal_draft_credit_note(uuid, uuid, uuid, integer, text, numeric, jsonb) to service_role;
 grant execute on function public.crm_fiscal_emission_context(uuid, uuid) to service_role;

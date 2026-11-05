@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import pg from 'pg';
 import { assertLocalTestConfig } from '../../lib/store-pg.mjs';
 import { seal, open } from '../../lib/secrets.mjs';
-import { CFG, TEST_MASTER_KEY, makeFixture, setEmissionControl, uniqueRut, seedIdentity } from './fixtures.mjs';
+import { CFG, TEST_MASTER_KEY, makeFixture, setEmissionControl, uniqueRut, seedRutConfirmation } from './fixtures.mjs';
 
 let admin;   // administra credenciales (conexión A)
 let worker;  // reclama la venta (conexión B)
@@ -73,12 +73,12 @@ test('serialización: el reclamo espera a un reemplazo de credenciales en curso 
 
   // Reconectar deja el emisor sin habilitar ni verificar: no se puede emitir hasta que el propietario verifique.
   await assert.rejects(worker.query(...claimSql(f.businessId, f.saleId, f.operationId)), /FISCAL_ISSUER_NOT_ENABLED/);
-  // Migración H: la clave nueva (y el RUT nuevo) invalidan la verificación de identidad anterior:
-  // Walinka no puede aprobar hasta verificarla de nuevo con el proveedor.
-  await assert.rejects(c.query(`update fiscal.issuers set review_status = 'approved', enabled = true, verified = true where business_id = $1`, [f.businessId]),
-    /FISCAL_IDENTITY_NOT_VERIFIED: credentials_changed/);
-  await seedIdentity(c, f.businessId, f.userId);
   await c.query(`update fiscal.issuers set review_status = 'approved', enabled = true, verified = true where business_id = $1`, [f.businessId]);
+  // Migración H: la clave nueva (y el RUT nuevo) invalidan la confirmación anterior del RUT: no se
+  // emite hasta que el propietario confirme de nuevo.
+  await assert.rejects(worker.query(...claimSql(f.businessId, f.saleId, f.operationId)),
+    /FISCAL_RUT_NOT_CONFIRMED: credentials_changed/);
+  await seedRutConfirmation(c, f.businessId, f.userId);
 
   // Tras ambas verificaciones, B reclama y recibe la clave nueva, nunca la anterior.
   const r = await worker.query(...claimSql(f.businessId, f.saleId, f.operationId));

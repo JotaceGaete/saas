@@ -7,13 +7,13 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { assertLocalTestConfig } from '../../lib/store-pg.mjs';
 import { seal } from '../../lib/secrets.mjs';
-import { CFG, makeFixture, uniqueRut, seedIdentity, verifyIdentity, ensureIdentityContract } from './fixtures.mjs';
+import { CFG, makeFixture, uniqueRut, confirmRut, setEmissionControl } from './fixtures.mjs';
 
 const MASTER = randomBytes(32);
 const API_KEY = 'dtc_live_SECRET_DO_NOT_STORE_PLAIN_0123456789';
 
 let c;
-before(async () => { c = new pg.Client(assertLocalTestConfig(CFG)); await c.connect(); await ensureIdentityContract(c); });
+before(async () => { c = new pg.Client(assertLocalTestConfig(CFG)); await c.connect(); });
 after(async () => { await c.end(); });
 
 async function newBusiness() {
@@ -44,14 +44,11 @@ async function plainUser() {
 // Un RUT propio por comercio (la migración H impide repetirlo entre comercios), estable entre
 // guardados del mismo comercio.
 const rutOf = new Map();
-async function saveKey(businessId, actorId, apiKey = API_KEY, { verifiedIdentity = true } = {}) {
+async function saveKey(businessId, actorId, apiKey = API_KEY) {
   if (!rutOf.has(businessId)) rutOf.set(businessId, uniqueRut());
   const rec = seal({ apiKey }, { key: MASTER, businessId, provider: 'dtecore', keyVersion: 1 });
   await c.query(`select public.crm_fiscal_save_credentials($1, $2, $6, $3, $4, $5, 1)`,
     [businessId, actorId, rec.ciphertext, rec.iv, rec.authTag, rutOf.get(businessId)]);
-  // Como api/_lib/fiscal-connection.js: al guardar, Walinka verifica con el proveedor (simulado) que
-  // la key pertenece al RUT. Sin esto Walinka no puede aprobar (migración H).
-  if (verifiedIdentity) await seedIdentity(c, businessId, actorId);
 }
 
 const submit = (businessId, actorId, { numero = 80, fecha = '2014-08-22', sucursalNombre = null, sucursalCodigo = null } = {}) =>
@@ -234,36 +231,40 @@ test('permisos: anon y authenticated no ejecutan las funciones nuevas', async ()
   }
 });
 
-// --- Vinculación fiscal (migración H): aprobar exige que la key pertenezca al RUT ---------------
-test('vinculación: la key de otra empresa (mismatch) impide aprobar; con la key correcta sí', async () => {
-  const { businessId, ownerId } = await newBusiness();
-  const adminId = await admin();
-  await saveKey(businessId, ownerId, API_KEY, { verifiedIdentity: false });
-  await submit(businessId, ownerId);
-  // El proveedor (simulado) informa otro RUT como dueño de la key.
-  const r = await verifyIdentity(c, businessId, ownerId, uniqueRut());
-  assert.equal(r.outcome, 'mismatch');
-  await rejects(review(businessId, adminId, 'approve'), 'FISCAL_IDENTITY_NOT_VERIFIED');
-  assert.equal((await issuer(businessId)).verified, false);
-  // El comercio corrige la key; el proveedor confirma su RUT; Walinka aprueba.
-  await saveKey(businessId, ownerId, 'OTRA_KEY_CORRECTA_0123456789', { verifiedIdentity: false });
-  assert.equal((await verifyIdentity(c, businessId, ownerId, rutOf.get(businessId))).outcome, 'match');
-  await submit(businessId, ownerId);
-  await review(businessId, adminId, 'approve');
-  assert.equal((await issuer(businessId)).verified, true);
+// --- Confirmación del RUT por el propietario (migración H) ------------------------------------
+test('confirmación del RUT: aprobado pero sin confirmar no emite; confirmado sí reclama', async () => {
+  const f = await makeFixture(c, { rutConfirmed: false });
+  const prev = (await c.query(`select enabled from fiscal.dte39_emission_control where singleton`)).rows[0]?.enabled ?? false;
+  await setEmissionControl(c, true);
+  const claim = () => c.query(`select public.crm_fiscal_claim_with_credentials($1, $2, $3) as r`, [f.businessId, f.saleId, f.operationId]);
+  await rejects(claim(), 'FISCAL_RUT_NOT_CONFIRMED: not_confirmed');
+  assert.equal((await status(f.businessId)).rutConfirmationReason, 'not_confirmed');
+  const r = await confirmRut(c, f.businessId, f.userId, f.issuerRut);
+  assert.equal(r.confirmed, true);
+  assert.equal(r.block_reason, null);
+  assert.equal((await claim()).rows[0].r.claimed, true);
+  const aud = await c.query(`select action from fiscal.admin_audit where business_id = $1 and action = 'rut_confirmed'`, [f.businessId]);
+  assert.equal(aud.rowCount, 1);
+  await setEmissionControl(c, prev);
 });
 
-test('vinculación: sin contrato de identidad del proveedor no se registra verificación ni se aprueba', async () => {
+test('confirmación del RUT: solo el propietario fiscal y solo el RUT guardado (pantalla al día)', async () => {
+  const f = await makeFixture(c, { rutConfirmed: false });
+  const stranger = await admin();
+  await rejects(confirmRut(c, f.businessId, stranger, f.issuerRut), 'FISCAL_ROLE_REQUIRED');
+  await rejects(confirmRut(c, f.businessId, f.userId, uniqueRut()), 'FISCAL_RUT_CONFIRMATION_STALE');
+  await rejects(confirmRut(c, f.businessId, f.userId, '12345678-0'), 'FISCAL_RUT_CONFIRMATION_INVALID');
+  assert.equal((await status(f.businessId)).rutConfirmed, false);
+});
+
+test('confirmación del RUT: cambiar la API key o el RUT exige confirmar de nuevo', async () => {
   const { businessId, ownerId } = await newBusiness();
-  const adminId = await admin();
-  await ensureIdentityContract(c, false);
-  try {
-    await saveKey(businessId, ownerId, API_KEY, { verifiedIdentity: false });
-    await submit(businessId, ownerId);
-    await rejects(verifyIdentity(c, businessId, ownerId, rutOf.get(businessId)), 'FISCAL_IDENTITY_CONTRACT_PENDING');
-    await rejects(review(businessId, adminId, 'approve'), 'FISCAL_IDENTITY_NOT_VERIFIED');
-    assert.equal((await status(businessId)).identityBlockReason, 'contract_pending');
-  } finally {
-    await ensureIdentityContract(c, true);
-  }
+  await saveKey(businessId, ownerId);
+  await confirmRut(c, businessId, ownerId, rutOf.get(businessId));
+  assert.equal((await status(businessId)).rutConfirmed, true);
+  await saveKey(businessId, ownerId, 'OTRA_KEY_DE_PRUEBA_0123456789');
+  assert.equal((await status(businessId)).rutConfirmationReason, 'credentials_changed');
+  await confirmRut(c, businessId, ownerId, rutOf.get(businessId));
+  await c.query(`update fiscal.issuers set issuer_rut = $2 where business_id = $1`, [businessId, uniqueRut()]);
+  assert.equal((await status(businessId)).rutConfirmationReason, 'rut_changed');
 });

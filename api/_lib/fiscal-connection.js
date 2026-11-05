@@ -11,17 +11,14 @@
 //    negocio + RUT). Otro negocio, o el mismo con otro RUT, no puede guardar credenciales ni enviar
 //    la solicitud. Desconectar sí se permite siempre (solo borra).
 
-import { seal, open } from '../../supabase/functions/fiscal-emit/lib/secrets.mjs';
-import { resolveKeyOwnerRut } from '../../supabase/functions/fiscal-emit/lib/identity.mjs';
-import { mapCredentialRecord } from '../../supabase/functions/fiscal-emit/lib/store-common.mjs';
-import { createSiisolutionsHttpProvider } from '../../supabase/functions/fiscal-emit/lib/providers/siisolutions-http.mjs';
+import { seal } from '../../supabase/functions/fiscal-emit/lib/secrets.mjs';
 import { CANONICAL_PROVIDER } from '../../supabase/functions/fiscal-emit/lib/provider-ids.mjs';
 import { isAllowlist, normalizeRut } from '../../supabase/functions/fiscal-emit/lib/allowlist.mjs';
 
 const KEY_VERSION = 1;
 const CONNECT_FIELDS = new Set(['action', 'apiKey', 'issuerRut']);
 const DISCONNECT_FIELDS = new Set(['action']);
-const VERIFY_FIELDS = new Set(['action']);
+const CONFIRM_RUT_FIELDS = new Set(['action', 'issuerRut']);
 const TAX_DEFAULT_FIELDS = new Set(['action', 'category']);
 const TAX_CATEGORIES = new Set(['IVA_AFECTO_19', 'EXENTO', 'NO_AFECTO']);
 const SUBMIT_FIELDS = new Set(['action', 'apiKey', 'issuerRut', 'resolucionNumero', 'resolucionFecha', 'sucursalNombre', 'sucursalCodigo']);
@@ -77,7 +74,8 @@ function mapDbError(err) {
   if (msg.includes('FISCAL_ISSUER_RUT_TAKEN')) return fail(409, 'RUT_NOT_AVAILABLE');
   if (msg.includes('FISCAL_ISSUER_RUT_INVALID')) return fail(400, 'INVALID_RUT');
   if (msg.includes('FISCAL_RUT_CHANGE_BLOCKED')) return fail(409, 'RUT_CHANGE_BLOCKED');
-  if (msg.includes('FISCAL_IDENTITY_NOT_VERIFIED')) return fail(409, 'IDENTITY_NOT_VERIFIED');
+  if (msg.includes('FISCAL_RUT_CONFIRMATION_STALE')) return fail(409, 'RUT_CONFIRMATION_STALE');
+  if (msg.includes('FISCAL_ROLE_REQUIRED')) return fail(403, 'BUSINESS_NOT_AUTHORIZED');
   if (msg.includes('FISCAL_CREDENTIALS_MISSING')) return fail(409, 'API_KEY_REQUIRED');
   return fail(503, 'SERVER_ERROR');
 }
@@ -88,8 +86,8 @@ function toBytea(buf) {
 
 // Estado público de la conexión. Nunca contiene la clave.
 const REVIEW_STATUSES = new Set(['draft', 'pending_review', 'approved', 'rejected', 'suspended']);
-const IDENTITY_REASONS = new Set(['issuer_missing', 'credentials_missing', 'contract_pending', 'not_checked',
-  'last_check_mismatch', 'credentials_changed', 'rut_changed']);
+const RUT_CONFIRMATION_REASONS = new Set(['issuer_missing', 'credentials_missing', 'not_confirmed',
+  'credentials_changed', 'rut_changed']);
 
 function publicConnection(row) {
   if (!row) {
@@ -97,7 +95,7 @@ function publicConnection(row) {
       connected: false, issuerRut: null, enabled: false, verified: false, keyVersion: null, updatedAt: null,
       reviewStatus: 'draft', reviewNote: null, submittedAt: null, reviewedAt: null,
       resolucionNumero: null, resolucionFecha: null, sucursalNombre: null, sucursalCodigo: null,
-      defaultTaxCategory: null, identityVerified: false, identityBlockReason: 'credentials_missing',
+      defaultTaxCategory: null, rutConfirmed: false, rutConfirmationReason: 'credentials_missing',
     };
   }
   return {
@@ -116,16 +114,13 @@ function publicConnection(row) {
     sucursalNombre: row.sucursalNombre ?? null,
     sucursalCodigo: row.sucursalCodigo ?? null,
     defaultTaxCategory: TAX_CATEGORIES.has(row.defaultTaxCategory) ? row.defaultTaxCategory : null,
-    // Migración H: la API key verificada contra el RUT (sin esto no se emite).
-    identityVerified: row.identityVerified === true,
-    identityBlockReason: IDENTITY_REASONS.has(row.identityBlockReason) ? row.identityBlockReason : null,
+    // Migración H: el propietario confirmó el RUT para la API key vigente (sin esto no se emite).
+    rutConfirmed: row.rutConfirmed === true,
+    rutConfirmationReason: RUT_CONFIRMATION_REASONS.has(row.rutConfirmationReason) ? row.rutConfirmationReason : null,
   };
 }
 
-// identityProvider: adaptador de DTE Core con verifyIdentity (lib/identity.mjs). El real declara
-// identityContractVerified = false: sin contrato documentado no se llama a la red.
-export function createFiscalConnectionService({ admin, masterKey, allowedIssuers,
-  identityProvider = createSiisolutionsHttpProvider() }) {
+export function createFiscalConnectionService({ admin, masterKey, allowedIssuers }) {
   if (!admin || typeof admin.rpc !== 'function') throw new Error('admin client with rpc required');
   if (!masterKey) throw new Error('master key required');
   if (!isAllowlist(allowedIssuers)) throw new Error('allowedIssuers required (fail-closed)');
@@ -160,37 +155,6 @@ export function createFiscalConnectionService({ admin, masterKey, allowedIssuers
     return error ? mapDbError(error) : null;
   }
 
-  // Vinculación fiscal: Walinka pregunta al proveedor a qué RUT pertenece la API key y la base lo
-  // compara con el RUT del comercio (crm_fiscal_record_identity_check). El RUT que escribe el
-  // comercio nunca basta: sin coincidencia no se aprueba ni se emite.
-  //   'match' | 'mismatch' | 'unavailable' | 'contract_pending' (sin contrato: no se llama a la red)
-  async function verifyIdentity(businessId, actorId, apiKey) {
-    const r = await resolveKeyOwnerRut({ provider: identityProvider, apiKey });
-    if (r.status === 'contract_pending') return { identity: 'contract_pending' };
-    const { data, error } = await admin.rpc('crm_fiscal_record_identity_check', {
-      p_business_id: businessId,
-      p_actor_user_id: actorId,
-      p_observed_rut: r.status === 'resolved' ? r.rut : null,
-      p_detail: r.status === 'resolved' ? {} : { reason: r.reason },
-    });
-    if (error) {
-      if (String(error.message ?? '').includes('FISCAL_IDENTITY_CONTRACT_PENDING')) return { identity: 'contract_pending' };
-      return { failed: mapDbError(error) };
-    }
-    return { identity: ['match', 'mismatch', 'unavailable'].includes(data?.outcome) ? data.outcome : 'unavailable' };
-  }
-
-  // Guarda la API key y la verifica en el mismo paso. Un RUT distinto rechaza la configuración:
-  // queda registrado, el emisor sigue sin aprobar y no se emite.
-  async function saveAndVerify(businessId, actorId, issuerRut, apiKey) {
-    const failed = await saveCredentials(businessId, actorId, issuerRut, apiKey);
-    if (failed) return { failed };
-    const v = await verifyIdentity(businessId, actorId, apiKey);
-    if (v.failed) return v;
-    if (v.identity === 'mismatch') return { failed: fail(409, 'IDENTITY_MISMATCH') };
-    return v;
-  }
-
   async function connect({ businessId, actorId, body }) {
     for (const key of Object.keys(body)) {
       if (!CONNECT_FIELDS.has(key)) return fail(400, 'UNKNOWN_FIELD');
@@ -200,36 +164,32 @@ export function createFiscalConnectionService({ admin, masterKey, allowedIssuers
     if (!allowedIssuers.permits(businessId, issuerRut)) return NOT_ALLOWED();
     const apiKey = validateApiKey(body.apiKey);
     if (!apiKey) return fail(400, 'INVALID_API_KEY');
-    const v = await saveAndVerify(businessId, actorId, issuerRut, apiKey);
-    if (v.failed) return v.failed;
+    const failed = await saveCredentials(businessId, actorId, issuerRut, apiKey);
+    if (failed) return failed;
 
     const r = await readStatus(businessId);
     if (!r.ok) return { status: r.status, body: r.body };
-    return { status: 200, body: { connection: r.connection, identity: v.identity } };
+    return { status: 200, body: { connection: r.connection } };
   }
 
-  // Vuelve a verificar la API key guardada (p. ej. si el proveedor no respondió, o cuando DTE Core
-  // documente su endpoint de identidad). La clave se descifra solo aquí, en el servidor.
-  async function verify({ businessId, actorId, body }) {
+  // Confirmación expresa del propietario: «este es el RUT de mi empresa y esta es su API key de
+  // DTE Core». issuerRut es el RUT que el propietario VE en pantalla; la base lo compara con el
+  // guardado (si cambió entretanto, RUT_CONFIRMATION_STALE) y ata la confirmación a la credencial
+  // vigente. Cambiar la key o el RUT exige confirmar de nuevo antes de emitir.
+  async function confirmRut({ businessId, actorId, body }) {
     for (const key of Object.keys(body)) {
-      if (!VERIFY_FIELDS.has(key)) return fail(400, 'UNKNOWN_FIELD');
+      if (!CONFIRM_RUT_FIELDS.has(key)) return fail(400, 'UNKNOWN_FIELD');
     }
-    if (!allowedIssuers.permitsBusiness(businessId)) return NOT_ALLOWED();
-    const { data, error } = await admin.rpc('crm_fiscal_get_credentials', { p_business_id: businessId });
+    const issuerRut = normalizeRut(body.issuerRut);
+    if (!issuerRut) return fail(400, 'INVALID_RUT');
+    if (!allowedIssuers.permits(businessId, issuerRut)) return NOT_ALLOWED();
+    const { error } = await admin.rpc('crm_fiscal_confirm_issuer_rut', {
+      p_business_id: businessId, p_actor_user_id: actorId, p_confirmed_rut: issuerRut,
+    });
     if (error) return mapDbError(error);
-    if (!data) return fail(409, 'API_KEY_REQUIRED');
-    let apiKey;
-    try {
-      apiKey = open(mapCredentialRecord(data), { key: masterKey, businessId }).apiKey;
-    } catch {
-      return fail(503, 'SERVER_ERROR');
-    }
-    const v = await verifyIdentity(businessId, actorId, apiKey);
-    if (v.failed) return v.failed;
-    if (v.identity === 'mismatch') return fail(409, 'IDENTITY_MISMATCH');
     const r = await readStatus(businessId);
     if (!r.ok) return { status: r.status, body: r.body };
-    return { status: 200, body: { connection: r.connection, identity: v.identity } };
+    return { status: 200, body: { connection: r.connection } };
   }
 
   // Formulario único del comercio: RUT + API key + resolución SII (+ sucursal) y envío a revisión
@@ -251,8 +211,8 @@ export function createFiscalConnectionService({ admin, masterKey, allowedIssuers
     if (hasKey) {
       const apiKey = validateApiKey(body.apiKey);
       if (!apiKey) return fail(400, 'INVALID_API_KEY');
-      const v = await saveAndVerify(businessId, actorId, issuerRut, apiKey);
-      if (v.failed) return v.failed;
+      const failed = await saveCredentials(businessId, actorId, issuerRut, apiKey);
+      if (failed) return failed;
     } else {
       const current = await readStatus(businessId);
       if (!current.ok) return { status: current.status, body: current.body };
@@ -303,5 +263,5 @@ export function createFiscalConnectionService({ admin, masterKey, allowedIssuers
     return { status: 200, body: { connection: r.connection } };
   }
 
-  return Object.freeze({ status, connect, verify, submit, setTaxDefault, disconnect });
+  return Object.freeze({ status, connect, confirmRut, submit, setTaxDefault, disconnect });
 }

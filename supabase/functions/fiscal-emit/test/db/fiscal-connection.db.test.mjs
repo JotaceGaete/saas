@@ -8,7 +8,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { assertLocalTestConfig } from '../../lib/store-pg.mjs';
 import { seal } from '../../lib/secrets.mjs';
-import { CFG, makeFixture, uniqueRut, seedIdentity } from './fixtures.mjs';
+import { CFG, makeFixture, uniqueRut } from './fixtures.mjs';
 
 const MASTER = randomBytes(32);
 const SAVE_SIG = 'public.crm_fiscal_save_credentials(uuid,uuid,text,bytea,bytea,bytea,integer)';
@@ -84,9 +84,9 @@ test('guardar: conecta el RUT y cifra; el estado no revela la clave ni el texto 
   const s = await status(f.businessId);
   assert.equal(s.connected, true);
   assert.equal(s.issuerRut, rut);
-  // H: una conexión recién guardada no está verificada (credencial↔RUT).
-  assert.equal(s.identityVerified, false);
-  assert.equal(s.identityBlockReason, 'not_checked');
+  // H: una conexión recién guardada no tiene el RUT confirmado por el propietario.
+  assert.equal(s.rutConfirmed, false);
+  assert.equal(s.rutConfirmationReason, 'not_confirmed');
   assert.equal(s.keyVersion, 1);
   assert.equal(JSON.stringify(s).includes(API_KEY), false);
 });
@@ -174,7 +174,6 @@ test('bloqueo solo por el negocio afectado: otro comercio con emisión en curso 
 test('desconectar: borra la credencial, deshabilita el emisor y el estado queda sin conexión', async () => {
   const f = await makeFixture(c, { withCredentials: false, issuerEnabled: false, issuerVerified: false });
   await save(f.businessId, f.userId);
-  await seedIdentity(c, f.businessId, f.userId);
   await c.query(`update fiscal.issuers set review_status = 'approved', enabled = true, verified = true where business_id = $1`, [f.businessId]);
   await c.query(`select public.crm_fiscal_disconnect($1,$2)`, [f.businessId, f.userId]);
   assert.equal(await credentialRow(f.businessId), null);

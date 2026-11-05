@@ -54,14 +54,14 @@ echo "-- verificación posterior"
 $P -d $DB -At -F ' | ' -f "$HERE/03-verificacion-post-H.sql" | tee $SP/post.txt
 grep -q '| f$' $SP/post.txt && { echo "FALLA: verificación posterior"; fails=$((fails+1)); }
 # La recuperación se niega si hay evidencia (y no cambia nada).
-$P -d $DB -c "insert into fiscal.identity_checks (business_id, provider, key_version, credential_fp, expected_rut, observed_rut, outcome, actor_user_id)
-              values ('cccccccc-0000-4000-8000-0000000000cc', 'dtecore', 1, repeat('a', 64), '76123456-0', '76123456-0', 'match', 'c0000000-0000-4000-8000-00000000000c')" >/dev/null
+$P -d $DB -c "insert into fiscal.rut_confirmations (business_id, provider, key_version, credential_fp, confirmed_rut, actor_user_id)
+              values ('cccccccc-0000-4000-8000-0000000000cc', 'dtecore', 1, repeat('a', 64), '76123456-0', 'c0000000-0000-4000-8000-00000000000c')" >/dev/null
 $P -d $DB -At -f $FP > $SP/fp-postH.txt
 if $P -d $DB -f "$HERE/02-recuperacion-H.sql" >/dev/null 2>$SP/rb1.txt; then echo "FALLA: la recuperación no se negó con evidencia"; fails=$((fails+1)); else grep -o 'RECUPERACION_H[^.]*' $SP/rb1.txt | head -1; fi
 $P -d $DB -At -f $FP > $SP/fp-postH2.txt
 diff -q $SP/fp-postH.txt $SP/fp-postH2.txt >/dev/null && echo "negativa sin cambios en el catálogo" || { echo "FALLA: la negativa cambió el catálogo"; fails=$((fails+1)); }
 # Sin evidencia: revierte y queda igual que antes de H.
-$P -d $DB -c "set session_replication_role = replica; delete from fiscal.identity_checks" >/dev/null
+$P -d $DB -c "set session_replication_role = replica; delete from fiscal.rut_confirmations" >/dev/null
 if $P -d $DB -f "$HERE/02-recuperacion-H.sql" >/dev/null 2>$SP/rb2.txt; then echo "recuperación aplicada"; else echo "FALLA al revertir H"; grep -v NOTICE $SP/rb2.txt | head; fails=$((fails+1)); fi
 $P -d $DB -At -f $FP > $SP/fp-rbH.txt
 if diff -q $SP/fp-preH.txt $SP/fp-rbH.txt >/dev/null; then echo "revertir H -> idéntico al estado previo a H"; else echo "revertir H -> DIFERENCIAS:"; diff $SP/fp-preH.txt $SP/fp-rbH.txt | head -20; fails=$((fails+1)); fi

@@ -47,15 +47,14 @@ insert into public.crm_invoices (id, business_id, invoice_number, status, paid_a
 insert into public.crm_invoice_items (invoice_id, name, unit_price, quantity, subtotal, sort_order) values
   ('5a000000-0000-4000-8000-0000000000a1','Café',1190,1,1190,1), ('5b000000-0000-4000-8000-0000000000b1','Café',1190,1,1190,1);
 insert into public.wa_products (id, business_id, name, price) values ('9a000000-0000-4000-8000-0000000000a1','aaaaaaaa-0000-4000-8000-0000000000aa','Producto A',1190);
--- Migración H: identidad credencial↔RUT verificada (simulada) para A y B y contrato de identidad
--- marcado como verificado, solo dentro de esta transacción. Sin esto ninguna fila puede pasar a sending.
-insert into fiscal.identity_checks (business_id, provider, key_version, credential_fp, expected_rut, observed_rut, outcome, actor_user_id, detail)
-select c.business_id, c.provider, c.key_version, fiscal.credential_fp(c.business_id), i.issuer_rut, i.issuer_rut, 'match',
-       '00000000-0000-4000-8000-000000000001', '{"adversarial": true}'::jsonb
+-- Migración H: cada propietario confirmó su RUT para su credencial (solo dentro de esta transacción).
+-- Sin esto ninguna fila puede pasar a sending.
+insert into fiscal.rut_confirmations (business_id, provider, key_version, credential_fp, confirmed_rut, actor_user_id)
+select c.business_id, c.provider, c.key_version, fiscal.credential_fp(c.business_id), i.issuer_rut,
+       '00000000-0000-4000-8000-000000000001'
   from fiscal.business_credentials c join fiscal.issuers i using (business_id)
  where c.business_id in ('aaaaaaaa-0000-4000-8000-0000000000aa','bbbbbbbb-0000-4000-8000-0000000000bb');
-update fiscal.dte39_emission_control set identity_contract_verified = true where singleton;
--- Con la identidad verificada, Walinka aprueba a ambos emisores.
+-- Walinka aprueba a ambos emisores.
 update fiscal.issuers set enabled = true, verified = true, review_status = 'approved'
  where business_id in ('aaaaaaaa-0000-4000-8000-0000000000aa','bbbbbbbb-0000-4000-8000-0000000000bb');
 

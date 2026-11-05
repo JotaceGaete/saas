@@ -36,22 +36,19 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
   const auditLog = [];
   const siiEvents = [];
   const retroBlocks = new Set(); // sale ids bloqueadas para emisión retroactiva automática
-  // identityContractVerified: espejo de dte39_emission_control.identity_contract_verified (migración H).
-  const control = { enabled: emissionEnabled, identityContractVerified: true };
-  // Espejo de fiscal.identity_checks: última verificación concluyente por negocio.
-  const identity = new Map(); // b -> { fp, expectedRut, observedRut, outcome }
+  const control = { enabled: emissionEnabled };
+  // Espejo de fiscal.rut_confirmations: última confirmación del propietario por negocio.
+  const identity = new Map(); // b -> { fp, rut }
   const fpOf = (b) => (creds.has(b) ? JSON.stringify(creds.get(b)) : null);
   // Espejo de fiscal.identity_block_reason.
   function identityBlockReason(b) {
     const iss = issuers.get(b);
     if (!iss) return 'issuer_missing';
     if (!creds.has(b)) return 'credentials_missing';
-    if (!control.identityContractVerified) return 'contract_pending';
     const k = identity.get(b);
-    if (!k) return 'not_checked';
-    if (k.outcome !== 'match') return `last_check_${k.outcome}`;
+    if (!k) return 'not_confirmed';
     if (k.fp !== fpOf(b)) return 'credentials_changed';
-    if (k.expectedRut !== iss.issuerRut || k.observedRut !== iss.issuerRut) return 'rut_changed';
+    if (k.rut !== iss.issuerRut) return 'rut_changed';
     return null;
   }
   const faults = new Map();
@@ -61,7 +58,7 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
   const key = (b, s) => `${b}|${s}`;
   const rkey = (b, u) => `${b}|${u}`;
 
-  function seed({ businessId, userId, saleId, total = 2380, cash = true, withLines = true, point = null, active = true, owner = true, issuerRut = '76123456-7', identityVerified = true }) {
+  function seed({ businessId, userId, saleId, total = 2380, cash = true, withLines = true, point = null, active = true, owner = true, issuerRut = '76123456-7', rutConfirmed = true }) {
     businesses.set(businessId, { id: businessId, userId, countryCode: 'CL', isActive: active });
     sales.set(saleId, {
       id: saleId, businessId, status: 'pagada', paidAt: new Date(), total, discountAmount: 0,
@@ -78,8 +75,8 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
       : point ? [{ method: 'mercado_pago', amount: total, status: 'received', voided: false }] : []);
     pointOps.set(saleId, point ? [point] : []);
     creds.set(businessId, seal({ apiKey: `TEST-KEY-${businessId}` }, { key: masterKey, businessId }));
-    if (identityVerified) {
-      identity.set(businessId, { fp: fpOf(businessId), expectedRut: issuerRut, observedRut: issuerRut, outcome: 'match' });
+    if (rutConfirmed) {
+      identity.set(businessId, { fp: fpOf(businessId), rut: issuerRut });
     }
     // Espejo de la migración: el dueño recibe fiscal_owner al sembrarse el negocio.
     if (owner) grantRole(businessId, userId, 'fiscal_owner');
@@ -171,11 +168,10 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
     issuers,
     identity,
     identityBlockReason,
-    // Atajo de pruebas: verificación vigente para la credencial actual (como tras reemplazarla y
-    // volver a verificarla con el proveedor).
-    markIdentityVerified(b) {
+    // Atajo de pruebas: el propietario confirma el RUT para la credencial actual.
+    markRutConfirmed(b) {
       const iss = issuers.get(b);
-      identity.set(b, { fp: fpOf(b), expectedRut: iss?.issuerRut, observedRut: iss?.issuerRut, outcome: 'match' });
+      identity.set(b, { fp: fpOf(b), rut: iss?.issuerRut });
     },
     receipts,
     sales,
@@ -232,7 +228,7 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
       const sameTenant = sale && sale.businessId === b;
       const iss = issuers.get(b);
       return {
-        issuer: iss ? { ...iss, identityVerified: identityBlockReason(b) === null, identityBlockReason: identityBlockReason(b) } : null,
+        issuer: iss ? { ...iss, rutConfirmed: identityBlockReason(b) === null, rutConfirmationReason: identityBlockReason(b) } : null,
         emissionEnabled: control.enabled,
         taxLinesVerified: taxOk,
         lines: (lines.get(s) ?? []).map((l) => ({ ...l })),
@@ -253,7 +249,7 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
       if (!iss || iss.provider !== c.provider) throw new FiscalError('FISCAL_PROVIDER_MISMATCH');
       // Espejo del trigger crm_fiscal_issuances_identity (migración H).
       const reason = identityBlockReason(b);
-      if (reason) throw new FiscalError('FISCAL_IDENTITY_NOT_VERIFIED', `FISCAL_IDENTITY_NOT_VERIFIED: ${reason}`);
+      if (reason) throw new FiscalError('FISCAL_RUT_NOT_CONFIRMED', `FISCAL_RUT_NOT_CONFIRMED: ${reason}`);
       if (!(await claimSale(b, s, op))) return { claimed: false, credentials: null };
       const row = issuances.get(key(b, s));
       if (row && !row.issuerRut) row.issuerRut = iss.issuerRut;

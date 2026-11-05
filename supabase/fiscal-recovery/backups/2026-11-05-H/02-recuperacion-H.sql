@@ -17,10 +17,10 @@ set local lock_timeout = '5s';
 do $$
 declare v integer;
 begin
-  select (select count(*) from fiscal.identity_checks) + (select count(*) from fiscal.rut_share_groups)
+  select (select count(*) from fiscal.rut_confirmations) + (select count(*) from fiscal.rut_share_groups)
        + (select count(*) from fiscal.tributary_corrections) + (select count(*) from fiscal.credit_notes) into v;
   if v > 0 then
-    raise exception 'RECUPERACION_H: hay % fila(s) de evidencia de H (identidad, RUT compartido, correcciones o notas de crédito). Exportarlas y decidir antes de revertir.', v;
+    raise exception 'RECUPERACION_H: hay % fila(s) de evidencia de H (confirmaciones de RUT, RUT compartido, correcciones o notas de crédito). Exportarlas y decidir antes de revertir.', v;
   end if;
 end;
 $$;
@@ -32,19 +32,17 @@ drop trigger if exists crm_payments_fiscal_lock on public.crm_payments;
 drop trigger if exists crm_fiscal_issuances_identity on public.crm_fiscal_issuances;
 drop trigger if exists crm_fiscal_issuances_register_folio on public.crm_fiscal_issuances;
 drop trigger if exists issuers_guard_rut on fiscal.issuers;
-drop trigger if exists issuers_identity_on_approve on fiscal.issuers;
 
 -- Tablas nuevas de H (vacías o derivables, ver arriba)
 drop table if exists fiscal.credit_notes;
 drop table if exists fiscal.tributary_corrections;
 drop table if exists fiscal.document_folios;
-drop table if exists fiscal.identity_checks;
+drop table if exists fiscal.rut_confirmations;
 
 -- Funciones de H que no existían antes
 drop function if exists public.crm_fiscal_draft_credit_note(uuid, uuid, uuid, integer, text, numeric, jsonb);
 drop function if exists public.crm_fiscal_authorize_tributary_correction(uuid, uuid, uuid, text, text);
-drop function if exists public.crm_fiscal_record_identity_check(uuid, uuid, text, jsonb);
-drop function if exists fiscal.guard_issuer_identity_on_approve();
+drop function if exists public.crm_fiscal_confirm_issuer_rut(uuid, uuid, text);
 drop function if exists public.crm_fiscal_create_rut_share(uuid, text, uuid[], text, text);
 drop function if exists fiscal.guard_credit_note();
 drop function if exists fiscal.guard_fiscalized_sale();
@@ -179,7 +177,6 @@ alter table public.crm_fiscal_issuances drop column if exists issuer_rut;
 drop index if exists fiscal.issuers_rut_unshared_uq;
 alter table fiscal.issuers drop column if exists rut_share_group;
 drop table if exists fiscal.rut_share_groups;
-alter table fiscal.dte39_emission_control drop column if exists identity_contract_verified;
 drop function if exists fiscal.normalize_rut(text);
 
 -- Acciones de auditoría: versión de G
@@ -187,7 +184,7 @@ alter table fiscal.admin_audit drop constraint if exists admin_audit_action_chec
 do $$
 declare v_new boolean;
 begin
-  select exists (select 1 from fiscal.admin_audit where action in ('identity_checked', 'rut_share_created',
+  select exists (select 1 from fiscal.admin_audit where action in ('rut_confirmed', 'rut_share_created',
     'tributary_correction_authorized', 'tributary_correction_change', 'credit_note_drafted')) into v_new;
   execute 'alter table fiscal.admin_audit add constraint admin_audit_action_check'
        || ' check (action in (''reconcile_attempt'', ''reconcile_result'', ''owner_changed'', ''credentials_saved'','

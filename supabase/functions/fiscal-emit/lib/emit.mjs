@@ -178,9 +178,9 @@ export function createFiscalEmitter({
     } catch (err) {
       // Mismo código público con cualquier almacén (SQL o memoria).
       if (err?.code === 'FISCAL_CREDENTIALS_MISSING') throw new FiscalError('CREDENTIALS_MISSING');
-      // La base exige identidad verificada al pasar a sending (migración H). Puede cambiar entre la
+      // La base exige el RUT confirmado al pasar a sending (migración H). Puede cambiar entre la
       // lectura del contexto y el reclamo (p. ej. se reemplazó la API key): no hay fila ni llamada.
-      if (err?.code === 'FISCAL_IDENTITY_NOT_VERIFIED') throw new FiscalError('FISCAL_IDENTITY_NOT_VERIFIED');
+      if (err?.code === 'FISCAL_RUT_NOT_CONFIRMED') throw new FiscalError('FISCAL_RUT_NOT_CONFIRMED');
       throw err;
     }
     if (!claim.claimed) throw new FiscalError('ALREADY_IN_PROGRESS');
@@ -298,9 +298,9 @@ export function createFiscalEmitter({
       blockedReason: null,
       liveAuthorized: provider.ready === true && provider.name === 'dtecore' && allowed
         && ctx?.issuer?.enabled === true && ctx?.issuer?.verified === true
-        && ctx?.issuer?.identityVerified === true,
-      // Migración H: estado de la verificación credencial↔RUT (sin detalles de la credencial).
-      identityVerified: ctx?.issuer?.identityVerified === true,
+        && ctx?.issuer?.rutConfirmed === true,
+      // Migración H: el propietario confirmó el RUT para la credencial vigente.
+      rutConfirmed: ctx?.issuer?.rutConfirmed === true,
       // Resolución SII del emisor para imprimir la boleta (o su reimpresión). null si no está.
       resolucion: null,
     };

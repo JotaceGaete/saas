@@ -157,9 +157,9 @@ test('estado: nunca contiene la clave ni el texto cifrado', async () => {
   const text = JSON.stringify(r.body);
   assert.equal(/ciphertext|iv|auth_tag|apiKey/.test(text), false);
   assert.deepEqual(Object.keys(r.body.connection).sort(), [
-    'connected', 'defaultTaxCategory', 'enabled', 'identityBlockReason', 'identityVerified', 'issuerRut', 'keyVersion',
+    'connected', 'defaultTaxCategory', 'enabled', 'issuerRut', 'keyVersion',
     'resolucionFecha', 'resolucionNumero', 'reviewNote',
-    'reviewStatus', 'reviewedAt', 'submittedAt', 'sucursalCodigo', 'sucursalNombre', 'updatedAt', 'verified',
+    'reviewStatus', 'reviewedAt', 'rutConfirmationReason', 'rutConfirmed', 'submittedAt', 'sucursalCodigo', 'sucursalNombre', 'updatedAt', 'verified',
   ]);
 });
 

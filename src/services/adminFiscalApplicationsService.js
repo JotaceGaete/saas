@@ -16,7 +16,6 @@ const ERROR_MESSAGES = Object.freeze({
   NOTE_REQUIRED: 'Escribe el motivo: el comercio lo verá.',
   REVIEW_STATE_CHANGED: 'La solicitud cambió mientras la revisabas. Actualiza la lista.',
   APPLICATION_INCOMPLETE: 'La solicitud está incompleta (falta API key o resolución). No se puede aprobar.',
-  IDENTITY_NOT_VERIFIED: 'No se puede aprobar: Walinka todavía no verificó con DTE Core que la API key pertenece al RUT del comercio.',
   APPLICATION_NOT_FOUND: 'La solicitud ya no existe.',
   NETWORK_ERROR: 'No pudimos conectar con el servidor.',
   SERVER_NOT_CONFIGURED: 'La facturación electrónica no está disponible en este entorno.',
