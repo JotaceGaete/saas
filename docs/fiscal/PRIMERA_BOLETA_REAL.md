@@ -9,8 +9,8 @@ Cada etapa necesita autorización expresa antes de ejecutarse.
 | # | Bloqueo | Quién lo resuelve |
 |---|---|---|
 | 1 | ~~Migraciones~~ **Resuelto 2026-11-05:** A–H aplicadas y registradas (H = `20261105200532 fiscal_h_identity_integrity`, md5 verificado, 18 comprobaciones en `true`). Ver `supabase/fiscal-recovery/PRODUCTION-MIGRATION-LEDGER-2026-11-04.md`. | — |
-| 2 | `fiscal-emit` no desplegada. Pruebas Deno (`npm run test:deno`, `deno check index.ts`) sin ejecutar: este entorno no tiene `deno`. | Ejecutar en un equipo con Deno o CLI de Supabase |
-| 3 | Secretos: `FISCAL_MASTER_KEY` (32 bytes base64), **la misma** en Supabase (descifra) y Vercel (cifra); `FISCAL_ALLOWED_ISSUERS="<uuid>=<rut>"` igual en ambos; `FISCAL_PROVIDER=dtecore` solo en Supabase. | Juan |
+| 2 | `fiscal-emit` no desplegada. Pruebas Deno 20/20 y `deno check index.ts` limpio (commit `438e136`, CORS con lista cerrada de orígenes, `verify_jwt=true`). | Despliegue aislado (Etapa 2), con autorización |
+| 3 | Secretos: `FISCAL_MASTER_KEY` (32 bytes base64), **la misma** en Supabase (descifra) y Vercel (cifra); `FISCAL_ALLOWED_ISSUERS="<uuid>=<rut>"` igual en ambos. `FISCAL_PROVIDER` **no se configura** en el despliegue aislado (Etapa 2) ni en la configuración (Etapa 3): sin él la función usa el adaptador bloqueado. `FISCAL_PROVIDER=dtecore` solo en Supabase y solo en la Etapa 4, con autorización expresa. | Juan |
 | 4 | Cuenta DTE Core de la empresa piloto: CAF de boletas (tipo 39) con folios disponibles, certificado activo, ambiente de producción. Confirmar que la "validación de operación" (409 `folioExistente` con `idBoletaOperacion` repetido) esté activa. | Juan con DTE Core |
 | 5 | Datos del emisor en Walinka: RUT + API key guardados, resolución SII (número y fecha reales), sucursal si aplica, solicitud aprobada por un administrador, **RUT confirmado por el propietario**. | Juan (propietario y admin) |
 | 6 | IVA de los productos: categoría por defecto del negocio o `tax_treatment` por producto en `IVA_AFECTO_19` (sin eso: `FISCAL_TAX_LINES_NOT_VERIFIED`). Solo ventas 100 % afectas, sin descuento, pagadas en efectivo o Point confirmado, del mismo día. | Juan |
@@ -27,17 +27,22 @@ md5 del archivo y las 18 comprobaciones de `03-verificacion-post-H.sql` en `true
 4. Correr `test-flujos-criticos.sql` en una copia o verificar a mano TPV, Point y numeración.
    `dte39_emission_control.enabled` sigue en `false`.
 
-**Etapa 2 — Despliegue sin emisión (con autorización).**
-1. `npm run test:deno` y `deno check index.ts`.
-2. Secretos de Supabase: `FISCAL_MASTER_KEY`, `FISCAL_ALLOWED_ISSUERS` (solo la empresa piloto),
-   `FISCAL_PROVIDER=dtecore`. Desplegar `fiscal-emit`.
-3. Vercel (Preview de la rama): `FISCAL_MASTER_KEY` (la misma), `FISCAL_ALLOWED_ISSUERS`,
-   `VITE_FISCAL_CONNECTION_ENABLED=true`, `VITE_FISCAL_EMIT_ENABLED=true`, `VITE_FISCAL_AUTO_EMIT=live`.
-   Producción: `VITE_FISCAL_AUTO_EMIT=off`.
-4. Comprobar que `status` de una venta devuelve `liveAuthorized: false` y un `blockedReason`
-   claro (emisión global apagada).
+**Etapa 2 — Despliegue aislado sin emisión (con autorización).**
+El proveedor queda bloqueado en toda esta etapa: `FISCAL_PROVIDER` **no existe** en los secretos de
+Supabase (ni `dtecore` ni `siisolutions`; cualquier otro valor o su ausencia usa el adaptador bloqueado).
+1. Pruebas: `npm run test:deno` y `deno check index.ts` (hecho en `438e136`: 20/20, limpio).
+2. Secretos de Supabase (revisados por Juan, solo por nombre): `FISCAL_MASTER_KEY`,
+   `FISCAL_ALLOWED_ISSUERS` (solo la empresa piloto), `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`.
+   `FISCAL_PROVIDER` ausente.
+3. Desplegar `fiscal-emit` desde el commit autorizado con `verify_jwt=true` explícito en la llamada de
+   despliegue (no basta `config.toml`) y los 18 archivos del grafo de `index.ts`.
+4. Vercel: sin cambios. `VITE_FISCAL_AUTO_EMIT` no se pone en `live` en ningún entorno.
+5. Comprobar: archivos publicados = commit, `verify_jwt=true`, CORS, y que `emit`/`status` de una venta
+   piloto devuelven `PROVIDER_NOT_READY` / `liveAuthorized: false`. Base sin cambios.
 
 **Etapa 3 — Configuración del comercio piloto.**
+0. Vercel, Preview autorizada (con autorización): `FISCAL_MASTER_KEY` (la misma que en Supabase),
+   `FISCAL_ALLOWED_ISSUERS`, `VITE_FISCAL_CONNECTION_ENABLED=true`. `FISCAL_PROVIDER` sigue ausente en Supabase.
 1. Configuración → Facturación electrónica: RUT, API key, resolución SII. Enviar.
 2. Administrador de Walinka aprueba.
 3. El propietario revisa el RUT mostrado y lo **confirma** (casilla + botón).
@@ -45,11 +50,14 @@ md5 del archivo y las 18 comprobaciones de `03-verificacion-post-H.sql` en `true
 5. Impresión: conector y Xprinter configurados; resolución visible en la vista previa.
 
 **Etapa 4 — Primera boleta (con autorización, en ventana corta).**
+0. Con autorización expresa: `FISCAL_PROVIDER=dtecore` en Supabase y, en la Preview autorizada,
+   `VITE_FISCAL_EMIT_ENABLED=true`, `VITE_FISCAL_AUTO_EMIT=live`
+   (producción: `VITE_FISCAL_AUTO_EMIT=off`).
 1. Encender `dte39_emission_control.enabled = true` (SQL, postgres).
 2. Venta TPV de bajo monto (p. ej. $1.190), un producto afecto, efectivo, sin descuento.
 3. Esperado: `issued` con folio; XML con `RUTEmisor` = RUT del comercio, `TipoDTE` 39, total
    correcto; PDF guardado; ticket térmico con timbre.
-4. Apagar `enabled = false` inmediatamente.
+4. Apagar `enabled = false` inmediatamente y volver a quitar `FISCAL_PROVIDER` si la ventana termina.
 5. Si queda `unknown`: no reintentar. Revisar el portal de DTE Core por el folio y conciliar.
 
 **Etapa 5 — Validación.**
