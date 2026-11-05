@@ -8,7 +8,7 @@ Cada etapa necesita autorización expresa antes de ejecutarse.
 
 | # | Bloqueo | Quién lo resuelve |
 |---|---|---|
-| 1 | Migración H no aplicada en producción. A–G **ya están aplicadas y registradas** (4-11-2026, verificado el 5-11-2026: ver `supabase/fiscal-recovery/MANIFEST.tsv`). Prechequeo de H ejecutado: sin bloqueos. | Juan autoriza; se aplica con `apply_migration` desde claude.ai web |
+| 1 | ~~Migraciones~~ **Resuelto 2026-11-05:** A–H aplicadas y registradas (H = `20261105200532 fiscal_h_identity_integrity`, md5 verificado, 18 comprobaciones en `true`). Ver `supabase/fiscal-recovery/MANIFEST.tsv`. | — |
 | 2 | `fiscal-emit` no desplegada. Pruebas Deno (`npm run test:deno`, `deno check index.ts`) sin ejecutar: este entorno no tiene `deno`. | Ejecutar en un equipo con Deno o CLI de Supabase |
 | 3 | Secretos: `FISCAL_MASTER_KEY` (32 bytes base64), **la misma** en Supabase (descifra) y Vercel (cifra); `FISCAL_ALLOWED_ISSUERS="<uuid>=<rut>"` igual en ambos; `FISCAL_PROVIDER=dtecore` solo en Supabase. | Juan |
 | 4 | Cuenta DTE Core de la empresa piloto: CAF de boletas (tipo 39) con folios disponibles, certificado activo, ambiente de producción. Confirmar que la "validación de operación" (409 `folioExistente` con `idBoletaOperacion` repetido) esté activa. | Juan con DTE Core |
@@ -21,12 +21,9 @@ Cada etapa necesita autorización expresa antes de ejecutarse.
 ## Plan
 
 **Etapa 1 — Base de datos (con autorización).**
-A–G ya están aplicadas y registradas en producción (`MANIFEST.tsv`). Falta solo H:
-1. `00-precheck-H.sql` (solo lectura): ejecutado el 5-11-2026, sin bloqueos.
-2. Confirmar respaldo físico reciente de Supabase.
-3. Aplicar H con `apply_migration` (nombre `fiscal_h_identity_integrity`, contenido exacto del archivo,
-   md5 `0c71ae71c9ab4ac1be9e78b70f8f3ded`). Comprobar que el historial la registra con ese md5 y correr
-   `03-verificacion-post-H.sql`. Recuperación preparada: `02-recuperacion-H.sql`.
+**Hecho (2026-11-05).** A–H aplicadas y registradas en producción (`MANIFEST.tsv`). H se aplicó con
+`apply_migration` tras repetir el prechequeo, con respaldo físico del 5-11-2026 11:22:09 UTC; historial con el
+md5 del archivo y las 18 comprobaciones de `03-verificacion-post-H.sql` en `true`.
 4. Correr `test-flujos-criticos.sql` en una copia o verificar a mano TPV, Point y numeración.
    `dte39_emission_control.enabled` sigue en `false`.
 

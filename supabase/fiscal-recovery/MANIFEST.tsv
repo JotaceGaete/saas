@@ -61,6 +61,7 @@ version	name	statements	chars	md5	archivo	md5_archivo	verificacion
 20261104183454	fiscal_g_manual_sql_editor_verified	1	1403	e951ceea658909b106dc10df754b3a8f	proposed/20261104_fiscal_product_tax_category.sql	4ba7d3901af5cee0db9eb51e2bcdd58d	verificada_por_huella
 # D: columnas, restricción y permisos idénticos al archivo; su función crm_fiscal_emission_context la reemplazan F y G.
 # G: sus 6 funciones son idénticas al archivo salvo los saltos de línea (CRLF del editor SQL).
-# Pendiente (NO aplicada; se agrega aquí solo después de aplicarla y verificar su registro):
-#   H  proposed/20261105_fiscal_identity_integrity.sql  md5 0c71ae71c9ab4ac1be9e78b70f8f3ded  nombre previsto fiscal_h_identity_integrity
+# H: aplicada el 2026-11-05 con apply_migration; registro verificado (md5 = archivo) y 18 comprobaciones de
+#    backups/2026-11-05-H/03-verificacion-post-H.sql en true.
+20261105200532	fiscal_h_identity_integrity	1	52281	0c71ae71c9ab4ac1be9e78b70f8f3ded	proposed/20261105_fiscal_identity_integrity.sql	0c71ae71c9ab4ac1be9e78b70f8f3ded	registro=archivo
 # Excluida a propósito: proposed/20261103_sale_number_guard_and_references.sql (NV).

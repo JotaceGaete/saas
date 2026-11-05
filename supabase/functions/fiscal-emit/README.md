@@ -77,7 +77,7 @@ npm run test:deno                                # 8 pruebas del cableado (requi
 Las pruebas de base necesitan una base local `*_test` con la migración propuesta aplicada y con
 privilegios de `service_role` (en Supabase vienen por defecto; en la base de prueba se conceden a mano).
 
-## Migración H — identidad fiscal por comercio (2026-11-05, propuesta, no aplicada; A–G sí están aplicadas)
+## Migración H — identidad fiscal por comercio (aplicada en producción el 2026-11-05 como `20261105200532 fiscal_h_identity_integrity`)
 
 `supabase/fiscal-recovery/proposed/20261105_fiscal_identity_integrity.sql` (después de G). Prechequeo,
 recuperación y verificación en `supabase/fiscal-recovery/backups/2026-11-05-H/`.
@@ -155,7 +155,7 @@ NO verificado:
 - Proveedor real DTECore: bloqueado hasta verificar el contrato por escrito.
 - Impresión: `lib/print-plan.mjs` prepara el plan desde el PDF guardado; no envía nada. Rasterizar el
   PDF a GS v 0 y la prueba de PDF417 en XP-80C están pendientes. Print Connector no se modificó.
-- Migraciones A–G aplicadas en producción (4-11-2026); H pendiente. Estado y correspondencia con los archivos: `supabase/fiscal-recovery/MANIFEST.tsv`.
+- Migraciones A–H aplicadas en producción (A–G el 4-11-2026, H el 5-11-2026). Estado y correspondencia con los archivos: `supabase/fiscal-recovery/MANIFEST.tsv`.
 - Endpoints de PDF y descarga en `main` (`api/fiscal/document.js`, `download.js`, `pdf.js`): siguen
   usando el guard solo de dueño (`api/_lib/siisolutions-owner-guard.js`). No se cambiaron en esta rama.
 
