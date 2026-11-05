@@ -37,3 +37,30 @@ version	name	statements	chars	md5
 20261031095333	fiscal_test_sale_marks	1	807	0d1786f8c2d85ffa1206c6731a935ac9
 20261031132520	fiscal_sweep_pending_queue	1	2971	32475e353d7807cbf72f15b90bce6f58
 20261031134508	harden_fiscal_point_pending	1	1715	a7860be0b1ba9c3c1164468e1bebe666
+#
+# --- Migraciones fiscales posteriores al piloto (conciliado 2026-11-05, solo lectura) -----------------
+# Fuente: supabase_migrations.schema_migrations (versión, nombre, statements, chars y md5 del registro).
+# El rango 20261029–20261031 de arriba se reconfirmó el 2026-11-05: producción tiene exactamente esas 34
+# filas y las 34 coinciden byte a byte con migrations/ (el "37" del resumen previo era un error de conteo).
+# Columnas extra: archivo del repo (relativo a esta carpeta), md5 del archivo y cómo se verificó:
+#   registro=archivo      aplicada con apply_migration; el registro es el archivo exacto.
+#   verificada_por_huella aplicada desde el editor SQL; el registro es un bloque de verificación y la
+#                         base se comparó objeto por objeto con una copia construida desde el archivo
+#                         (funciones, permisos, columnas, restricciones, triggers y políticas).
+#   sin_archivo           instantánea creada en producción; no tiene archivo en el repositorio.
+version	name	statements	chars	md5	archivo	md5_archivo	verificacion
+20261102222438	fiscal_p0_admin_tables	1	2710	2cfd3cdf135a7eba09686fed06d7078e	proposed/20261031_p0_fiscal_admin_tables.sql	2cfd3cdf135a7eba09686fed06d7078e	registro=archivo
+20261102222915	fiscal_pre_a_snapshot	1	2151	7f9ce83c1f51ee9abd2debb54baaf3bb	-	-	sin_archivo
+20261102223104	fiscal_pre_a_permissions_policies_snapshot	1	1293	25820b58e896ac48588b0cf878df2060	-	-	sin_archivo
+20261104164731	fiscal_a_single_ledger_guard	1	48398	160faa10c87791490eec7e2fffd5b66d	proposed/20261031_fiscal_single_ledger_guard.sql	160faa10c87791490eec7e2fffd5b66d	registro=archivo
+20261104165458	fiscal_b_connection	1	7970	1db2d679ae43cfdd64af60ca738ac2e4	proposed/20261101_fiscal_connection.sql	1db2d679ae43cfdd64af60ca738ac2e4	registro=archivo
+20261104171833	fiscal_c_provider_claim_guard	1	16199	f8f3b4e449d5cf98260fa1077385824c	proposed/20261102_fiscal_provider_claim_guard.sql	f8f3b4e449d5cf98260fa1077385824c	registro=archivo
+20261104182155	fiscal_d_manual_sql_editor_verified	1	1066	1aa5f9019c6e1f237fd91460a85434da	proposed/20261031_issuer_sucursal_config.sql	69dfda3c20a35066b5dabdd5cac25ecc	verificada_por_huella
+20261104182301	fiscal_e_sii_status	1	12803	4bb634b26688ef7b5e7c4b92fa3950ec	proposed/20261102_fiscal_sii_status.sql	4bb634b26688ef7b5e7c4b92fa3950ec	registro=archivo
+20261104182830	fiscal_f_onboarding_review	1	15948	69a9f756a36fc6ce1292a295f78077e2	proposed/20261104_fiscal_onboarding_review.sql	69a9f756a36fc6ce1292a295f78077e2	registro=archivo
+20261104183454	fiscal_g_manual_sql_editor_verified	1	1403	e951ceea658909b106dc10df754b3a8f	proposed/20261104_fiscal_product_tax_category.sql	4ba7d3901af5cee0db9eb51e2bcdd58d	verificada_por_huella
+# D: columnas, restricción y permisos idénticos al archivo; su función crm_fiscal_emission_context la reemplazan F y G.
+# G: sus 6 funciones son idénticas al archivo salvo los saltos de línea (CRLF del editor SQL).
+# Pendiente (NO aplicada; se agrega aquí solo después de aplicarla y verificar su registro):
+#   H  proposed/20261105_fiscal_identity_integrity.sql  md5 0c71ae71c9ab4ac1be9e78b70f8f3ded  nombre previsto fiscal_h_identity_integrity
+# Excluida a propósito: proposed/20261103_sale_number_guard_and_references.sql (NV).

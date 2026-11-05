@@ -8,24 +8,25 @@ Cada etapa necesita autorización expresa antes de ejecutarse.
 
 | # | Bloqueo | Quién lo resuelve |
 |---|---|---|
-| 1 | Migraciones A–H no aplicadas en producción (A estaba autorizada pero no se ejecutó: la interfaz no mostraba la confirmación del conector). | Juan: SQL editor de Supabase o sesión en claude.ai web |
-| 2 | Prechequeo de H (`backups/2026-11-05-H/00-precheck-H.sql`, solo lectura) no ejecutado en producción: no sabemos si el RUT del emisor actual pasa el dígito verificador. | Autorizar la consulta |
-| 3 | `fiscal-emit` no desplegada. Pruebas Deno (`npm run test:deno`, `deno check index.ts`) sin ejecutar: este entorno no tiene `deno`. | Ejecutar en un equipo con Deno o CLI de Supabase |
-| 4 | Secretos: `FISCAL_MASTER_KEY` (32 bytes base64), **la misma** en Supabase (descifra) y Vercel (cifra); `FISCAL_ALLOWED_ISSUERS="<uuid>=<rut>"` igual en ambos; `FISCAL_PROVIDER=dtecore` solo en Supabase. | Juan |
-| 5 | Cuenta DTE Core de la empresa piloto: CAF de boletas (tipo 39) con folios disponibles, certificado activo, ambiente de producción. Confirmar que la "validación de operación" (409 `folioExistente` con `idBoletaOperacion` repetido) esté activa. | Juan con DTE Core |
-| 6 | Datos del emisor en Walinka: RUT + API key guardados, resolución SII (número y fecha reales), sucursal si aplica, solicitud aprobada por un administrador, **RUT confirmado por el propietario**. | Juan (propietario y admin) |
-| 7 | IVA de los productos: categoría por defecto del negocio o `tax_treatment` por producto en `IVA_AFECTO_19` (sin eso: `FISCAL_TAX_LINES_NOT_VERIFIED`). Solo ventas 100 % afectas, sin descuento, pagadas en efectivo o Point confirmado, del mismo día. | Juan |
-| 8 | Impresión: el timbre PDF417 se validó con ZXing sobre el TED real, pero **falta medirlo impreso** (mínimo 2 x 4,5 cm), **leer el timbre impreso** y verificarlo en sii.cl (docs/fiscal/REPRESENTACION_BOLETA_80MM.md, filas 2, 6 y 8). | Prueba física con la Xprinter |
-| 9 | Respuestas no documentadas de DTE Core para la recuperación: `GET /dte/operaciones/39/{id}` y estado SII. No bloquean la emisión: ante un `unknown`, la venta queda bloqueada y se concilia en el portal de DTE Core. | Revisar la primera respuesta real |
-| 10 | Notas de crédito (DTE 61): diseño y esquema listos, emisión bloqueada. Una boleta mal emitida no se puede anular desde Walinka todavía: se hace en el portal de DTE Core. | Después de la primera boleta |
+| 1 | Migración H no aplicada en producción. A–G **ya están aplicadas y registradas** (4-11-2026, verificado el 5-11-2026: ver `supabase/fiscal-recovery/MANIFEST.tsv`). Prechequeo de H ejecutado: sin bloqueos. | Juan autoriza; se aplica con `apply_migration` desde claude.ai web |
+| 2 | `fiscal-emit` no desplegada. Pruebas Deno (`npm run test:deno`, `deno check index.ts`) sin ejecutar: este entorno no tiene `deno`. | Ejecutar en un equipo con Deno o CLI de Supabase |
+| 3 | Secretos: `FISCAL_MASTER_KEY` (32 bytes base64), **la misma** en Supabase (descifra) y Vercel (cifra); `FISCAL_ALLOWED_ISSUERS="<uuid>=<rut>"` igual en ambos; `FISCAL_PROVIDER=dtecore` solo en Supabase. | Juan |
+| 4 | Cuenta DTE Core de la empresa piloto: CAF de boletas (tipo 39) con folios disponibles, certificado activo, ambiente de producción. Confirmar que la "validación de operación" (409 `folioExistente` con `idBoletaOperacion` repetido) esté activa. | Juan con DTE Core |
+| 5 | Datos del emisor en Walinka: RUT + API key guardados, resolución SII (número y fecha reales), sucursal si aplica, solicitud aprobada por un administrador, **RUT confirmado por el propietario**. | Juan (propietario y admin) |
+| 6 | IVA de los productos: categoría por defecto del negocio o `tax_treatment` por producto en `IVA_AFECTO_19` (sin eso: `FISCAL_TAX_LINES_NOT_VERIFIED`). Solo ventas 100 % afectas, sin descuento, pagadas en efectivo o Point confirmado, del mismo día. | Juan |
+| 7 | Impresión: el timbre PDF417 se validó con ZXing sobre el TED real, pero **falta medirlo impreso** (mínimo 2 x 4,5 cm), **leer el timbre impreso** y verificarlo en sii.cl (docs/fiscal/REPRESENTACION_BOLETA_80MM.md, filas 2, 6 y 8). | Prueba física con la Xprinter |
+| 8 | Respuestas no documentadas de DTE Core para la recuperación: `GET /dte/operaciones/39/{id}` y estado SII. No bloquean la emisión: ante un `unknown`, la venta queda bloqueada y se concilia en el portal de DTE Core. | Revisar la primera respuesta real |
+| 9 | Notas de crédito (DTE 61): diseño y esquema listos, emisión bloqueada. Una boleta mal emitida no se puede anular desde Walinka todavía: se hace en el portal de DTE Core. | Después de la primera boleta |
 
 ## Plan
 
 **Etapa 1 — Base de datos (con autorización).**
-1. Ejecutar `00-precheck-H.sql` (solo lectura). Si algo sale con `bloquea = true`, detenerse.
+A–G ya están aplicadas y registradas en producción (`MANIFEST.tsv`). Falta solo H:
+1. `00-precheck-H.sql` (solo lectura): ejecutado el 5-11-2026, sin bloqueos.
 2. Confirmar respaldo físico reciente de Supabase.
-3. Aplicar A, B, C, D, E, F, G y H en ese orden, de a una, con el script `03-verificacion-*` después
-   de cada una. Recuperación preparada: `02-recuperacion-A-G.sql` y `02-recuperacion-H.sql`.
+3. Aplicar H con `apply_migration` (nombre `fiscal_h_identity_integrity`, contenido exacto del archivo,
+   md5 `0c71ae71c9ab4ac1be9e78b70f8f3ded`). Comprobar que el historial la registra con ese md5 y correr
+   `03-verificacion-post-H.sql`. Recuperación preparada: `02-recuperacion-H.sql`.
 4. Correr `test-flujos-criticos.sql` en una copia o verificar a mano TPV, Point y numeración.
    `dte39_emission_control.enabled` sigue en `false`.
 
