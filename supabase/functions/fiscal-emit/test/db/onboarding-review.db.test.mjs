@@ -7,13 +7,13 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { assertLocalTestConfig } from '../../lib/store-pg.mjs';
 import { seal } from '../../lib/secrets.mjs';
-import { CFG, makeFixture, uniqueRut } from './fixtures.mjs';
+import { CFG, makeFixture, uniqueRut, seedIdentity, verifyIdentity, ensureIdentityContract } from './fixtures.mjs';
 
 const MASTER = randomBytes(32);
 const API_KEY = 'dtc_live_SECRET_DO_NOT_STORE_PLAIN_0123456789';
 
 let c;
-before(async () => { c = new pg.Client(assertLocalTestConfig(CFG)); await c.connect(); });
+before(async () => { c = new pg.Client(assertLocalTestConfig(CFG)); await c.connect(); await ensureIdentityContract(c); });
 after(async () => { await c.end(); });
 
 async function newBusiness() {
@@ -44,11 +44,14 @@ async function plainUser() {
 // Un RUT propio por comercio (la migración H impide repetirlo entre comercios), estable entre
 // guardados del mismo comercio.
 const rutOf = new Map();
-async function saveKey(businessId, actorId, apiKey = API_KEY) {
+async function saveKey(businessId, actorId, apiKey = API_KEY, { verifiedIdentity = true } = {}) {
   if (!rutOf.has(businessId)) rutOf.set(businessId, uniqueRut());
   const rec = seal({ apiKey }, { key: MASTER, businessId, provider: 'dtecore', keyVersion: 1 });
   await c.query(`select public.crm_fiscal_save_credentials($1, $2, $6, $3, $4, $5, 1)`,
     [businessId, actorId, rec.ciphertext, rec.iv, rec.authTag, rutOf.get(businessId)]);
+  // Como api/_lib/fiscal-connection.js: al guardar, Walinka verifica con el proveedor (simulado) que
+  // la key pertenece al RUT. Sin esto Walinka no puede aprobar (migración H).
+  if (verifiedIdentity) await seedIdentity(c, businessId, actorId);
 }
 
 const submit = (businessId, actorId, { numero = 80, fecha = '2014-08-22', sucursalNombre = null, sucursalCodigo = null } = {}) =>
@@ -228,5 +231,39 @@ test('permisos: anon y authenticated no ejecutan las funciones nuevas', async ()
     }
     const s = await c.query(`select has_function_privilege('service_role', $1, 'execute') as ok`, [sig]);
     assert.equal(s.rows[0].ok, true);
+  }
+});
+
+// --- Vinculación fiscal (migración H): aprobar exige que la key pertenezca al RUT ---------------
+test('vinculación: la key de otra empresa (mismatch) impide aprobar; con la key correcta sí', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  const adminId = await admin();
+  await saveKey(businessId, ownerId, API_KEY, { verifiedIdentity: false });
+  await submit(businessId, ownerId);
+  // El proveedor (simulado) informa otro RUT como dueño de la key.
+  const r = await verifyIdentity(c, businessId, ownerId, uniqueRut());
+  assert.equal(r.outcome, 'mismatch');
+  await rejects(review(businessId, adminId, 'approve'), 'FISCAL_IDENTITY_NOT_VERIFIED');
+  assert.equal((await issuer(businessId)).verified, false);
+  // El comercio corrige la key; el proveedor confirma su RUT; Walinka aprueba.
+  await saveKey(businessId, ownerId, 'OTRA_KEY_CORRECTA_0123456789', { verifiedIdentity: false });
+  assert.equal((await verifyIdentity(c, businessId, ownerId, rutOf.get(businessId))).outcome, 'match');
+  await submit(businessId, ownerId);
+  await review(businessId, adminId, 'approve');
+  assert.equal((await issuer(businessId)).verified, true);
+});
+
+test('vinculación: sin contrato de identidad del proveedor no se registra verificación ni se aprueba', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  const adminId = await admin();
+  await ensureIdentityContract(c, false);
+  try {
+    await saveKey(businessId, ownerId, API_KEY, { verifiedIdentity: false });
+    await submit(businessId, ownerId);
+    await rejects(verifyIdentity(c, businessId, ownerId, rutOf.get(businessId)), 'FISCAL_IDENTITY_CONTRACT_PENDING');
+    await rejects(review(businessId, adminId, 'approve'), 'FISCAL_IDENTITY_NOT_VERIFIED');
+    assert.equal((await status(businessId)).identityBlockReason, 'contract_pending');
+  } finally {
+    await ensureIdentityContract(c, true);
   }
 });

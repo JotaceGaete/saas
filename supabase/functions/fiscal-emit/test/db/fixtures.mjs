@@ -13,16 +13,26 @@ export const CFG = Object.freeze({
   database: process.env.FISCAL_TEST_PG_DB ?? 'walinka_test',
 });
 
-// Migración H: el paso a sending exige una verificación de identidad con un método aceptado.
-// En las pruebas se acepta provider_api (simulado); en producción la lista nace vacía.
-export async function setEmissionControl(c, enabled, identityMethods = ['provider_api']) {
+// Migración H: verificar identidad, aprobar y emitir exigen que el contrato de identidad de DTE
+// Core esté marcado como verificado. En las pruebas se marca (proveedor simulado); en producción
+// nace en false.
+export async function setEmissionControl(c, enabled, identityContractVerified = true) {
   await c.query(
     `insert into fiscal.dte39_emission_control (singleton, enabled, payment_voucher_policy_approved,
-                                                identity_methods_accepted)
+                                                identity_contract_verified)
      values (true, $1, true, $2)
      on conflict (singleton) do update set enabled = excluded.enabled,
-                                           identity_methods_accepted = excluded.identity_methods_accepted`,
-    [enabled, identityMethods],
+                                           identity_contract_verified = excluded.identity_contract_verified`,
+    [enabled, identityContractVerified],
+  );
+}
+
+export async function ensureIdentityContract(c, verified = true) {
+  await c.query(
+    `insert into fiscal.dte39_emission_control (singleton, enabled, payment_voucher_policy_approved, identity_contract_verified)
+     values (true, false, true, $1)
+     on conflict (singleton) do update set identity_contract_verified = excluded.identity_contract_verified`,
+    [verified],
   );
 }
 
@@ -49,20 +59,19 @@ export function uniqueRut() {
 export async function seedIdentity(c, businessId, actorUserId) {
   await c.query(
     `insert into fiscal.identity_checks (business_id, provider, key_version, credential_fp, expected_rut,
-                                         observed_rut, method, outcome, actor_user_id, detail)
+                                         observed_rut, outcome, actor_user_id, detail)
      select c.business_id, c.provider, c.key_version, fiscal.credential_fp(c.business_id), i.issuer_rut,
-            i.issuer_rut, 'provider_api', 'match', $2, '{"seeded": true}'::jsonb
+            i.issuer_rut, 'match', $2, '{"seeded": true}'::jsonb
        from fiscal.business_credentials c join fiscal.issuers i on i.business_id = c.business_id
       where c.business_id = $1`,
     [businessId, actorUserId],
   );
 }
 
-// Verificación de identidad credencial↔RUT simulada vía RPC (provider_api; ninguna llamada real).
+// RUT informado por el proveedor (simulado) registrado vía RPC; ninguna llamada real.
 export async function verifyIdentity(c, businessId, actorUserId, observedRut) {
   const r = await c.query(
-    `select public.crm_fiscal_record_identity_check($1, $2, 'provider_api', $3, null,
-             '{"simulated": true}'::jsonb) as res`,
+    `select public.crm_fiscal_record_identity_check($1, $2, $3, '{"simulated": true}'::jsonb) as res`,
     [businessId, actorUserId, observedRut],
   );
   return r.rows[0].res;
@@ -96,6 +105,9 @@ export async function makeFixture(c, opts = {}) {
     ...opts,
   };
   o.issuerRut = o.issuerRut ?? uniqueRut();
+  if (o.issuerVerified && !(o.withCredentials && o.identityVerified)) {
+    throw new Error('fixture: un emisor aprobado exige credenciales con identidad verificada (migración H)');
+  }
   const businessId = randomUUID();
   const userId = randomUUID();
   const saleId = randomUUID();
@@ -121,10 +133,19 @@ export async function makeFixture(c, opts = {}) {
                                  review_status, resolucion_numero, resolucion_fecha)
      values ($1, $4, 'dtecore', $2, $3, 'SUCURSAL DE PRUEBA', '1',
              case when $3::boolean then 'approved' else 'draft' end, 80, date '2014-08-22')`,
-    [businessId, o.issuerEnabled, o.issuerVerified, o.issuerRut],
+    [businessId, false, false, o.issuerRut],
   );
+  // Migración H: aprobar exige identidad verificada, así que se verifica antes de aprobar.
   if (o.withCredentials && o.identityVerified) {
+    await ensureIdentityContract(c);
     await seedIdentity(c, businessId, userId);
+  }
+  if (o.issuerEnabled || o.issuerVerified) {
+    await c.query(
+      `update fiscal.issuers set enabled = $2, verified = $3,
+              review_status = case when $3::boolean then 'approved' else 'draft' end where business_id = $1`,
+      [businessId, o.issuerEnabled, o.issuerVerified],
+    );
   }
   await c.query(
     `insert into public.crm_invoices (id, business_id, invoice_number, status, paid_at, total, subtotal, discount_amount)

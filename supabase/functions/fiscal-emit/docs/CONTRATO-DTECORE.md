@@ -26,26 +26,36 @@ Candidatos en la colección, **todos sin respuesta de ejemplo**:
 `GET /tenant/profile`, `GET /tenant/profile/mis-datos`, `GET /tenant/config`, `GET /dte/emisor/estado`,
 `GET /admin/datos-empresa`, `POST /auth/api-key/login`.
 
-Estado: **No verificado.** No se sabe cuál devuelve el RUT del tenant, con qué campo ni con qué formato.
-Por eso:
+Estado: **No verificado** (revisado de nuevo el 2026-11-05: ninguno de los seis tiene respuesta de
+ejemplo ni descripción en la colección; no hay documentación pública alcanzable desde este entorno).
+`POST /admin/datos-empresa` recibe un campo `rut`, lo que sugiere que `GET /admin/datos-empresa`
+devuelve los datos de la empresa, pero eso es una inferencia, no un contrato: no se usa.
 
-- `lib/providers/siisolutions-http.mjs` declara `identityContractVerified: false` y su `verifyIdentity`
-  lanza `ContractNotVerifiedError` sin llamar a la red.
-- `verifyIssuerIdentity` (lib/emit.mjs) responde `IDENTITY_CONTRACT_PENDING` sin registrar nada.
-- La base (migración H) exige, para pasar a `sending`, una verificación vigente con un método aceptado
-  en `fiscal.dte39_emission_control.identity_methods_accepted`, que nace **vacío**.
+### Vinculación fiscal (decisión de arquitectura: la verifica Walinka, sin revisión manual)
 
-**Resultado: con H aplicada, ningún comercio puede emitir hasta que se decida un método.**
+1. El comercio ingresa su RUT y su API key (Configuración → Facturación electrónica).
+2. `api/_lib/fiscal-connection.js` guarda la key cifrada y, en el mismo paso, llama a
+   `resolveKeyOwnerRut` (`lib/identity.mjs`), que pregunta al proveedor a qué RUT pertenece la key.
+3. La base (`crm_fiscal_record_identity_check`) compara ese RUT con el del comercio y registra el
+   resultado atado a la huella de la credencial vigente.
+4. Coinciden → la solicitud se puede aprobar. No coinciden → `IDENTITY_MISMATCH`: no se aprueba
+   (trigger `issuers_identity_on_approve`) ni se emite (trigger del ledger).
+5. Cambiar la key o el RUT invalida la verificación automáticamente (la huella o el RUT dejan de coincidir).
+6. Al emitir, el backend toma el RUT y la credencial del comercio desde la base dentro del reclamo
+   atómico; el frontend no envía ni elige el RUT emisor.
 
-Para habilitar `provider_api` hace falta, por escrito de DTE Core:
-1. Qué endpoint de solo lectura devuelve el RUT del tenant dueño de la API key.
-2. El campo exacto y el formato (con o sin puntos, con dígito verificador).
-3. Que ese endpoint no tiene efectos (no consume folios, no cambia la empresa activa).
-4. Su comportamiento con una key de holding.
+Bloqueo actual, en dos capas:
+- Código: el adaptador real declara `identityContractVerified: false`; `resolveKeyOwnerRut` responde
+  `contract_pending` **sin llamar a la red**.
+- Base: `fiscal.dte39_emission_control.identity_contract_verified = false`;
+  `crm_fiscal_record_identity_check` rechaza registrar (`FISCAL_IDENTITY_CONTRACT_PENDING`) y el motivo
+  de bloqueo de todos los comercios es `contract_pending`.
 
-Alternativa que **decide Walinka**, no el código: aceptar `manual_admin` (un administrador constata en
-el panel de DTE Core que la cuenta dueña de la key tiene el RUT del comercio y deja la evidencia). Es
-más débil que una consulta automática y depende de un procedimiento humano.
+Para desbloquear, con la respuesta escrita de DTE Core a la pregunta 1:
+1. Implementar `verifyIdentity` en `lib/providers/siisolutions-http.mjs` con el endpoint y campo
+   documentados (y una prueba de contrato con la respuesta real), y poner `identityContractVerified: true`.
+2. Encender `identity_contract_verified` en producción (migración o SQL autorizado).
+3. Cada comercio pulsa «Verificar de nuevo» (o vuelve a guardar su key).
 
 ## 3. Idempotencia de `idBoletaOperacion`
 
@@ -112,7 +122,7 @@ endpoint es la fuente de verdad del estado SII de una boleta.
 
 ## Preguntas para DTE Core Solutions (por escrito)
 
-1. ¿Qué endpoint de solo lectura devuelve el RUT del tenant dueño de una API key? ¿Campo y formato? ¿Es libre de efectos?
+1. ¿Qué endpoint de solo lectura devuelve el RUT del tenant dueño de una API key? ¿Campo y formato? ¿Es libre de efectos (no consume folios ni cambia la empresa activa)? ¿Qué devuelve con una key revocada?
 2. ¿Una API key pertenece siempre a un único RUT? ¿Qué pasa con las cuentas holding: una key puede emitir por varias empresas o por la "empresa activa"?
 3. ¿La validación de operación (`idBoletaOperacion` repetido → 409 `folioExistente`) está activa en nuestras cuentas? ¿Es por tenant? ¿Aplica también a `idOperacion` de notas de crédito?
 4. Respuesta de `GET /dte/operaciones/{codigoDte}/{idOperacion}`: formato, estados y significado de 404.

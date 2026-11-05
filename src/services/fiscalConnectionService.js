@@ -25,6 +25,8 @@ export const FISCAL_ERROR_MESSAGES = Object.freeze({
   FISCAL_OPERATION_IN_PROGRESS: 'Hay una emisión en curso. Vuelve a intentarlo cuando termine.',
   RUT_NOT_AVAILABLE: 'Ese RUT ya está registrado en Walinka. Si es tu empresa, contáctanos para revisarlo.',
   RUT_CHANGE_BLOCKED: 'No puedes cambiar el RUT mientras haya una boleta pendiente de confirmación.',
+  IDENTITY_MISMATCH: 'Esa API key pertenece a otra empresa en DTE Core, no al RUT que ingresaste. Revisa la API key de tu cuenta.',
+  IDENTITY_NOT_VERIFIED: 'Falta verificar que la API key pertenece a tu RUT.',
   UNKNOWN_FIELD: 'La solicitud contiene datos no permitidos.',
   SERVER_NOT_CONFIGURED: 'La facturación electrónica no está disponible en este momento.',
   SERVER_ERROR: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
@@ -102,6 +104,11 @@ export function submitFiscalApplication(businessId, {
 /** category: 'IVA_AFECTO_19' | 'EXENTO' | 'NO_AFECTO' | null (sin categoría por defecto). */
 export function setFiscalTaxDefault(businessId, category) {
   return request(businessId, { method: 'POST', body: { action: 'set-tax-default', category } });
+}
+
+// Walinka vuelve a verificar con DTE Core a qué RUT pertenece la API key guardada.
+export function verifyFiscalIdentity(businessId) {
+  return request(businessId, { method: 'POST', body: { action: 'verify' } });
 }
 
 export function disconnectFiscal(businessId) {

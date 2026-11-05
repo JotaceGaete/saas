@@ -5,6 +5,7 @@ import {
   submitFiscalApplication,
   setFiscalTaxDefault,
   disconnectFiscal,
+  verifyFiscalIdentity,
   describeFiscalError,
 } from '../../../services/fiscalConnectionService';
 import { TAX_TREATMENT, TAX_TREATMENT_LABELS } from '../../../lib/fiscal/taxTreatment';
@@ -68,6 +69,7 @@ export default function FiscalConnectionSettings({ businessId }) {
   const [confirm, setConfirm] = useState(null); // null | 'disconnect'
   const [disconnecting, setDisconnecting] = useState(false);
   const [taxSaving, setTaxSaving] = useState(false);
+  const [verifying, setVerifying] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -142,6 +144,21 @@ export default function FiscalConnectionSettings({ businessId }) {
     }
   };
 
+  // Walinka vuelve a preguntar a DTE Core a qué RUT pertenece la API key guardada.
+  const handleVerify = async () => {
+    setVerifying(true);
+    setFormError('');
+    setNotice('');
+    try {
+      const next = await verifyFiscalIdentity(businessId);
+      setConnection((prev) => ({ ...next, allowed: prev?.allowed }));
+    } catch (err) {
+      setFormError(describeFiscalError(err));
+    } finally {
+      setVerifying(false);
+    }
+  };
+
   const handleDisconnect = async () => {
     setDisconnecting(true);
     setFormError('');
@@ -189,12 +206,27 @@ export default function FiscalConnectionSettings({ businessId }) {
 
   return (
     <div className="space-y-5" data-testid="fiscal-onboarding">
-      {/* Migración H: la API key debe estar verificada contra el RUT antes de emitir. */}
-      {connection?.connected && status === 'approved' && connection?.identityVerified !== true && (
-        <p className="rounded-xl border p-3 text-sm" style={cardStyle} data-testid="fiscal-identity-pending">
-          Falta confirmar que tu API key de DTE Core corresponde al RUT {connection?.issuerRut}. Mientras
-          tanto tus ventas imprimen el comprobante interno de siempre.
-        </p>
+      {/* Vinculación fiscal (migración H): Walinka verifica con DTE Core a qué RUT pertenece la API key. */}
+      {connection?.connected && (
+        <div className="rounded-xl border p-3 text-sm space-y-2" style={cardStyle} data-testid="fiscal-identity"
+             data-identity={connection.identityVerified ? 'verified' : (connection.identityBlockReason || 'pending')}>
+          <p style={{ color: 'var(--color-text-primary)' }}>
+            {connection.identityVerified
+              ? `API key verificada: pertenece al RUT ${connection.issuerRut}.`
+              : connection.identityBlockReason === 'contract_pending'
+                ? `Walinka verificará automáticamente con DTE Core que tu API key pertenece al RUT ${connection.issuerRut}. Esta verificación todavía no está disponible: mientras tanto tus ventas imprimen el comprobante interno de siempre.`
+                : connection.identityBlockReason === 'last_check_mismatch'
+                  ? `La API key guardada pertenece a otra empresa en DTE Core, no al RUT ${connection.issuerRut}. Ingresa la API key de tu cuenta.`
+                  : `Falta verificar que tu API key pertenece al RUT ${connection.issuerRut}.`}
+          </p>
+          {!connection.identityVerified && connection.identityBlockReason !== 'contract_pending' && (
+            <button type="button" onClick={handleVerify} disabled={verifying}
+                    className="rounded-lg border px-3 py-2 text-sm min-h-[44px]" style={cardStyle}
+                    data-testid="fiscal-identity-verify">
+              {verifying ? 'Verificando…' : 'Verificar de nuevo'}
+            </button>
+          )}
+        </div>
       )}
       {/* Progreso */}
       <ol className="grid grid-cols-3 gap-2" aria-label="Pasos para emitir boletas">

@@ -32,6 +32,7 @@ drop trigger if exists crm_payments_fiscal_lock on public.crm_payments;
 drop trigger if exists crm_fiscal_issuances_identity on public.crm_fiscal_issuances;
 drop trigger if exists crm_fiscal_issuances_register_folio on public.crm_fiscal_issuances;
 drop trigger if exists issuers_guard_rut on fiscal.issuers;
+drop trigger if exists issuers_identity_on_approve on fiscal.issuers;
 
 -- Tablas nuevas de H (vacías o derivables, ver arriba)
 drop table if exists fiscal.credit_notes;
@@ -42,7 +43,8 @@ drop table if exists fiscal.identity_checks;
 -- Funciones de H que no existían antes
 drop function if exists public.crm_fiscal_draft_credit_note(uuid, uuid, uuid, integer, text, numeric, jsonb);
 drop function if exists public.crm_fiscal_authorize_tributary_correction(uuid, uuid, uuid, text, text);
-drop function if exists public.crm_fiscal_record_identity_check(uuid, uuid, text, text, text, jsonb);
+drop function if exists public.crm_fiscal_record_identity_check(uuid, uuid, text, jsonb);
+drop function if exists fiscal.guard_issuer_identity_on_approve();
 drop function if exists public.crm_fiscal_create_rut_share(uuid, text, uuid[], text, text);
 drop function if exists fiscal.guard_credit_note();
 drop function if exists fiscal.guard_fiscalized_sale();
@@ -163,7 +165,6 @@ revoke all on function public.crm_fiscal_finalize_from_receipt(uuid, uuid, text)
 grant execute on function public.crm_fiscal_finalize_from_receipt(uuid, uuid, text) to service_role;
 
 -- Funciones auxiliares (después de las tablas que las usan)
-drop function if exists fiscal.identity_state(uuid);
 drop function if exists fiscal.identity_block_reason(uuid);
 drop function if exists fiscal.credential_fp(uuid);
 drop function if exists fiscal.guard_issuer_rut();
@@ -178,8 +179,7 @@ alter table public.crm_fiscal_issuances drop column if exists issuer_rut;
 drop index if exists fiscal.issuers_rut_unshared_uq;
 alter table fiscal.issuers drop column if exists rut_share_group;
 drop table if exists fiscal.rut_share_groups;
-alter table fiscal.dte39_emission_control drop constraint if exists dte39_emission_control_identity_methods_check;
-alter table fiscal.dte39_emission_control drop column if exists identity_methods_accepted;
+alter table fiscal.dte39_emission_control drop column if exists identity_contract_verified;
 drop function if exists fiscal.normalize_rut(text);
 
 -- Acciones de auditoría: versión de G

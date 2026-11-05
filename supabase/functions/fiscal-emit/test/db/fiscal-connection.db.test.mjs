@@ -8,7 +8,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { assertLocalTestConfig } from '../../lib/store-pg.mjs';
 import { seal } from '../../lib/secrets.mjs';
-import { CFG, makeFixture, uniqueRut } from './fixtures.mjs';
+import { CFG, makeFixture, uniqueRut, seedIdentity } from './fixtures.mjs';
 
 const MASTER = randomBytes(32);
 const SAVE_SIG = 'public.crm_fiscal_save_credentials(uuid,uuid,text,bytea,bytea,bytea,integer)';
@@ -100,7 +100,8 @@ test('guardar: lo almacenado no contiene la clave en claro', async () => {
 });
 
 test('guardar: deja enabled = false y verified = false aunque antes estuviera verificado', async () => {
-  const f = await makeFixture(c, { withCredentials: false, issuerEnabled: true, issuerVerified: true });
+  // Antes verificado y aprobado (con su key verificada).
+  const f = await makeFixture(c, { withCredentials: true, issuerEnabled: true, issuerVerified: true });
   const rut = uniqueRut();
   await save(f.businessId, f.userId, { rut });
   const i = await issuer(f.businessId);
@@ -171,8 +172,9 @@ test('bloqueo solo por el negocio afectado: otro comercio con emisión en curso 
 });
 
 test('desconectar: borra la credencial, deshabilita el emisor y el estado queda sin conexión', async () => {
-  const f = await makeFixture(c, { withCredentials: false, issuerEnabled: true, issuerVerified: true });
+  const f = await makeFixture(c, { withCredentials: false, issuerEnabled: false, issuerVerified: false });
   await save(f.businessId, f.userId);
+  await seedIdentity(c, f.businessId, f.userId);
   await c.query(`update fiscal.issuers set review_status = 'approved', enabled = true, verified = true where business_id = $1`, [f.businessId]);
   await c.query(`select public.crm_fiscal_disconnect($1,$2)`, [f.businessId, f.userId]);
   assert.equal(await credentialRow(f.businessId), null);

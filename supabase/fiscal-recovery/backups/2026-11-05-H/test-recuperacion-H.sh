@@ -54,10 +54,8 @@ echo "-- verificación posterior"
 $P -d $DB -At -F ' | ' -f "$HERE/03-verificacion-post-H.sql" | tee $SP/post.txt
 grep -q '| f$' $SP/post.txt && { echo "FALLA: verificación posterior"; fails=$((fails+1)); }
 # La recuperación se niega si hay evidencia (y no cambia nada).
-$P -d $DB -c "insert into fiscal.identity_checks (business_id, provider, key_version, credential_fp, expected_rut, observed_rut, method, outcome, actor_user_id)
-              values ('cccccccc-0000-4000-8000-0000000000cc', 'dtecore', 1, repeat('a', 64), '76123456-0', '76123456-0', 'manual_admin', 'match', 'c0000000-0000-4000-8000-00000000000c')" >/dev/null 2>&1 \
-  || $P -d $DB -c "set session_replication_role = replica; insert into fiscal.identity_checks (business_id, provider, key_version, credential_fp, expected_rut, observed_rut, method, outcome, actor_user_id, evidence_reference)
-              values ('cccccccc-0000-4000-8000-0000000000cc', 'dtecore', 1, repeat('a', 64), '76123456-0', '76123456-0', 'manual_admin', 'match', 'c0000000-0000-4000-8000-00000000000c', 'EVIDENCIA-0001')" >/dev/null
+$P -d $DB -c "insert into fiscal.identity_checks (business_id, provider, key_version, credential_fp, expected_rut, observed_rut, outcome, actor_user_id)
+              values ('cccccccc-0000-4000-8000-0000000000cc', 'dtecore', 1, repeat('a', 64), '76123456-0', '76123456-0', 'match', 'c0000000-0000-4000-8000-00000000000c')" >/dev/null
 $P -d $DB -At -f $FP > $SP/fp-postH.txt
 if $P -d $DB -f "$HERE/02-recuperacion-H.sql" >/dev/null 2>$SP/rb1.txt; then echo "FALLA: la recuperación no se negó con evidencia"; fails=$((fails+1)); else grep -o 'RECUPERACION_H[^.]*' $SP/rb1.txt | head -1; fi
 $P -d $DB -At -f $FP > $SP/fp-postH2.txt

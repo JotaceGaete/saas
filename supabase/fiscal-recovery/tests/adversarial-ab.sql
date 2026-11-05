@@ -38,8 +38,8 @@ insert into fiscal.business_credentials (business_id, provider, key_version, cip
   ('aaaaaaaa-0000-4000-8000-0000000000aa','dtecore',1,'\x01','\x000000000000000000000000','\x00000000000000000000000000000000'),
   ('bbbbbbbb-0000-4000-8000-0000000000bb','dtecore',1,'\x02','\x000000000000000000000000','\x00000000000000000000000000000000');
 insert into fiscal.issuers (business_id, issuer_rut, provider, enabled, verified, review_status) values
-  ('aaaaaaaa-0000-4000-8000-0000000000aa','76123456-0','dtecore',true,true,'approved'),
-  ('bbbbbbbb-0000-4000-8000-0000000000bb','77654321-7','dtecore',true,true,'approved');
+  ('aaaaaaaa-0000-4000-8000-0000000000aa','76123456-0','dtecore',false,false,'draft'),
+  ('bbbbbbbb-0000-4000-8000-0000000000bb','77654321-7','dtecore',false,false,'draft');
 insert into public.crm_invoices (id, business_id, invoice_number, status, paid_at, total, subtotal, discount_amount) values
   ('5a000000-0000-4000-8000-0000000000a1','aaaaaaaa-0000-4000-8000-0000000000aa',1,'pagada',now(),1190,1190,0),
   ('5a000000-0000-4000-8000-0000000000a2','aaaaaaaa-0000-4000-8000-0000000000aa',2,'pagada',now(),1190,1190,0),
@@ -47,14 +47,17 @@ insert into public.crm_invoices (id, business_id, invoice_number, status, paid_a
 insert into public.crm_invoice_items (invoice_id, name, unit_price, quantity, subtotal, sort_order) values
   ('5a000000-0000-4000-8000-0000000000a1','Café',1190,1,1190,1), ('5b000000-0000-4000-8000-0000000000b1','Café',1190,1,1190,1);
 insert into public.wa_products (id, business_id, name, price) values ('9a000000-0000-4000-8000-0000000000a1','aaaaaaaa-0000-4000-8000-0000000000aa','Producto A',1190);
--- Migración H: identidad credencial↔RUT verificada (simulada) para A y B, y un método aceptado
--- solo dentro de esta transacción. Sin esto ninguna fila puede pasar a sending.
-insert into fiscal.identity_checks (business_id, provider, key_version, credential_fp, expected_rut, observed_rut, method, outcome, actor_user_id, detail)
-select c.business_id, c.provider, c.key_version, fiscal.credential_fp(c.business_id), i.issuer_rut, i.issuer_rut, 'provider_api', 'match',
+-- Migración H: identidad credencial↔RUT verificada (simulada) para A y B y contrato de identidad
+-- marcado como verificado, solo dentro de esta transacción. Sin esto ninguna fila puede pasar a sending.
+insert into fiscal.identity_checks (business_id, provider, key_version, credential_fp, expected_rut, observed_rut, outcome, actor_user_id, detail)
+select c.business_id, c.provider, c.key_version, fiscal.credential_fp(c.business_id), i.issuer_rut, i.issuer_rut, 'match',
        '00000000-0000-4000-8000-000000000001', '{"adversarial": true}'::jsonb
   from fiscal.business_credentials c join fiscal.issuers i using (business_id)
  where c.business_id in ('aaaaaaaa-0000-4000-8000-0000000000aa','bbbbbbbb-0000-4000-8000-0000000000bb');
-update fiscal.dte39_emission_control set identity_methods_accepted = '{provider_api}' where singleton;
+update fiscal.dte39_emission_control set identity_contract_verified = true where singleton;
+-- Con la identidad verificada, Walinka aprueba a ambos emisores.
+update fiscal.issuers set enabled = true, verified = true, review_status = 'approved'
+ where business_id in ('aaaaaaaa-0000-4000-8000-0000000000aa','bbbbbbbb-0000-4000-8000-0000000000bb');
 
 -- 1) Usuario con sesión de B contra datos de A
 select set_config('request.jwt.claim.sub','b0000000-0000-4000-8000-00000000000b',true), set_config('request.jwt.claim.role','authenticated',true) \gset

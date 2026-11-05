@@ -27,6 +27,8 @@ function mapDbError(err) {
   if (msg.includes('FISCAL_APPLICATION_INCOMPLETE')) return fail(409, 'APPLICATION_INCOMPLETE');
   if (msg.includes('FISCAL_REVIEW_NOTE_REQUIRED')) return fail(400, 'NOTE_REQUIRED');
   if (msg.includes('FISCAL_REVIEW_INVALID')) return fail(400, 'INVALID_REVIEW');
+  // Migración H: solo se aprueba si la API key vigente pertenece al RUT del comercio.
+  if (msg.includes('FISCAL_IDENTITY_NOT_VERIFIED')) return fail(409, 'IDENTITY_NOT_VERIFIED');
   return fail(503, 'SERVER_ERROR');
 }
 

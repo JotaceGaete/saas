@@ -36,23 +36,22 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
   const auditLog = [];
   const siiEvents = [];
   const retroBlocks = new Set(); // sale ids bloqueadas para emisión retroactiva automática
-  // identityMethods: espejo de dte39_emission_control.identity_methods_accepted (migración H).
-  const control = { enabled: emissionEnabled, identityMethods: ['provider_api'] };
+  // identityContractVerified: espejo de dte39_emission_control.identity_contract_verified (migración H).
+  const control = { enabled: emissionEnabled, identityContractVerified: true };
   // Espejo de fiscal.identity_checks: última verificación concluyente por negocio.
-  const identity = new Map(); // b -> { fp, expectedRut, observedRut, outcome, method }
-  const identityLog = [];
+  const identity = new Map(); // b -> { fp, expectedRut, observedRut, outcome }
   const fpOf = (b) => (creds.has(b) ? JSON.stringify(creds.get(b)) : null);
   // Espejo de fiscal.identity_block_reason.
   function identityBlockReason(b) {
     const iss = issuers.get(b);
     if (!iss) return 'issuer_missing';
     if (!creds.has(b)) return 'credentials_missing';
+    if (!control.identityContractVerified) return 'contract_pending';
     const k = identity.get(b);
     if (!k) return 'not_checked';
     if (k.outcome !== 'match') return `last_check_${k.outcome}`;
     if (k.fp !== fpOf(b)) return 'credentials_changed';
     if (k.expectedRut !== iss.issuerRut || k.observedRut !== iss.issuerRut) return 'rut_changed';
-    if (!control.identityMethods.includes(k.method)) return 'method_not_accepted';
     return null;
   }
   const faults = new Map();
@@ -80,7 +79,7 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
     pointOps.set(saleId, point ? [point] : []);
     creds.set(businessId, seal({ apiKey: `TEST-KEY-${businessId}` }, { key: masterKey, businessId }));
     if (identityVerified) {
-      identity.set(businessId, { fp: fpOf(businessId), expectedRut: issuerRut, observedRut: issuerRut, outcome: 'match', method: 'provider_api' });
+      identity.set(businessId, { fp: fpOf(businessId), expectedRut: issuerRut, observedRut: issuerRut, outcome: 'match' });
     }
     // Espejo de la migración: el dueño recibe fiscal_owner al sembrarse el negocio.
     if (owner) grantRole(businessId, userId, 'fiscal_owner');
@@ -171,13 +170,12 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
     siiEvents,
     issuers,
     identity,
-    identityLog,
     identityBlockReason,
     // Atajo de pruebas: verificación vigente para la credencial actual (como tras reemplazarla y
     // volver a verificarla con el proveedor).
-    markIdentityVerified(b, method = 'provider_api') {
+    markIdentityVerified(b) {
       const iss = issuers.get(b);
-      identity.set(b, { fp: fpOf(b), expectedRut: iss?.issuerRut, observedRut: iss?.issuerRut, outcome: 'match', method });
+      identity.set(b, { fp: fpOf(b), expectedRut: iss?.issuerRut, observedRut: iss?.issuerRut, outcome: 'match' });
     },
     receipts,
     sales,
@@ -241,18 +239,6 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
         payments: sameTenant ? (payments.get(s) ?? []).map((p) => ({ ...p })) : [],
         pointOps: sameTenant ? (pointOps.get(s) ?? []).map((p) => ({ ...p })) : [],
       };
-    }),
-
-    // Espejo de public.crm_fiscal_record_identity_check: el resultado lo calcula el almacén.
-    recordIdentityCheck: guard('recordIdentityCheck', async (b, { actorUserId, method, observedRut, detail = {} }) => {
-      const iss = issuers.get(b);
-      if (!iss || !creds.has(b)) throw new FiscalError('FISCAL_CREDENTIALS_MISSING');
-      if (!actorUserId || !['provider_api', 'manual_admin'].includes(method)) throw new FiscalError('FISCAL_IDENTITY_CHECK_INVALID');
-      const outcome = observedRut == null ? 'unavailable' : observedRut === iss.issuerRut ? 'match' : 'mismatch';
-      const entry = { fp: fpOf(b), expectedRut: iss.issuerRut, observedRut: observedRut ?? null, outcome, method, actorUserId, detail };
-      identityLog.push({ businessId: b, ...entry });
-      if (outcome !== 'unavailable') identity.set(b, entry);
-      return { outcome, block_reason: identityBlockReason(b) };
     }),
 
     loadCredentialRecord: guard('loadCredentialRecord', async (b) => creds.get(b) ?? null),

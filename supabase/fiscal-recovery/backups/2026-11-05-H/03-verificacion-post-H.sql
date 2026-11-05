@@ -14,7 +14,8 @@ select chequeo, ok from (values
   ('cada emitido con folio está registrado', not exists (
      select 1 from public.crm_fiscal_issuances f where f.status in ('issued', 'cancelled') and f.folio is not null
         and not exists (select 1 from fiscal.document_folios d where d.source_table = 'crm_fiscal_issuances' and d.source_id = f.id))),
-  ('métodos de identidad aceptados = vacío', (select identity_methods_accepted = '{}' from fiscal.dte39_emission_control where singleton)),
+  ('contrato de identidad DTE Core sin verificar (vinculación bloqueada)', (select not identity_contract_verified from fiscal.dte39_emission_control where singleton)),
+  ('aprobar exige identidad verificada', exists (select 1 from pg_trigger where tgname = 'issuers_identity_on_approve' and tgenabled = 'O')),
   ('emisión global sigue apagada', not exists (select 1 from fiscal.dte39_emission_control where enabled)),
   ('service_role solo lee las tablas nuevas',
      has_table_privilege('service_role', 'fiscal.identity_checks', 'SELECT')
@@ -27,8 +28,8 @@ select chequeo, ok from (values
      not has_table_privilege('authenticated', 'fiscal.identity_checks', 'SELECT')
      and not has_table_privilege('authenticated', 'fiscal.credit_notes', 'SELECT')),
   ('RPC nuevas solo para service_role',
-     has_function_privilege('service_role', 'public.crm_fiscal_record_identity_check(uuid, uuid, text, text, text, jsonb)', 'EXECUTE')
-     and not has_function_privilege('authenticated', 'public.crm_fiscal_record_identity_check(uuid, uuid, text, text, text, jsonb)', 'EXECUTE')
+     has_function_privilege('service_role', 'public.crm_fiscal_record_identity_check(uuid, uuid, text, jsonb)', 'EXECUTE')
+     and not has_function_privilege('authenticated', 'public.crm_fiscal_record_identity_check(uuid, uuid, text, jsonb)', 'EXECUTE')
      and not has_function_privilege('anon', 'public.crm_fiscal_authorize_tributary_correction(uuid, uuid, uuid, text, text)', 'EXECUTE')
      and not has_function_privilege('authenticated', 'public.crm_fiscal_create_rut_share(uuid, text, uuid[], text, text)', 'EXECUTE')
      and not has_function_privilege('authenticated', 'public.crm_fiscal_draft_credit_note(uuid, uuid, uuid, integer, text, numeric, jsonb)', 'EXECUTE')),

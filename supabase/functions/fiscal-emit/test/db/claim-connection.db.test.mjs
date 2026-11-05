@@ -73,12 +73,12 @@ test('serialización: el reclamo espera a un reemplazo de credenciales en curso 
 
   // Reconectar deja el emisor sin habilitar ni verificar: no se puede emitir hasta que el propietario verifique.
   await assert.rejects(worker.query(...claimSql(f.businessId, f.saleId, f.operationId)), /FISCAL_ISSUER_NOT_ENABLED/);
-  await c.query(`update fiscal.issuers set review_status = 'approved', enabled = true, verified = true where business_id = $1`, [f.businessId]);
-
-  // Migración H: la clave nueva (y el RUT nuevo) invalidan la verificación de identidad anterior.
-  await assert.rejects(worker.query(...claimSql(f.businessId, f.saleId, f.operationId)),
+  // Migración H: la clave nueva (y el RUT nuevo) invalidan la verificación de identidad anterior:
+  // Walinka no puede aprobar hasta verificarla de nuevo con el proveedor.
+  await assert.rejects(c.query(`update fiscal.issuers set review_status = 'approved', enabled = true, verified = true where business_id = $1`, [f.businessId]),
     /FISCAL_IDENTITY_NOT_VERIFIED: credentials_changed/);
   await seedIdentity(c, f.businessId, f.userId);
+  await c.query(`update fiscal.issuers set review_status = 'approved', enabled = true, verified = true where business_id = $1`, [f.businessId]);
 
   // Tras ambas verificaciones, B reclama y recibe la clave nueva, nunca la anterior.
   const r = await worker.query(...claimSql(f.businessId, f.saleId, f.operationId));
@@ -136,7 +136,7 @@ test("unknown NO bloquea: documentos históricos en 'unknown' no impiden adminis
 });
 
 test('sin credenciales: el reclamo falla con FISCAL_CREDENTIALS_MISSING y no crea fila', async () => {
-  const f = await makeFixture(c, { withCredentials: false, issuerEnabled: true, issuerVerified: true });
+  const f = await makeFixture(c, { withCredentials: false, issuerEnabled: false, issuerVerified: false });
   await assert.rejects(worker.query(...claimSql(f.businessId, f.saleId, f.operationId)), /FISCAL_CREDENTIALS_MISSING/);
   assert.equal(await issuance(f.businessId, f.saleId), null);
 });
@@ -175,7 +175,7 @@ test('reclamo de una venta ya reclamada no devuelve credenciales', async () => {
 });
 
 test('histórico: la recuperación sigue viendo emisiones del piloto con proveedor siisolutions', async () => {
-  const f = await makeFixture(c, { withCredentials: false, issuerEnabled: true, issuerVerified: true });
+  const f = await makeFixture(c, { withCredentials: false, issuerEnabled: false, issuerVerified: false });
   // Fila histórica anterior a H (sin verificación de identidad): se siembra con triggers
   // desactivados solo para esta transacción, como existiría en la base antes de la migración.
   await c.query('begin');
