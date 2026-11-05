@@ -67,4 +67,12 @@ describe('separación por modo', () => {
     expect(r).toMatchObject({ phase: PHASE.NOT_ELIGIBLE, code: 'FISCAL_BUSINESS_NOT_ALLOWED' });
     expect(emitter.emit).not.toHaveBeenCalled();
   });
+
+  it('API key sin verificar contra el RUT (migración H): comprobante interno, nunca emite ni reintenta', async () => {
+    const emitter = { mode: 'live', status: vi.fn(async () => ({ ok: true, data: { state: 'none', canEmit: false, blockedReason: 'FISCAL_IDENTITY_NOT_VERIFIED' } })), emit: vi.fn(), loadDte: vi.fn() };
+    const flow = createFiscalSaleFlow({ businessId: BIZ, emitter, print: vi.fn() });
+    const r = await flow.start('sale-4', sale);
+    expect(r).toMatchObject({ phase: PHASE.NOT_ELIGIBLE, code: 'FISCAL_IDENTITY_NOT_VERIFIED' });
+    expect(emitter.emit).not.toHaveBeenCalled();
+  });
 });

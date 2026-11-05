@@ -77,6 +77,34 @@ npm run test:deno                                # 8 pruebas del cableado (requi
 Las pruebas de base necesitan una base local `*_test` con la migración propuesta aplicada y con
 privilegios de `service_role` (en Supabase vienen por defecto; en la base de prueba se conceden a mano).
 
+## Migración H — identidad fiscal por comercio (2026-11-05, propuesta, no aplicada)
+
+`supabase/fiscal-recovery/proposed/20261105_fiscal_identity_integrity.sql` (después de G). Prechequeo,
+recuperación y verificación en `supabase/fiscal-recovery/backups/2026-11-05-H/`.
+
+- **C1 API key ↔ RUT.** Ninguna fila pasa a `sending` sin una verificación vigente (`fiscal.identity_checks`,
+  ligada a la huella de la credencial y al RUT) hecha con un método de
+  `dte39_emission_control.identity_methods_accepted`, que nace **vacío**. DTE Core no tiene un endpoint de
+  identidad con contrato verificado (`docs/CONTRATO-DTECORE.md` §2): `verifyIssuerIdentity` responde
+  `IDENTITY_CONTRACT_PENDING` sin llamar a la red. **Con H aplicada nadie emite hasta decidir el método.**
+- **A1 RUT único.** RUT canónico con dígito verificador; un RUT por comercio salvo grupo de RUT
+  compartido creado por un administrador para comercios del mismo dueño. API: `RUT_NOT_AVAILABLE`.
+  La lista `FISCAL_ALLOWED_ISSUERS` sigue rechazando RUT repetidos: un grupo compartido no puede estar en
+  la lista mientras exista.
+- **A2 folios.** `crm_fiscal_issuances.issuer_rut` permanente y `fiscal.document_folios` con clave
+  (RUT, tipo, folio). Un folio repetido del mismo emisor o un XML de otro emisor no queda `issued`: la
+  recuperación lo pasa a `unknown` (`FOLIO_DUPLICATE` / `DOCUMENT_ISSUER_MISMATCH`) sin detener a los
+  demás comercios.
+- **A4 venta fiscalizada inmutable** (sending/unknown/issued/cancelled): totales, descuento, estado,
+  líneas y pagos bloqueados en la base (`FISCAL_SALE_TRIBUTARY_LOCKED`). Corrección: administrador,
+  una venta, una transacción, auditada.
+- **A3 nota de crédito**: borradores en `fiscal.credit_notes` con clave foránea al documento original;
+  emisión bloqueada (`docs/NOTA-CREDITO-DTE61.md`).
+
+Pruebas: `test/db/lab-multiempresa.db.test.mjs` (A/B, garantías 1–10 y A3),
+`supabase/fiscal-recovery/tests/adversarial-ab.sql` (27 pruebas de la auditoría) y
+`backups/2026-11-05-H/test-recuperacion-H.sh`.
+
 ## Verificado y no verificado
 
 Verificado (ejecutado en este entorno):

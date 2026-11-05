@@ -21,7 +21,7 @@
 // aceptado por el SII: ese estado se registra aparte (sii_status, ver migración E).
 
 import { Buffer } from 'node:buffer';
-import { ProviderRejectedError } from '../errors.mjs';
+import { ContractNotVerifiedError, ProviderRejectedError } from '../errors.mjs';
 
 export const DTECORE_PRODUCTION_ORIGIN = 'https://api.siisolutions.cl';
 export const SIISOLUTIONS_EMIT_PATH = '/dte/boletas/emitir';
@@ -265,6 +265,15 @@ export function createSiisolutionsHttpProvider({
   return {
     name: 'dtecore',
     ready: ready === true,
+    // C1 (migración H): NO existe un endpoint de identidad de DTE Core con contrato verificado.
+    // La colección oficial trae candidatos (/tenant/profile, /tenant/profile/mis-datos,
+    // /tenant/config, /dte/emisor/estado, /admin/datos-empresa) sin respuestas documentadas, así
+    // que no se llama a ninguno y no se interpreta ninguna respuesta. El emisor no invoca
+    // verifyIdentity mientras identityContractVerified sea false (docs/CONTRATO-DTECORE.md §2).
+    identityContractVerified: false,
+    async verifyIdentity() {
+      throw new ContractNotVerifiedError('DTE Core identity endpoint contract not verified');
+    },
     retrieveDocuments,
     lookupOperation,
     getSiiStatus,

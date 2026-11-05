@@ -69,6 +69,10 @@ function mapDbError(err) {
   if (msg.includes('FISCAL_CREDENTIALS_REQUIRED')) return fail(409, 'API_KEY_REQUIRED');
   if (msg.includes('FISCAL_APPLICATION_INVALID')) return fail(400, 'INVALID_APPLICATION');
   if (msg.includes('FISCAL_TAX_INVALID')) return fail(400, 'INVALID_TAX_CATEGORY');
+  // Migración H. RUT_NOT_AVAILABLE no dice a quién pertenece el RUT (no revela otros comercios).
+  if (msg.includes('FISCAL_ISSUER_RUT_TAKEN')) return fail(409, 'RUT_NOT_AVAILABLE');
+  if (msg.includes('FISCAL_ISSUER_RUT_INVALID')) return fail(400, 'INVALID_RUT');
+  if (msg.includes('FISCAL_RUT_CHANGE_BLOCKED')) return fail(409, 'RUT_CHANGE_BLOCKED');
   return fail(503, 'SERVER_ERROR');
 }
 
@@ -78,6 +82,8 @@ function toBytea(buf) {
 
 // Estado público de la conexión. Nunca contiene la clave.
 const REVIEW_STATUSES = new Set(['draft', 'pending_review', 'approved', 'rejected', 'suspended']);
+const IDENTITY_REASONS = new Set(['issuer_missing', 'credentials_missing', 'not_checked', 'last_check_mismatch',
+  'credentials_changed', 'rut_changed', 'method_not_accepted']);
 
 function publicConnection(row) {
   if (!row) {
@@ -85,7 +91,7 @@ function publicConnection(row) {
       connected: false, issuerRut: null, enabled: false, verified: false, keyVersion: null, updatedAt: null,
       reviewStatus: 'draft', reviewNote: null, submittedAt: null, reviewedAt: null,
       resolucionNumero: null, resolucionFecha: null, sucursalNombre: null, sucursalCodigo: null,
-      defaultTaxCategory: null,
+      defaultTaxCategory: null, identityVerified: false, identityBlockReason: 'credentials_missing',
     };
   }
   return {
@@ -104,6 +110,9 @@ function publicConnection(row) {
     sucursalNombre: row.sucursalNombre ?? null,
     sucursalCodigo: row.sucursalCodigo ?? null,
     defaultTaxCategory: TAX_CATEGORIES.has(row.defaultTaxCategory) ? row.defaultTaxCategory : null,
+    // Migración H: la API key verificada contra el RUT (sin esto no se emite).
+    identityVerified: row.identityVerified === true,
+    identityBlockReason: IDENTITY_REASONS.has(row.identityBlockReason) ? row.identityBlockReason : null,
   };
 }
 

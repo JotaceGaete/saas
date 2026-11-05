@@ -8,7 +8,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { assertLocalTestConfig } from '../../lib/store-pg.mjs';
 import { seal } from '../../lib/secrets.mjs';
-import { CFG, makeFixture } from './fixtures.mjs';
+import { CFG, makeFixture, uniqueRut } from './fixtures.mjs';
 
 const MASTER = randomBytes(32);
 const SAVE_SIG = 'public.crm_fiscal_save_credentials(uuid,uuid,text,bytea,bytea,bytea,integer)';
@@ -32,7 +32,7 @@ function sealFor(businessId, apiKey = API_KEY) {
   return seal({ apiKey }, { key: MASTER, businessId, provider: 'dtecore', keyVersion: 1 });
 }
 
-async function save(businessId, actorId, { rut = '12345678-5', rec = sealFor(businessId) } = {}) {
+async function save(businessId, actorId, { rut = uniqueRut(), rec = sealFor(businessId) } = {}) {
   return c.query(
     `select public.crm_fiscal_save_credentials($1, $2, $3, $4, $5, $6, $7) as ok`,
     [businessId, actorId, rut, rec.ciphertext, rec.iv, rec.authTag, 1],
@@ -79,10 +79,14 @@ test('estado sin credenciales: no conectado, sin secretos en el resultado', asyn
 
 test('guardar: conecta el RUT y cifra; el estado no revela la clave ni el texto cifrado', async () => {
   const f = await newBusiness();
-  await save(f.businessId, f.userId);
+  const rut = uniqueRut();
+  await save(f.businessId, f.userId, { rut });
   const s = await status(f.businessId);
   assert.equal(s.connected, true);
-  assert.equal(s.issuerRut, '12345678-5');
+  assert.equal(s.issuerRut, rut);
+  // H: una conexión recién guardada no está verificada (credencial↔RUT).
+  assert.equal(s.identityVerified, false);
+  assert.equal(s.identityBlockReason, 'not_checked');
   assert.equal(s.keyVersion, 1);
   assert.equal(JSON.stringify(s).includes(API_KEY), false);
 });
@@ -97,20 +101,22 @@ test('guardar: lo almacenado no contiene la clave en claro', async () => {
 
 test('guardar: deja enabled = false y verified = false aunque antes estuviera verificado', async () => {
   const f = await makeFixture(c, { withCredentials: false, issuerEnabled: true, issuerVerified: true });
-  await save(f.businessId, f.userId);
+  const rut = uniqueRut();
+  await save(f.businessId, f.userId, { rut });
   const i = await issuer(f.businessId);
-  assert.equal(i.issuer_rut, '12345678-5');
+  assert.equal(i.issuer_rut, rut);
   assert.equal(i.enabled, false, 'reconectar no habilita emisión');
   assert.equal(i.verified, false, 'reconectar exige nueva verificación');
 });
 
 test('reemplazar: una sola fila por negocio y RUT actualizado', async () => {
   const f = await newBusiness();
-  await save(f.businessId, f.userId, { rut: '12345678-5' });
-  await save(f.businessId, f.userId, { rut: '11111111-1', rec: sealFor(f.businessId, 'OTRA_CLAVE_DE_PRUEBA_0123') });
+  await save(f.businessId, f.userId, { rut: uniqueRut() });
+  const nuevoRut = uniqueRut();
+  await save(f.businessId, f.userId, { rut: nuevoRut, rec: sealFor(f.businessId, 'OTRA_CLAVE_DE_PRUEBA_0123') });
   const n = await c.query(`select count(*)::int as n from fiscal.business_credentials where business_id = $1`, [f.businessId]);
   assert.equal(n.rows[0].n, 1);
-  assert.equal((await issuer(f.businessId)).issuer_rut, '11111111-1');
+  assert.equal((await issuer(f.businessId)).issuer_rut, nuevoRut);
 });
 
 test('validación en base: RUT, longitudes de IV y tag, y bytes vacíos se rechazan', async () => {
@@ -146,10 +152,10 @@ test('emisión en curso (sending): guardar y desconectar quedan bloqueados sin c
     [f.businessId, f.saleId, f.operationId],
   );
   const before = await credentialRow(f.businessId);
-  await assert.rejects(save(f.businessId, f.userId, { rut: '11111111-1' }), /FISCAL_OPERATION_IN_PROGRESS/);
+  await assert.rejects(save(f.businessId, f.userId, { rut: uniqueRut() }), /FISCAL_OPERATION_IN_PROGRESS/);
   await assert.rejects(c.query(`select public.crm_fiscal_disconnect($1,$2)`, [f.businessId, f.userId]), /FISCAL_OPERATION_IN_PROGRESS/);
   assert.deepEqual(await credentialRow(f.businessId), before, 'la credencial sigue ahí');
-  assert.equal((await issuer(f.businessId)).issuer_rut, '76123456-7', 'el RUT no cambió');
+  assert.equal((await issuer(f.businessId)).issuer_rut, f.issuerRut, 'el RUT no cambió');
 });
 
 test('bloqueo solo por el negocio afectado: otro comercio con emisión en curso no bloquea', async () => {
@@ -178,14 +184,15 @@ test('desconectar: borra la credencial, deshabilita el emisor y el estado queda 
 
 test('auditoría: registra acciones con RUT y versión, nunca la clave', async () => {
   const f = await newBusiness();
-  await save(f.businessId, f.userId);
+  const rut = uniqueRut();
+  await save(f.businessId, f.userId, { rut });
   await c.query(`select public.crm_fiscal_disconnect($1,$2)`, [f.businessId, f.userId]);
   const rows = await auditRows(f.businessId);
   const actions = rows.map((r) => r.action);
   assert.ok(actions.includes('credentials_saved'));
   assert.ok(actions.includes('credentials_removed'));
   const saved = rows.find((r) => r.action === 'credentials_saved');
-  assert.match(saved.detail, /12345678-5/);
+  assert.ok(saved.detail.includes(rut));
   assert.equal(rows.some((r) => r.detail.includes(API_KEY)), false);
   assert.equal(rows.some((r) => /ciphertext|auth_tag|\\x/i.test(r.detail)), false);
 });

@@ -36,7 +36,25 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
   const auditLog = [];
   const siiEvents = [];
   const retroBlocks = new Set(); // sale ids bloqueadas para emisión retroactiva automática
-  const control = { enabled: emissionEnabled };
+  // identityMethods: espejo de dte39_emission_control.identity_methods_accepted (migración H).
+  const control = { enabled: emissionEnabled, identityMethods: ['provider_api'] };
+  // Espejo de fiscal.identity_checks: última verificación concluyente por negocio.
+  const identity = new Map(); // b -> { fp, expectedRut, observedRut, outcome, method }
+  const identityLog = [];
+  const fpOf = (b) => (creds.has(b) ? JSON.stringify(creds.get(b)) : null);
+  // Espejo de fiscal.identity_block_reason.
+  function identityBlockReason(b) {
+    const iss = issuers.get(b);
+    if (!iss) return 'issuer_missing';
+    if (!creds.has(b)) return 'credentials_missing';
+    const k = identity.get(b);
+    if (!k) return 'not_checked';
+    if (k.outcome !== 'match') return `last_check_${k.outcome}`;
+    if (k.fp !== fpOf(b)) return 'credentials_changed';
+    if (k.expectedRut !== iss.issuerRut || k.observedRut !== iss.issuerRut) return 'rut_changed';
+    if (!control.identityMethods.includes(k.method)) return 'method_not_accepted';
+    return null;
+  }
   const faults = new Map();
   const hooks = new Map(); // method -> fn, se ejecuta una vez antes de la llamada
   const state = { auditFails: false };
@@ -44,7 +62,7 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
   const key = (b, s) => `${b}|${s}`;
   const rkey = (b, u) => `${b}|${u}`;
 
-  function seed({ businessId, userId, saleId, total = 2380, cash = true, withLines = true, point = null, active = true, owner = true, issuerRut = '76123456-7' }) {
+  function seed({ businessId, userId, saleId, total = 2380, cash = true, withLines = true, point = null, active = true, owner = true, issuerRut = '76123456-7', identityVerified = true }) {
     businesses.set(businessId, { id: businessId, userId, countryCode: 'CL', isActive: active });
     sales.set(saleId, {
       id: saleId, businessId, status: 'pagada', paidAt: new Date(), total, discountAmount: 0,
@@ -61,6 +79,9 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
       : point ? [{ method: 'mercado_pago', amount: total, status: 'received', voided: false }] : []);
     pointOps.set(saleId, point ? [point] : []);
     creds.set(businessId, seal({ apiKey: `TEST-KEY-${businessId}` }, { key: masterKey, businessId }));
+    if (identityVerified) {
+      identity.set(businessId, { fp: fpOf(businessId), expectedRut: issuerRut, observedRut: issuerRut, outcome: 'match', method: 'provider_api' });
+    }
     // Espejo de la migración: el dueño recibe fiscal_owner al sembrarse el negocio.
     if (owner) grantRole(businessId, userId, 'fiscal_owner');
   }
@@ -149,6 +170,15 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
     evidenceLog,
     siiEvents,
     issuers,
+    identity,
+    identityLog,
+    identityBlockReason,
+    // Atajo de pruebas: verificación vigente para la credencial actual (como tras reemplazarla y
+    // volver a verificarla con el proveedor).
+    markIdentityVerified(b, method = 'provider_api') {
+      const iss = issuers.get(b);
+      identity.set(b, { fp: fpOf(b), expectedRut: iss?.issuerRut, observedRut: iss?.issuerRut, outcome: 'match', method });
+    },
     receipts,
     sales,
     calls,
@@ -202,14 +232,27 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
     loadEmissionContext: guard('loadEmissionContext', async (b, s) => {
       const sale = sales.get(s);
       const sameTenant = sale && sale.businessId === b;
+      const iss = issuers.get(b);
       return {
-        issuer: issuers.get(b) ?? null,
+        issuer: iss ? { ...iss, identityVerified: identityBlockReason(b) === null, identityBlockReason: identityBlockReason(b) } : null,
         emissionEnabled: control.enabled,
         taxLinesVerified: taxOk,
         lines: (lines.get(s) ?? []).map((l) => ({ ...l })),
         payments: sameTenant ? (payments.get(s) ?? []).map((p) => ({ ...p })) : [],
         pointOps: sameTenant ? (pointOps.get(s) ?? []).map((p) => ({ ...p })) : [],
       };
+    }),
+
+    // Espejo de public.crm_fiscal_record_identity_check: el resultado lo calcula el almacén.
+    recordIdentityCheck: guard('recordIdentityCheck', async (b, { actorUserId, method, observedRut, detail = {} }) => {
+      const iss = issuers.get(b);
+      if (!iss || !creds.has(b)) throw new FiscalError('FISCAL_CREDENTIALS_MISSING');
+      if (!actorUserId || !['provider_api', 'manual_admin'].includes(method)) throw new FiscalError('FISCAL_IDENTITY_CHECK_INVALID');
+      const outcome = observedRut == null ? 'unavailable' : observedRut === iss.issuerRut ? 'match' : 'mismatch';
+      const entry = { fp: fpOf(b), expectedRut: iss.issuerRut, observedRut: observedRut ?? null, outcome, method, actorUserId, detail };
+      identityLog.push({ businessId: b, ...entry });
+      if (outcome !== 'unavailable') identity.set(b, entry);
+      return { outcome, block_reason: identityBlockReason(b) };
     }),
 
     loadCredentialRecord: guard('loadCredentialRecord', async (b) => creds.get(b) ?? null),
@@ -222,7 +265,12 @@ export function createMemoryStore({ masterKey, emissionEnabled = true, taxOk = t
       if (!c) throw new FiscalError('FISCAL_CREDENTIALS_MISSING');
       const iss = issuers.get(b);
       if (!iss || iss.provider !== c.provider) throw new FiscalError('FISCAL_PROVIDER_MISMATCH');
+      // Espejo del trigger crm_fiscal_issuances_identity (migración H).
+      const reason = identityBlockReason(b);
+      if (reason) throw new FiscalError('FISCAL_IDENTITY_NOT_VERIFIED', `FISCAL_IDENTITY_NOT_VERIFIED: ${reason}`);
       if (!(await claimSale(b, s, op))) return { claimed: false, credentials: null };
+      const row = issuances.get(key(b, s));
+      if (row && !row.issuerRut) row.issuerRut = iss.issuerRut;
       return { claimed: true, credentials: c };
     }),
 

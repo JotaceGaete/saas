@@ -10,6 +10,9 @@ export function mapEmissionContext(raw) {
     issuer: raw.issuer
       ? {
           issuerRut: raw.issuer.issuer_rut, enabled: raw.issuer.enabled, verified: raw.issuer.verified,
+          // Migración H: verificación credencial↔RUT vigente (la base la vuelve a exigir al reclamar).
+          identityVerified: raw.issuer.identity_verified === true,
+          identityBlockReason: raw.issuer.identity_block_reason ?? null,
           sucursal: raw.issuer.sucursal_nombre && raw.issuer.sucursal_codigo
             ? { nombre: raw.issuer.sucursal_nombre, codigo: raw.issuer.sucursal_codigo } : null,
           // Resolución SII del emisor (migración F), para imprimir la boleta. null si falta.

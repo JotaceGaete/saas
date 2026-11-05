@@ -4,8 +4,11 @@
 
 import { ProviderRejectedError } from '../errors.mjs';
 
-export function createSimulatedProvider({ scenario = 'ok', folioStart = 1000, delayMs = 0 } = {}) {
+// identityFor(apiKey) -> RUT que el proveedor simulado informa como dueño de esa API key
+// (migración H). Sin identityFor, verifyIdentity no informa RUT.
+export function createSimulatedProvider({ scenario = 'ok', folioStart = 1000, delayMs = 0, identityFor = null } = {}) {
   let calls = 0;
+  let identityCalls = 0;
   let next = folioStart;
   const byOperation = new Map(); // simula idempotencia por idBoletaOperacion
 
@@ -38,9 +41,20 @@ export function createSimulatedProvider({ scenario = 'ok', folioStart = 1000, de
     return doc;
   }
 
+  async function verifyIdentity({ credentials }) {
+    identityCalls += 1;
+    const rut = typeof identityFor === 'function' ? identityFor(credentials?.apiKey) : null;
+    return { rut: rut ?? null };
+  }
+
   return {
     name: 'simulated',
     emit,
+    identityContractVerified: true,
+    verifyIdentity,
+    get identityCalls() {
+      return identityCalls;
+    },
     get calls() {
       return calls;
     },

@@ -13,13 +13,59 @@ export const CFG = Object.freeze({
   database: process.env.FISCAL_TEST_PG_DB ?? 'walinka_test',
 });
 
-export async function setEmissionControl(c, enabled) {
+// Migración H: el paso a sending exige una verificación de identidad con un método aceptado.
+// En las pruebas se acepta provider_api (simulado); en producción la lista nace vacía.
+export async function setEmissionControl(c, enabled, identityMethods = ['provider_api']) {
   await c.query(
-    `insert into fiscal.dte39_emission_control (singleton, enabled, payment_voucher_policy_approved)
-     values (true, $1, true)
-     on conflict (singleton) do update set enabled = excluded.enabled`,
-    [enabled],
+    `insert into fiscal.dte39_emission_control (singleton, enabled, payment_voucher_policy_approved,
+                                                identity_methods_accepted)
+     values (true, $1, true, $2)
+     on conflict (singleton) do update set enabled = excluded.enabled,
+                                           identity_methods_accepted = excluded.identity_methods_accepted`,
+    [enabled, identityMethods],
   );
+}
+
+// RUT válido (dígito verificador módulo 11) y distinto en cada llamada: la migración H impide que
+// dos comercios independientes compartan RUT.
+export function rutDv(body) {
+  let sum = 0;
+  let mul = 2;
+  const digits = String(body);
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    sum += Number(digits[i]) * mul;
+    mul = mul === 7 ? 2 : mul + 1;
+  }
+  const r = 11 - (sum % 11);
+  return r === 11 ? '0' : r === 10 ? 'K' : String(r);
+}
+export function uniqueRut() {
+  const body = randomInt(10_000_000, 99_999_999);
+  return `${body}-${rutDv(body)}`;
+}
+
+// Verificación vigente sembrada directamente (como postgres, sin fila de auditoría) para que las
+// pruebas previas a H no cambien sus conteos de fiscal.admin_audit.
+export async function seedIdentity(c, businessId, actorUserId) {
+  await c.query(
+    `insert into fiscal.identity_checks (business_id, provider, key_version, credential_fp, expected_rut,
+                                         observed_rut, method, outcome, actor_user_id, detail)
+     select c.business_id, c.provider, c.key_version, fiscal.credential_fp(c.business_id), i.issuer_rut,
+            i.issuer_rut, 'provider_api', 'match', $2, '{"seeded": true}'::jsonb
+       from fiscal.business_credentials c join fiscal.issuers i on i.business_id = c.business_id
+      where c.business_id = $1`,
+    [businessId, actorUserId],
+  );
+}
+
+// Verificación de identidad credencial↔RUT simulada vía RPC (provider_api; ninguna llamada real).
+export async function verifyIdentity(c, businessId, actorUserId, observedRut) {
+  const r = await c.query(
+    `select public.crm_fiscal_record_identity_check($1, $2, 'provider_api', $3, null,
+             '{"simulated": true}'::jsonb) as res`,
+    [businessId, actorUserId, observedRut],
+  );
+  return r.rows[0].res;
 }
 
 async function ensureCashSession(c, businessId, userId) {
@@ -45,9 +91,11 @@ export async function makeFixture(c, opts = {}) {
     discount: 0,
     total: 2380,
     withCredentials: true,
-    issuerRut: '76123456-7',
+    issuerRut: null,
+    identityVerified: true,
     ...opts,
   };
+  o.issuerRut = o.issuerRut ?? uniqueRut();
   const businessId = randomUUID();
   const userId = randomUUID();
   const saleId = randomUUID();
@@ -75,6 +123,9 @@ export async function makeFixture(c, opts = {}) {
              case when $3::boolean then 'approved' else 'draft' end, 80, date '2014-08-22')`,
     [businessId, o.issuerEnabled, o.issuerVerified, o.issuerRut],
   );
+  if (o.withCredentials && o.identityVerified) {
+    await seedIdentity(c, businessId, userId);
+  }
   await c.query(
     `insert into public.crm_invoices (id, business_id, invoice_number, status, paid_at, total, subtotal, discount_amount)
      values ($1, $2, $3, $4, $5, $6, $6, $7)`,
@@ -138,6 +189,7 @@ export async function makeFixture(c, opts = {}) {
     saleId,
     itemId,
     operationId: operationIdFor(businessId, saleId),
+    issuerRut: o.issuerRut,
   };
 }
 

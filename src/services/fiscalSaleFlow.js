@@ -47,6 +47,8 @@ export const NOT_ELIGIBLE_CODES = Object.freeze(new Set([
   ...MODULE_OFF_CODES,
   'FISCAL_NON_TAXABLE_NOT_SUPPORTED', 'FISCAL_TAX_LINES_NOT_VERIFIED', 'DISCOUNT_NOT_SUPPORTED', 'MIXED_PAYMENTS',
   'UNSUPPORTED_PAYMENT_METHOD', 'PAYMENT_AMOUNT_MISMATCH', 'FISCAL_ROLE_REQUIRED', 'FISCAL_RETROACTIVE_BLOCKED',
+  // Migración H: API key sin verificar contra el RUT. Se resuelve en la configuración, no en caja.
+  'FISCAL_IDENTITY_NOT_VERIFIED',
 ]));
 
 const MESSAGES = Object.freeze({

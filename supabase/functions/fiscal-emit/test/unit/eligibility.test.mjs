@@ -6,7 +6,7 @@ const OP = 'WLK-b1-s1';
 const base = () => ({
   sale: { id: 's1', businessId: 'b1', status: 'pagada', paidAt: new Date(), total: 2380, discountAmount: 0 },
   business: { id: 'b1', userId: 'u1', countryCode: 'CL' },
-  issuer: { issuerRut: '76123456-7', enabled: true, verified: true, sucursal: { nombre: 'SUCURSAL DE PRUEBA', codigo: '1' } },
+  issuer: { issuerRut: '76123456-7', enabled: true, verified: true, identityVerified: true, sucursal: { nombre: 'SUCURSAL DE PRUEBA', codigo: '1' } },
   emissionEnabled: true,
   taxLinesVerified: true,
   lines: [{ name: 'Café', unitPrice: 1190, quantity: 2, discountPct: 0, category: 'IVA_AFECTO_19' }],
@@ -59,6 +59,9 @@ test('emisor no habilitado o no verificado no es elegible', () => {
   assert.throws(() => run({ issuer: { ...base().issuer, enabled: false } }), { code: 'FISCAL_ISSUER_NOT_ENABLED' });
   assert.throws(() => run({ issuer: { ...base().issuer, verified: false } }), { code: 'FISCAL_ISSUER_NOT_ENABLED' });
   assert.throws(() => run({ issuer: null }), { code: 'FISCAL_ISSUER_NOT_ENABLED' });
+  // Migración H: sin verificación credencial↔RUT no hay payload.
+  assert.throws(() => run({ issuer: { ...base().issuer, identityVerified: false } }), { code: 'FISCAL_IDENTITY_NOT_VERIFIED' });
+  assert.throws(() => run({ issuer: { ...base().issuer, identityVerified: undefined } }), { code: 'FISCAL_IDENTITY_NOT_VERIFIED' });
 });
 
 test('emisión global deshabilitada bloquea', () => {
@@ -101,7 +104,7 @@ test('sin ningún pago confirmado no es elegible', () => {
 });
 
 test('sin sucursal del comercio: se emite igual (la 51106 se aceptó sin sucursal) y no se envía', () => {
-  const r = run({ issuer: { issuerRut: '76123456-7', enabled: true, verified: true, sucursal: null } });
+  const r = run({ issuer: { issuerRut: '76123456-7', enabled: true, verified: true, identityVerified: true, sucursal: null } });
   assert.equal('sucursalEmision' in r.payload, false);
 });
 

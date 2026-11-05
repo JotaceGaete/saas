@@ -162,6 +162,14 @@ export function createPgStore(cfg) {
       ));
     },
 
+    // Migración H: registra una verificación credencial↔RUT. El resultado lo calcula la base.
+    async recordIdentityCheck(businessId, { actorUserId, method, observedRut, evidenceReference = null, detail = {} }) {
+      return scalar(
+        `select public.crm_fiscal_record_identity_check($1, $2, $3, $4, $5, $6::jsonb) as j`,
+        [businessId, actorUserId, method, observedRut, evidenceReference, JSON.stringify(detail ?? {})], 'j',
+      );
+    },
+
     async recordSiiStatus(businessId, saleId, { siiStatus, source, trackId = null, detail = null, actorUserId = null }) {
       return scalar(
         `select public.crm_fiscal_record_sii_status($1, $2, $3, $4, $5, $6, $7) as j`,

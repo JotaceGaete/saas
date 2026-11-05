@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import pg from 'pg';
 import { assertLocalTestConfig } from '../../lib/store-pg.mjs';
 import { seal, open } from '../../lib/secrets.mjs';
-import { CFG, TEST_MASTER_KEY, makeFixture, setEmissionControl } from './fixtures.mjs';
+import { CFG, TEST_MASTER_KEY, makeFixture, setEmissionControl, uniqueRut, seedIdentity } from './fixtures.mjs';
 
 let admin;   // administra credenciales (conexión A)
 let worker;  // reclama la venta (conexión B)
@@ -63,7 +63,7 @@ test('serialización: el reclamo espera a un reemplazo de credenciales en curso 
   // A abre una transacción y reemplaza la credencial (toma el candado de conexión).
   await admin.query('begin');
   const newRec = sealFor(f.businessId, 'CLAVE-NUEVA-DE-PRUEBA-0123456789');
-  await admin.query(...saveSql(f.businessId, f.userId, newRec, '11111111-1'));
+  await admin.query(...saveSql(f.businessId, f.userId, newRec, uniqueRut()));
 
   // B intenta reclamar mientras A no ha confirmado: debe quedar esperando (y aquí, expirar).
   await worker.query('set lock_timeout = 300');
@@ -75,7 +75,12 @@ test('serialización: el reclamo espera a un reemplazo de credenciales en curso 
   await assert.rejects(worker.query(...claimSql(f.businessId, f.saleId, f.operationId)), /FISCAL_ISSUER_NOT_ENABLED/);
   await c.query(`update fiscal.issuers set review_status = 'approved', enabled = true, verified = true where business_id = $1`, [f.businessId]);
 
-  // Tras la verificación, B reclama y recibe la clave nueva, nunca la anterior.
+  // Migración H: la clave nueva (y el RUT nuevo) invalidan la verificación de identidad anterior.
+  await assert.rejects(worker.query(...claimSql(f.businessId, f.saleId, f.operationId)),
+    /FISCAL_IDENTITY_NOT_VERIFIED: credentials_changed/);
+  await seedIdentity(c, f.businessId, f.userId);
+
+  // Tras ambas verificaciones, B reclama y recibe la clave nueva, nunca la anterior.
   const r = await worker.query(...claimSql(f.businessId, f.saleId, f.operationId));
   const got = r.rows[0].j;
   assert.equal(got.claimed, true);
@@ -95,7 +100,7 @@ test('sending reciente bloquea: reemplazar o desconectar durante una emisión fa
   const r = await worker.query(...claimSql(f.businessId, f.saleId, f.operationId));
   assert.equal(r.rows[0].j.claimed, true);
 
-  await assert.rejects(admin.query(...saveSql(f.businessId, f.userId, sealFor(f.businessId, 'OTRA-CLAVE-DE-PRUEBA-0123'), '11111111-1')),
+  await assert.rejects(admin.query(...saveSql(f.businessId, f.userId, sealFor(f.businessId, 'OTRA-CLAVE-DE-PRUEBA-0123'), uniqueRut())),
     /FISCAL_OPERATION_IN_PROGRESS/);
   await assert.rejects(admin.query(`select public.crm_fiscal_disconnect($1,$2)`, [f.businessId, f.userId]),
     /FISCAL_OPERATION_IN_PROGRESS/);
@@ -106,9 +111,14 @@ test('sending abandonado (más antiguo que la ventana) NO bloquea la administrac
   await worker.query(...claimSql(f.businessId, f.saleId, f.operationId));
   await c.query(`update public.crm_fiscal_issuances set updated_at = now() - interval '2 hours'
                   where business_id=$1 and sale_id=$2`, [f.businessId, f.saleId]);
-  await admin.query(...saveSql(f.businessId, f.userId, sealFor(f.businessId, 'CLAVE-TRAS-VENTANA-0123456789'), '11111111-1'));
+  // Reemplazar la API key del MISMO RUT sí se permite.
+  await admin.query(...saveSql(f.businessId, f.userId, sealFor(f.businessId, 'CLAVE-TRAS-VENTANA-0123456789'), f.issuerRut));
   const row = await c.query(`select issuer_rut from fiscal.issuers where business_id=$1`, [f.businessId]);
-  assert.equal(row.rows[0].issuer_rut, '11111111-1');
+  assert.equal(row.rows[0].issuer_rut, f.issuerRut);
+  // Migración H: cambiar el RUT con una emisión sin resolver (sending) no se permite: el documento
+  // pendiente es del RUT anterior y su reconciliación necesita esa cuenta.
+  await assert.rejects(admin.query(...saveSql(f.businessId, f.userId, sealFor(f.businessId, 'OTRA-0123456789-CLAVE'), uniqueRut())),
+    /FISCAL_RUT_CHANGE_BLOCKED/);
 });
 
 test("unknown NO bloquea: documentos históricos en 'unknown' no impiden administrar credenciales", async () => {
@@ -118,7 +128,9 @@ test("unknown NO bloquea: documentos históricos en 'unknown' no impiden adminis
      values ($1,$2,'dtecore',39,$3,'unknown')`,
     [f.businessId, f.saleId, f.operationId],
   );
-  await admin.query(...saveSql(f.businessId, f.userId, sealFor(f.businessId, 'CLAVE-CON-UNKNOWN-0123456789'), '11111111-1'));
+  await admin.query(...saveSql(f.businessId, f.userId, sealFor(f.businessId, 'CLAVE-CON-UNKNOWN-0123456789'), f.issuerRut));
+  await assert.rejects(admin.query(...saveSql(f.businessId, f.userId, sealFor(f.businessId, 'OTRA-0123456789-CLAVE'), uniqueRut())),
+    /FISCAL_RUT_CHANGE_BLOCKED/, 'H: el RUT no cambia con un documento unknown sin reconciliar');
   await admin.query(`select public.crm_fiscal_disconnect($1,$2)`, [f.businessId, f.userId]);
   assert.equal((await issuance(f.businessId, f.saleId)).status, 'unknown', 'el documento histórico no se toca');
 });
@@ -164,11 +176,16 @@ test('reclamo de una venta ya reclamada no devuelve credenciales', async () => {
 
 test('histórico: la recuperación sigue viendo emisiones del piloto con proveedor siisolutions', async () => {
   const f = await makeFixture(c, { withCredentials: false, issuerEnabled: true, issuerVerified: true });
+  // Fila histórica anterior a H (sin verificación de identidad): se siembra con triggers
+  // desactivados solo para esta transacción, como existiría en la base antes de la migración.
+  await c.query('begin');
+  await c.query(`set local session_replication_role = replica`);
   await c.query(
-    `insert into public.crm_fiscal_issuances (business_id, sale_id, provider, dte_type, operation_id, status, updated_at)
-     values ($1,$2,'siisolutions',39,$3,'sending', now() - interval '2 hours')`,
-    [f.businessId, f.saleId, f.operationId],
+    `insert into public.crm_fiscal_issuances (business_id, sale_id, provider, dte_type, operation_id, status, updated_at, issuer_rut)
+     values ($1,$2,'siisolutions',39,$3,'sending', now() - interval '2 hours', $4)`,
+    [f.businessId, f.saleId, f.operationId, f.issuerRut],
   );
+  await c.query('commit');
   const r = await c.query(`select r::text as t from public.crm_fiscal_list_stale_sending(now() - interval '1 hour') r`);
   assert.ok(r.rows.some((x) => x.t.includes(f.saleId)), 'el histórico legado no queda fuera de la recuperación');
 });

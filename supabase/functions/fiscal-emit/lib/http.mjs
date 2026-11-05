@@ -39,6 +39,11 @@ const STATUS_BY_CODE = {
   FISCAL_BUSINESS_NOT_ALLOWED: 403,
   // lookup solo aplica a ventas con resultado desconocido.
   NOT_UNKNOWN: 409,
+  // Migración H: la API key no está verificada contra el RUT del emisor. No es reintentable
+  // hasta completar la verificación.
+  FISCAL_IDENTITY_NOT_VERIFIED: 409,
+  FISCAL_DOCUMENT_ISSUER_MISMATCH: 409,
+  FISCAL_FOLIO_DUPLICATE: 409,
 };
 
 export function statusFor(err) {

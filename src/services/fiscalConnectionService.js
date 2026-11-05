@@ -23,6 +23,8 @@ export const FISCAL_ERROR_MESSAGES = Object.freeze({
   INVALID_RUT: 'El RUT no es válido. Revisa el dígito verificador.',
   INVALID_API_KEY: 'La API key no tiene un formato válido.',
   FISCAL_OPERATION_IN_PROGRESS: 'Hay una emisión en curso. Vuelve a intentarlo cuando termine.',
+  RUT_NOT_AVAILABLE: 'Ese RUT ya está registrado en Walinka. Si es tu empresa, contáctanos para revisarlo.',
+  RUT_CHANGE_BLOCKED: 'No puedes cambiar el RUT mientras haya una boleta pendiente de confirmación.',
   UNKNOWN_FIELD: 'La solicitud contiene datos no permitidos.',
   SERVER_NOT_CONFIGURED: 'La facturación electrónica no está disponible en este momento.',
   SERVER_ERROR: 'No pudimos guardar los cambios. Inténtalo de nuevo.',

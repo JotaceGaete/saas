@@ -19,7 +19,7 @@ import { authorizeAction } from './authz.mjs';
 import { validDocument } from './document.mjs';
 import { open as openSecret, parseMasterKey } from './secrets.mjs';
 import { expectedTotals } from './payload.mjs';
-import { isAllowlist } from './allowlist.mjs';
+import { isAllowlist, normalizeRut } from './allowlist.mjs';
 
 export const DEFAULT_TIMEOUT_MS = 20_000;
 // Reintentos acotados SOLO para errores de transporte/almacén (no FiscalError). Todas las
@@ -178,6 +178,9 @@ export function createFiscalEmitter({
     } catch (err) {
       // Mismo código público con cualquier almacén (SQL o memoria).
       if (err?.code === 'FISCAL_CREDENTIALS_MISSING') throw new FiscalError('CREDENTIALS_MISSING');
+      // La base exige identidad verificada al pasar a sending (migración H). Puede cambiar entre la
+      // lectura del contexto y el reclamo (p. ej. se reemplazó la API key): no hay fila ni llamada.
+      if (err?.code === 'FISCAL_IDENTITY_NOT_VERIFIED') throw new FiscalError('FISCAL_IDENTITY_NOT_VERIFIED');
       throw err;
     }
     if (!claim.claimed) throw new FiscalError('ALREADY_IN_PROGRESS');
@@ -294,7 +297,10 @@ export function createFiscalEmitter({
       canEmit: false,
       blockedReason: null,
       liveAuthorized: provider.ready === true && provider.name === 'dtecore' && allowed
-        && ctx?.issuer?.enabled === true && ctx?.issuer?.verified === true,
+        && ctx?.issuer?.enabled === true && ctx?.issuer?.verified === true
+        && ctx?.issuer?.identityVerified === true,
+      // Migración H: estado de la verificación credencial↔RUT (sin detalles de la credencial).
+      identityVerified: ctx?.issuer?.identityVerified === true,
       // Resolución SII del emisor para imprimir la boleta (o su reimpresión). null si no está.
       resolucion: null,
     };
@@ -411,5 +417,36 @@ export function createFiscalEmitter({
   }
 
   // Superficie pública: emit, reprint, status y las dos consultas. No hay reconcile aquí (lib/reconciler.mjs).
-  return Object.freeze({ emitSale, reprint, status, lookupOperation, refreshSiiStatus });
+  // C1 — Verifica que la API key del comercio corresponda a SU RUT con un endpoint de identidad
+  // de SOLO LECTURA del proveedor y registra el resultado en la base (que lo compara con el RUT
+  // del emisor). Solo el fiscal_owner. No está expuesta en la API HTTP.
+  //  - Si el contrato del endpoint de identidad no está verificado (provider.identityContractVerified
+  //    distinto de true), falla con IDENTITY_CONTRACT_PENDING SIN llamar al proveedor ni registrar
+  //    nada: la emisión sigue bloqueada. Es el estado actual de DTE Core (docs/CONTRATO-DTECORE.md).
+  //  - Un RUT informado distinto del emisor queda como 'mismatch' y bloquea la emisión.
+  //  - Sin respuesta o con respuesta ilegible queda 'unavailable' (no habilita ni anula).
+  async function verifyIssuerIdentity({ actorUserId, businessId }) {
+    if (!actorUserId || !businessId) throw new FiscalError('FISCAL_ROLE_REQUIRED');
+    const role = await store.loadActorRole(businessId, actorUserId);
+    if (role !== 'fiscal_owner') throw new FiscalError('FISCAL_ROLE_REQUIRED');
+    if (provider.identityContractVerified !== true || typeof provider.verifyIdentity !== 'function') {
+      throw new FiscalError('IDENTITY_CONTRACT_PENDING');
+    }
+    const creds = await readOnlyCredentials(businessId);
+    let observedRut = null;
+    let detail = { provider: provider.name };
+    try {
+      const r = await withTimeout(provider.verifyIdentity({ credentials: creds }), timeoutMs);
+      observedRut = normalizeRut(typeof r?.rut === 'string' ? r.rut : '');
+      if (!observedRut) detail = { ...detail, reason: 'UNREADABLE_IDENTITY' };
+    } catch (err) {
+      detail = { ...detail, reason: String(err?.code ?? 'ERROR').slice(0, 64) };
+    }
+    const res = await store.recordIdentityCheck(businessId, {
+      actorUserId, method: 'provider_api', observedRut, detail,
+    });
+    return { outcome: res?.outcome ?? null, blockReason: res?.block_reason ?? null, providerCalls: 1 };
+  }
+
+  return Object.freeze({ emitSale, reprint, status, lookupOperation, refreshSiiStatus, verifyIssuerIdentity });
 }

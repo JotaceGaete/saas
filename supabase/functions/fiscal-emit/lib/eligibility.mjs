@@ -34,6 +34,13 @@ export function evaluateEligibility({
   if (!issuer || !issuer.enabled || !issuer.verified || !issuer.issuerRut) {
     throw new FiscalError('FISCAL_ISSUER_NOT_ENABLED');
   }
+  // C1 (migración H): la API key debe estar verificada contra el RUT del emisor. Sin eso no hay
+  // reclamo ni llamada al proveedor. La base lo vuelve a exigir al pasar a sending.
+  if (issuer.identityVerified !== true) {
+    // Sin credenciales el motivo accionable es conectar la cuenta, no verificarla.
+    throw new FiscalError(issuer.identityBlockReason === 'credentials_missing'
+      ? 'CREDENTIALS_MISSING' : 'FISCAL_IDENTITY_NOT_VERIFIED');
+  }
   if (!emissionEnabled) {
     throw new FiscalError('FISCAL_EMISSION_DISABLED');
   }

@@ -189,6 +189,13 @@ export default function FiscalConnectionSettings({ businessId }) {
 
   return (
     <div className="space-y-5" data-testid="fiscal-onboarding">
+      {/* Migración H: la API key debe estar verificada contra el RUT antes de emitir. */}
+      {connection?.connected && status === 'approved' && connection?.identityVerified !== true && (
+        <p className="rounded-xl border p-3 text-sm" style={cardStyle} data-testid="fiscal-identity-pending">
+          Falta confirmar que tu API key de DTE Core corresponde al RUT {connection?.issuerRut}. Mientras
+          tanto tus ventas imprimen el comprobante interno de siempre.
+        </p>
+      )}
       {/* Progreso */}
       <ol className="grid grid-cols-3 gap-2" aria-label="Pasos para emitir boletas">
         {STEPS.map((s, i) => {

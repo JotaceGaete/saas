@@ -31,6 +31,9 @@ export const FISCAL_EMIT_MESSAGES = Object.freeze({
   PROVIDER_REJECTED: 'DTE Core rechazó la boleta. No se asignó folio. Revisa el detalle antes de volver a intentarlo.',
   RESPONSE_LOST: 'No recibimos respuesta. No repitas la emisión: revisa el estado de la venta.',
   FISCAL_BUSINESS_NOT_ALLOWED: 'La boleta electrónica no está habilitada para este negocio.',
+  FISCAL_IDENTITY_NOT_VERIFIED: 'Falta confirmar que la API key de DTE Core corresponde al RUT del comercio.',
+  FISCAL_DOCUMENT_ISSUER_MISMATCH: 'El documento recibido no corresponde al RUT del comercio. Se revisa manualmente.',
+  FISCAL_FOLIO_DUPLICATE: 'El folio recibido ya existe para este RUT. Se revisa manualmente.',
   NOT_UNKNOWN: 'Esta venta no tiene un resultado pendiente de confirmar.',
   NOT_ISSUED: 'Esta venta no tiene una boleta emitida.',
 });

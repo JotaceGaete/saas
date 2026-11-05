@@ -7,7 +7,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { assertLocalTestConfig } from '../../lib/store-pg.mjs';
 import { seal } from '../../lib/secrets.mjs';
-import { CFG, makeFixture } from './fixtures.mjs';
+import { CFG, makeFixture, uniqueRut } from './fixtures.mjs';
 
 const MASTER = randomBytes(32);
 const API_KEY = 'dtc_live_SECRET_DO_NOT_STORE_PLAIN_0123456789';
@@ -41,10 +41,14 @@ async function plainUser() {
   return id;
 }
 
+// Un RUT propio por comercio (la migración H impide repetirlo entre comercios), estable entre
+// guardados del mismo comercio.
+const rutOf = new Map();
 async function saveKey(businessId, actorId, apiKey = API_KEY) {
+  if (!rutOf.has(businessId)) rutOf.set(businessId, uniqueRut());
   const rec = seal({ apiKey }, { key: MASTER, businessId, provider: 'dtecore', keyVersion: 1 });
-  await c.query(`select public.crm_fiscal_save_credentials($1, $2, '12345678-5', $3, $4, $5, 1)`,
-    [businessId, actorId, rec.ciphertext, rec.iv, rec.authTag]);
+  await c.query(`select public.crm_fiscal_save_credentials($1, $2, $6, $3, $4, $5, 1)`,
+    [businessId, actorId, rec.ciphertext, rec.iv, rec.authTag, rutOf.get(businessId)]);
 }
 
 const submit = (businessId, actorId, { numero = 80, fecha = '2014-08-22', sucursalNombre = null, sucursalCodigo = null } = {}) =>

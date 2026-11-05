@@ -8,6 +8,10 @@ export function createDtecoreBlockedProvider() {
   return {
     name: 'dtecore',
     ready: false, // el emisor rechaza antes de reclamar la venta
+    identityContractVerified: false,
+    async verifyIdentity() {
+      throw new ContractNotVerifiedError('DTECore identity endpoint contract not verified');
+    },
     async emit() {
       throw new ContractNotVerifiedError(
         'DTECore emission blocked: idempotency and PDF response contract not verified',
