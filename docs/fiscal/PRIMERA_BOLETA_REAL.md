@@ -65,6 +65,12 @@ Supabase (ni `dtecore` ni `siisolutions`; cualquier otro valor o su ausencia usa
    piloto devuelven `PROVIDER_NOT_READY` / `liveAuthorized: false`. Base sin cambios.
 
 **Etapa 3 — Configuración del comercio piloto.**
+> **Diagnóstico 2026-11-06 13:19 UTC** (temporal, commit `0ba30a0`, Preview `dpl_7g34y4hfrZFGepuwJhskm1ym1bkQ`
+> de la rama; retirado con revert). `/api/fiscal/connection` respondía `SERVER_NOT_CONFIGURED` por
+> `FISCAL_MASTER_KEY`, no por Supabase: `urlPresent: true`, `serviceRoleKeyPresent: true`;
+> `FISCAL_MASTER_KEY` `present: true`, `canonicalBase64: true`, `decodesTo32Bytes: false`,
+> `acceptedByParseMasterKey: false`. El valor de Vercel es base64 sin espacios ni comillas, pero no es
+> una clave de 32 bytes: no es el mismo valor que la clave vigente de Supabase.
 0. Vercel, Preview autorizada (con autorización): `FISCAL_MASTER_KEY` (la misma que en Supabase),
    `FISCAL_ALLOWED_ISSUERS`, `VITE_FISCAL_CONNECTION_ENABLED=true`. `FISCAL_PROVIDER` sigue ausente en Supabase.
 1. Configuración → Facturación electrónica: RUT, API key, resolución SII. Enviar.
