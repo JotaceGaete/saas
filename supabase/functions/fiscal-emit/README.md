@@ -50,6 +50,12 @@ Migración asociada: `supabase/fiscal-recovery/proposed/20261031_fiscal_single_l
   y, si el origen está autorizado, las cabeceras `Access-Control-*`. No se usan cookies
   (`Access-Control-Allow-Credentials` ausente).
 - Añadir un origen = cambio de código revisado + nuevo despliegue.
+- Arranque: `index.ts` registra `fiscal-emit config` con la presencia (true/false) de `SUPABASE_URL`,
+  `SUPABASE_SERVICE_ROLE_KEY`, `FISCAL_MASTER_KEY`, `FISCAL_ALLOWED_ISSUERS` y `FISCAL_PROVIDER`, y el
+  modo del proveedor (`blocked` salvo `dtecore|siisolutions`). Nunca registra valores. Si la
+  configuración es inválida (p. ej. falta `FISCAL_MASTER_KEY`), no cae: sirve un manejador de respaldo
+  que respeta CORS y responde 503 `FISCAL_NOT_CONFIGURED`, sin base ni proveedor
+  (`test/deno/config.test.ts`).
 - Pruebas: `test/deno/cors.test.ts`.
 
 ## Modelo de permisos
