@@ -23,6 +23,9 @@ export const FISCAL_ERROR_MESSAGES = Object.freeze({
   INVALID_RUT: 'El RUT no es válido. Revisa el dígito verificador.',
   INVALID_API_KEY: 'La API key no tiene un formato válido.',
   FISCAL_OPERATION_IN_PROGRESS: 'Hay una emisión en curso. Vuelve a intentarlo cuando termine.',
+  RUT_NOT_AVAILABLE: 'Ese RUT ya está registrado en Walinka. Si es tu empresa, contáctanos para revisarlo.',
+  RUT_CHANGE_BLOCKED: 'No puedes cambiar el RUT mientras haya una boleta pendiente de confirmación.',
+  RUT_CONFIRMATION_STALE: 'Los datos de facturación cambiaron mientras revisabas. Vuelve a revisar el RUT y confirma otra vez.',
   UNKNOWN_FIELD: 'La solicitud contiene datos no permitidos.',
   SERVER_NOT_CONFIGURED: 'La facturación electrónica no está disponible en este momento.',
   SERVER_ERROR: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
@@ -100,6 +103,12 @@ export function submitFiscalApplication(businessId, {
 /** category: 'IVA_AFECTO_19' | 'EXENTO' | 'NO_AFECTO' | null (sin categoría por defecto). */
 export function setFiscalTaxDefault(businessId, category) {
   return request(businessId, { method: 'POST', body: { action: 'set-tax-default', category } });
+}
+
+// El propietario confirma expresamente el RUT que ve en pantalla (antes de la primera boleta y
+// cada vez que cambia la API key o el RUT).
+export function confirmFiscalRut(businessId, issuerRut) {
+  return request(businessId, { method: 'POST', body: { action: 'confirm-rut', issuerRut } });
 }
 
 export function disconnectFiscal(businessId) {

@@ -7,6 +7,7 @@ const svc = vi.hoisted(() => ({
   submitFiscalApplication: vi.fn(),
   setFiscalTaxDefault: vi.fn(),
   disconnectFiscal: vi.fn(),
+  confirmFiscalRut: vi.fn(),
 }));
 vi.mock('components/AppIcon', () => ({ default: () => null }));
 vi.mock('../../../services/fiscalConnectionService', () => ({
@@ -137,5 +138,31 @@ describe('empresas autorizadas (servidor)', () => {
     render(<FiscalConnectionSettings businessId={BIZ} />);
     await screen.findByTestId('fiscal-form');
     expect(screen.queryByTestId('fiscal-not-available')).toBeNull();
+  });
+});
+
+describe('confirmación del RUT antes de la primera boleta (migración H)', () => {
+  const linked = { ...base, connected: true, issuerRut: '12345678-5', reviewStatus: 'approved', verified: true, enabled: true,
+    resolucionNumero: 80, resolucionFecha: '2014-08-22' };
+
+  it('sin confirmar: muestra el RUT y exige marcar la casilla antes de confirmar', async () => {
+    svc.getFiscalConnection.mockResolvedValue({ ...linked, rutConfirmed: false, rutConfirmationReason: 'not_confirmed' });
+    svc.confirmFiscalRut.mockResolvedValue({ ...linked, rutConfirmed: true, rutConfirmationReason: null });
+    render(<FiscalConnectionSettings businessId={BIZ} />);
+    expect(await screen.findByTestId('fiscal-rut-to-confirm')).toHaveTextContent('12345678-5');
+    const btn = screen.getByTestId('fiscal-rut-confirm');
+    expect(btn).toBeDisabled();
+    fireEvent.click(screen.getByTestId('fiscal-rut-ack'));
+    expect(btn).not.toBeDisabled();
+    fireEvent.click(btn);
+    await waitFor(() => expect(screen.getByTestId('fiscal-rut-confirmation')).toHaveAttribute('data-confirmed', 'true'));
+    expect(svc.confirmFiscalRut).toHaveBeenCalledWith(BIZ, '12345678-5');
+  });
+
+  it('confirmado: solo informa el RUT, sin volver a pedir confirmación', async () => {
+    svc.getFiscalConnection.mockResolvedValue({ ...linked, rutConfirmed: true, rutConfirmationReason: null });
+    render(<FiscalConnectionSettings businessId={BIZ} />);
+    expect(await screen.findByTestId('fiscal-rut-confirmed')).toHaveTextContent('12345678-5');
+    expect(screen.queryByTestId('fiscal-rut-confirm')).toBeNull();
   });
 });

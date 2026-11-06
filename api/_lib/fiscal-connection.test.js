@@ -120,6 +120,17 @@ test('operación fiscal en curso -> 409 FISCAL_OPERATION_IN_PROGRESS, sin cambio
   assert.deepEqual(r, { status: 409, body: { error: 'FISCAL_OPERATION_IN_PROGRESS' } });
 });
 
+test('migración H: RUT de otro comercio -> 409 RUT_NOT_AVAILABLE sin revelar el dueño; cambio de RUT con boleta pendiente -> 409', async () => {
+  for (const [dbMsg, code] of [['FISCAL_ISSUER_RUT_TAKEN', 'RUT_NOT_AVAILABLE'], ['FISCAL_RUT_CHANGE_BLOCKED', 'RUT_CHANGE_BLOCKED'],
+    ['FISCAL_ISSUER_RUT_INVALID', 'INVALID_RUT']]) {
+    const admin = fakeAdmin({ save: { data: null, error: { message: dbMsg } } });
+    const svc = createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER });
+    const r = await svc.connect({ businessId: BIZ, actorId: ACTOR, body: { action: 'connect', apiKey: API_KEY, issuerRut: '12345678-5' } });
+    assert.equal(r.body.error, code);
+    assert.equal(Object.keys(r.body).length, 1, 'sin detalles del otro comercio');
+  }
+});
+
 test('error de base que contiene la clave: la respuesta y los logs no la repiten', async () => {
   const admin = fakeAdmin({ save: { data: null, error: { message: `connection refused near ${API_KEY}` } } });
   const svc = createFiscalConnectionService({ allowedIssuers: ALLOW, admin, masterKey: MASTER });
@@ -146,8 +157,9 @@ test('estado: nunca contiene la clave ni el texto cifrado', async () => {
   const text = JSON.stringify(r.body);
   assert.equal(/ciphertext|iv|auth_tag|apiKey/.test(text), false);
   assert.deepEqual(Object.keys(r.body.connection).sort(), [
-    'connected', 'defaultTaxCategory', 'enabled', 'issuerRut', 'keyVersion', 'resolucionFecha', 'resolucionNumero', 'reviewNote',
-    'reviewStatus', 'reviewedAt', 'submittedAt', 'sucursalCodigo', 'sucursalNombre', 'updatedAt', 'verified',
+    'connected', 'defaultTaxCategory', 'enabled', 'issuerRut', 'keyVersion',
+    'resolucionFecha', 'resolucionNumero', 'reviewNote',
+    'reviewStatus', 'reviewedAt', 'rutConfirmationReason', 'rutConfirmed', 'submittedAt', 'sucursalCodigo', 'sucursalNombre', 'updatedAt', 'verified',
   ]);
 });
 

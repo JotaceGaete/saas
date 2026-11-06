@@ -173,3 +173,11 @@ verify_jwt = false
 # porque la autenticación real es x-point-reconcile-secret, validada fail-closed.
 [functions.mp-point-reconcile]
 verify_jwt = false
+
+# Emisor fiscal DTE 39. Solo lo llama el navegador con la sesión del usuario
+# (supabase.functions.invoke), así que la plataforma exige un JWT de usuario válido
+# antes de ejecutar el código; la función además revalida el usuario con auth.getUser()
+# y aplica rol, tenant y lista de empresas autorizadas. El preflight OPTIONS llega a la
+# función, que responde CORS solo a los orígenes de lib/cors.mjs.
+[functions.fiscal-emit]
+verify_jwt = true

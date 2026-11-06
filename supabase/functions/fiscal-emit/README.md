@@ -33,7 +33,30 @@ siguientes describen la ronda anterior y pueden citar supuestos ya corregidos (p
 | `test/db/` | Pruebas contra Postgres real `walinka_test` (`npm run test:db`). |
 | `test/deno/` | Cableado de la Edge Function en Deno (`npm run test:deno`). |
 
-Migración asociada (no aplicada en producción): `supabase/fiscal-recovery/proposed/20261031_fiscal_single_ledger_guard.sql`.
+Migración asociada: `supabase/fiscal-recovery/proposed/20261031_fiscal_single_ledger_guard.sql` (A; aplicada en producción el 4-11-2026 como `20261104164731 fiscal_a_single_ledger_guard`, ver `supabase/fiscal-recovery/PRODUCTION-MIGRATION-LEDGER-2026-11-04.md`).
+
+## CORS y autenticación de la plataforma
+
+- `verify_jwt = true` (`supabase/config.toml`). La plataforma rechaza con 401 cualquier POST sin JWT
+  de usuario válido (HS256 o claves de firma asimétricas) antes de ejecutar el código. Las claves
+  publicables/secretas nuevas no son JWT y no pasan esta comprobación: la función no las acepta.
+- El preflight `OPTIONS` llega a la función (precedente en producción: `mp-point-terminal-preference`,
+  `verify_jwt=true`, OPTIONS 200 y POST 200 desde el navegador).
+- `lib/cors.mjs`: lista cerrada de orígenes exactos (producción `go.walinka.com`, `go.ventalink.app`;
+  alias de rama de las Preview de #119 y #123). Sin comodines; las URL por despliegue de Vercel no se
+  admiten. Origen fuera de la lista → 403 `ORIGIN_NOT_ALLOWED`, sin cabeceras CORS, antes de
+  autenticar y sin tocar la base. Sin `Origin` (no navegador) → sin cabeceras CORS y autenticación
+  igual de obligatoria. Todas las respuestas de la función, errores incluidos, llevan `Vary: Origin`
+  y, si el origen está autorizado, las cabeceras `Access-Control-*`. No se usan cookies
+  (`Access-Control-Allow-Credentials` ausente).
+- Añadir un origen = cambio de código revisado + nuevo despliegue.
+- Arranque: `index.ts` registra `fiscal-emit config` con la presencia (true/false) de `SUPABASE_URL`,
+  `SUPABASE_SERVICE_ROLE_KEY`, `FISCAL_MASTER_KEY`, `FISCAL_ALLOWED_ISSUERS` y `FISCAL_PROVIDER`, y el
+  modo del proveedor (`blocked` salvo `dtecore|siisolutions`). Nunca registra valores. Si la
+  configuración es inválida (p. ej. falta `FISCAL_MASTER_KEY`), no cae: sirve un manejador de respaldo
+  que respeta CORS y responde 503 `FISCAL_NOT_CONFIGURED`, sin base ni proveedor
+  (`test/deno/config.test.ts`).
+- Pruebas: `test/deno/cors.test.ts`.
 
 ## Modelo de permisos
 
@@ -76,6 +99,34 @@ npm run test:deno                                # 8 pruebas del cableado (requi
 
 Las pruebas de base necesitan una base local `*_test` con la migración propuesta aplicada y con
 privilegios de `service_role` (en Supabase vienen por defecto; en la base de prueba se conceden a mano).
+
+## Migración H — identidad fiscal por comercio (aplicada en producción el 2026-11-05 como `20261105200532 fiscal_h_identity_integrity`)
+
+`supabase/fiscal-recovery/proposed/20261105_fiscal_identity_integrity.sql` (después de G). Prechequeo,
+recuperación y verificación en `supabase/fiscal-recovery/backups/2026-11-05-H/`.
+
+- **C1 RUT del comercio.** DTE Core (servicio individual): una API key = un RUT y no hay endpoint para
+  consultarlo. El comercio ingresa RUT y key; antes de la primera boleta el propietario confirma el RUT
+  mostrado (`crm_fiscal_confirm_issuer_rut`, atado a la huella de la credencial: cambiar key o RUT
+  exige confirmar de nuevo). Sin confirmación no pasa nada a `sending`. Si el XML devuelto trae otro
+  `<RUTEmisor>`, la venta queda `unknown` (conciliación) sin reemitir. Ver `docs/CONTRATO-DTECORE.md`.
+- **A1 RUT único.** RUT canónico con dígito verificador; un RUT por comercio salvo grupo de RUT
+  compartido creado por un administrador para comercios del mismo dueño. API: `RUT_NOT_AVAILABLE`.
+  La lista `FISCAL_ALLOWED_ISSUERS` sigue rechazando RUT repetidos: un grupo compartido no puede estar en
+  la lista mientras exista.
+- **A2 folios.** `crm_fiscal_issuances.issuer_rut` permanente y `fiscal.document_folios` con clave
+  (RUT, tipo, folio). Un folio repetido del mismo emisor o un XML de otro emisor no queda `issued`: la
+  recuperación lo pasa a `unknown` (`FOLIO_DUPLICATE` / `DOCUMENT_ISSUER_MISMATCH`) sin detener a los
+  demás comercios.
+- **A4 venta fiscalizada inmutable** (sending/unknown/issued/cancelled): totales, descuento, estado,
+  líneas y pagos bloqueados en la base (`FISCAL_SALE_TRIBUTARY_LOCKED`). Corrección: administrador,
+  una venta, una transacción, auditada.
+- **A3 nota de crédito**: borradores en `fiscal.credit_notes` con clave foránea al documento original;
+  emisión bloqueada (`docs/NOTA-CREDITO-DTE61.md`).
+
+Pruebas: `test/db/lab-multiempresa.db.test.mjs` (A/B, garantías 1–10 y A3),
+`supabase/fiscal-recovery/tests/adversarial-ab.sql` (27 pruebas de la auditoría) y
+`backups/2026-11-05-H/test-recuperacion-H.sh`.
 
 ## Verificado y no verificado
 
@@ -127,7 +178,7 @@ NO verificado:
 - Proveedor real DTECore: bloqueado hasta verificar el contrato por escrito.
 - Impresión: `lib/print-plan.mjs` prepara el plan desde el PDF guardado; no envía nada. Rasterizar el
   PDF a GS v 0 y la prueba de PDF417 en XP-80C están pendientes. Print Connector no se modificó.
-- Migración endurecida solo aplicada en `walinka_test`; no aplicada en producción.
+- Migraciones A–H aplicadas en producción (A–G el 4-11-2026, H el 5-11-2026). Estado y correspondencia con los archivos: `supabase/fiscal-recovery/PRODUCTION-MIGRATION-LEDGER-2026-11-04.md`.
 - Endpoints de PDF y descarga en `main` (`api/fiscal/document.js`, `download.js`, `pdf.js`): siguen
   usando el guard solo de dueño (`api/_lib/siisolutions-owner-guard.js`). No se cambiaron en esta rama.
 
