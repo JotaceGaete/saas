@@ -1,6 +1,8 @@
 // Mapeo compartido entre almacenes (Postgres y supabase-js). Ambos reciben las mismas
 // respuestas JSON de las RPC del ledger y las convierten aquí, así no pueden divergir.
 
+// Buffer se importa explícitamente: el runtime de Supabase Edge no lo expone como global.
+import { Buffer } from 'node:buffer';
 import { FiscalError } from './errors.mjs';
 
 // Respuesta de public.crm_fiscal_emission_context(business, sale).
