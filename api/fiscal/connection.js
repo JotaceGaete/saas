@@ -6,6 +6,7 @@ import { createFiscalRoleGuard } from '../_lib/siisolutions-fiscal-role-guard.js
 import { createFiscalConnectionService } from '../_lib/fiscal-connection.js';
 import { parseMasterKey } from '../../supabase/functions/fiscal-emit/lib/secrets.mjs';
 import { allowlistFromEnv } from '../../supabase/functions/fiscal-emit/lib/allowlist.mjs';
+import { describeFiscalConnectionConfig, isDiagnosticAllowed } from '../_lib/fiscal-config-diagnostic.js';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const CONNECTION_ROLES = Object.freeze(['fiscal_owner']);
@@ -52,6 +53,13 @@ export function createFiscalConnectionHandler({ service, assertAccess }) {
 }
 
 export default async function handler(req, res) {
+  // DIAGNÓSTICO TEMPORAL (Etapa 3): GET ?diagnostic=config, solo en la Preview de la rama de #123.
+  // Solo booleanos y metadatos del despliegue; nunca valores. En cualquier otro entorno se ignora.
+  const query = req.query || Object.fromEntries(new URL(req.url, 'http://x').searchParams);
+  if (req.method === 'GET' && query.diagnostic === 'config' && isDiagnosticAllowed(process.env)) {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(200).json(describeFiscalConnectionConfig(process.env));
+  }
   const url = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL;
   const secret = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !secret) {
