@@ -268,3 +268,51 @@ test('confirmación del RUT: cambiar la API key o el RUT exige confirmar de nuev
   await c.query(`update fiscal.issuers set issuer_rut = $2 where business_id = $1`, [businessId, uniqueRut()]);
   assert.equal((await status(businessId)).rutConfirmationReason, 'rut_changed');
 });
+
+// Migración I (2026-11-06): en producción service_role no tiene SELECT sobre auth.users. PostgREST
+// ejecuta las RPC como service_role, así que la cola y la revisión deben funcionar con ese rol.
+// Antes de la migración ambas fallaban con «permission denied for table users» (403 en PostgREST).
+test('como service_role sin acceso a auth.users: la cola lista y el admin puede aprobar', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  await saveKey(businessId, ownerId);
+  await submit(businessId, ownerId);
+  const adminId = await admin();
+  const sr = new pg.Client(assertLocalTestConfig(CFG));
+  await sr.connect();
+  try {
+    const priv = await sr.query(`select has_table_privilege('service_role', 'auth.users', 'SELECT') as ok`);
+    assert.equal(priv.rows[0].ok, false, 'el escenario debe reproducir producción');
+    await sr.query('begin');
+    await sr.query('set local role service_role');
+    const pending = await sr.query(`select public.crm_fiscal_list_applications('pending_review') as j`);
+    const mine = pending.rows[0].j.find((a) => a.businessId === businessId);
+    assert.ok(mine, 'la solicitud aparece en Pendientes');
+    assert.equal(mine.reviewStatus, 'pending_review');
+    assert.match(mine.ownerEmail, /^owner-/);
+    const all = await sr.query(`select public.crm_fiscal_list_applications(null) as j`);
+    assert.ok(all.rows[0].j.some((a) => a.businessId === businessId), 'y en Todas');
+    // Un usuario sin rol admin sigue rechazado por la base.
+    const notAdmin = await plainUser();
+    await sr.query('savepoint s');
+    await assert.rejects(sr.query(`select public.crm_fiscal_review_application($1, $2, 'approve', null)`, [businessId, notAdmin]),
+      /FISCAL_REVIEWER_NOT_ADMIN/);
+    await sr.query('rollback to savepoint s');
+    const ok = await sr.query(`select public.crm_fiscal_review_application($1, $2, 'approve', null) as ok`, [businessId, adminId]);
+    assert.equal(ok.rows[0].ok, true);
+    await sr.query('rollback');
+  } finally {
+    await sr.end();
+  }
+});
+
+test('las funciones de revisión siguen ejecutables solo por service_role', async () => {
+  for (const sig of ['public.crm_fiscal_list_applications(text)', 'public.crm_fiscal_review_application(uuid, uuid, text, text)']) {
+    for (const role of ['anon', 'authenticated']) {
+      const r = await c.query(`select has_function_privilege($1, $2, 'execute') as ok`, [role, sig]);
+      assert.equal(r.rows[0].ok, false, `${role} ${sig}`);
+    }
+    const s = await c.query(`select p.prosecdef, p.proconfig from pg_proc p where p.oid = $1::regprocedure`, [sig]);
+    assert.equal(s.rows[0].prosecdef, true);
+    assert.deepEqual(s.rows[0].proconfig, ['search_path=public, fiscal, pg_temp']);
+  }
+});
