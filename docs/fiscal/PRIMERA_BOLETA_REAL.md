@@ -9,8 +9,8 @@ Cada etapa necesita autorización expresa antes de ejecutarse.
 | # | Bloqueo | Quién lo resuelve |
 |---|---|---|
 | 1 | ~~Migraciones~~ **Resuelto 2026-11-05:** A–H aplicadas y registradas (H = `20261105200532 fiscal_h_identity_integrity`, md5 verificado, 18 comprobaciones en `true`). Ver `supabase/fiscal-recovery/PRODUCTION-MIGRATION-LEDGER-2026-11-04.md`. | — |
-| 2 | ~~`fiscal-emit` no desplegada~~ **Desplegada en modo aislado.** Versión 3 (2026-11-06) desde `fae2b05`: 18 archivos idénticos (sha256), `verify_jwt=true`, sin `FISCAL_PROVIDER`. Corrige el arranque de la v1 (`Buffer` no es global en Supabase Edge) y añade diagnóstico de configuración y respaldo seguro. `FISCAL_MASTER_KEY` y `FISCAL_ALLOWED_ISSUERS` en la rama main del proyecto. Base sin cambios. Faltan las pruebas HTTP posteriores. | Juan (pruebas HTTP) |
-| 3 | Secretos: `FISCAL_MASTER_KEY` (32 bytes base64), **la misma** en Supabase (descifra) y Vercel (cifra); `FISCAL_ALLOWED_ISSUERS="<uuid>=<rut>"` igual en ambos. `FISCAL_PROVIDER` **no se configura** en el despliegue aislado (Etapa 2) ni en la configuración (Etapa 3): sin él la función usa el adaptador bloqueado. `FISCAL_PROVIDER=dtecore` solo en Supabase y solo en la Etapa 4, con autorización expresa. | Juan |
+| 2 | ~~`fiscal-emit` no desplegada~~ **Resuelto 2026-11-06 (Etapa 2 completada):** versión 3 desde `fae2b05`, en modo aislado con proveedor bloqueado. Ver Etapa 2. | — |
+| 3 | Secretos. **Supabase (main): hecho 2026-11-06** — `FISCAL_MASTER_KEY` (32 bytes base64, verificada por el arranque) y `FISCAL_ALLOWED_ISSUERS` (formato válido); `FISCAL_PROVIDER` ausente. **Vercel (Preview autorizada): pendiente** — `FISCAL_MASTER_KEY` **idéntica** a la de Supabase (la vigente desde el 6-11-2026 12:28 UTC; Vercel cifra, Supabase descifra) y `FISCAL_ALLOWED_ISSUERS` igual. `FISCAL_PROVIDER=dtecore` solo en Supabase y solo en la Etapa 4, con autorización expresa. | Juan |
 | 4 | Cuenta DTE Core de la empresa piloto: CAF de boletas (tipo 39) con folios disponibles, certificado activo, ambiente de producción. Confirmar que la "validación de operación" (409 `folioExistente` con `idBoletaOperacion` repetido) esté activa. | Juan con DTE Core |
 | 5 | Datos del emisor en Walinka: RUT + API key guardados, resolución SII (número y fecha reales), sucursal si aplica, solicitud aprobada por un administrador, **RUT confirmado por el propietario**. | Juan (propietario y admin) |
 | 6 | IVA de los productos: categoría por defecto del negocio o `tax_treatment` por producto en `IVA_AFECTO_19` (sin eso: `FISCAL_TAX_LINES_NOT_VERIFIED`). Solo ventas 100 % afectas, sin descuento, pagadas en efectivo o Point confirmado, del mismo día. | Juan |
@@ -28,6 +28,30 @@ md5 del archivo y las 18 comprobaciones de `03-verificacion-post-H.sql` en `true
    `dte39_emission_control.enabled` sigue en `false`.
 
 **Etapa 2 — Despliegue aislado sin emisión (con autorización).**
+**Completada (2026-11-06).** Evidencia:
+- `fiscal-emit` versión 3, ACTIVE, `verify_jwt=true`, publicada desde el commit `fae2b05`: los 18
+  archivos del grafo de `index.ts` idénticos (sha256) a los del commit, sin archivos extra.
+- Historia: v1 (`65f7e60`, 2026-11-05) caía al arrancar, primero por secretos ausentes y luego por
+  `ReferenceError: Buffer is not defined` (el Deno local expone `Buffer` como global; Supabase Edge no).
+  `fae2b05` importa `Buffer` de `node:buffer`, añade el diagnóstico de arranque y un respaldo que
+  respeta CORS y responde 503 `FISCAL_NOT_CONFIGURED` si la configuración es inválida. Una primera
+  `FISCAL_MASTER_KEY` no medía 32 bytes (`MASTER_KEY_INVALID`); se reemplazó el 2026-11-06 12:28 UTC.
+- Arranque (todos los registrados desde 12:28 UTC): `missing: []`, `fiscalProviderSet: false`,
+  `providerMode: "blocked"`, sin `configuración inválida`.
+- Pruebas externas (Juan, 2026-11-06):
+  A. OPTIONS desde `https://go.walinka.com` → 204 con `access-control-allow-origin` y `Vary: Origin`.
+  B. OPTIONS desde `https://evil.example` → 403 `ORIGIN_NOT_ALLOWED`, sin cabeceras CORS.
+  C. POST sin token → 401 `UNAUTHORIZED_NO_AUTH_HEADER` (plataforma, `verify_jwt`).
+  D. `status` autenticado desde la Preview de #123 (consola del navegador, sin copiar el token) sobre
+     la venta `c5a5ddeb-…` → 200, `blockedReason: PROVIDER_NOT_READY`, `liveAuthorized: false`,
+     `canEmit: false`. Primera lectura real contra PostgREST (venta, rol, emisión, contexto) sin errores.
+- Base después de las pruebas: emisión global apagada; 0 emisores habilitados, 0 credenciales,
+  0 confirmaciones de RUT; 1 emisión (boleta piloto 51106), ninguna en curso; 0 filas para la venta
+  de prueba; 0 auditoría; 1 folio; triggers de cola deshabilitados; sin cron fiscal; 1.173 ventas,
+  1.621 ítems, 1.127 pagos; última migración H.
+- No se configuró `FISCAL_PROVIDER`, no se tocó Vercel y no se fusionó ninguna PR.
+
+Procedimiento seguido:
 El proveedor queda bloqueado en toda esta etapa: `FISCAL_PROVIDER` **no existe** en los secretos de
 Supabase (ni `dtecore` ni `siisolutions`; cualquier otro valor o su ausencia usa el adaptador bloqueado).
 1. Pruebas: `npm run test:deno` y `deno check index.ts` (hecho en `438e136`: 20/20, limpio).
