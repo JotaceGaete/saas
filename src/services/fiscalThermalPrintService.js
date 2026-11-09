@@ -140,9 +140,24 @@ async function lookupSaleNumber(businessId, invoiceId) {
   }
 }
 
+// Nombre y logo del negocio para el encabezado. Mejor esfuerzo: sin ellos la
+// boleta sale igual, con la razón social del XML.
+async function lookupBranding(businessId) {
+  try {
+    if (!businessId || typeof supabase.from !== 'function') return null;
+    const { data, error } = await supabase.from('wa_businesses')
+      .select('name, logo_url, design_settings').eq('id', businessId).maybeSingle();
+    if (error || !data) return null;
+    return { name: data.name || null, logoUrl: data.logo_url || data.design_settings?.logoUrl || null };
+  } catch {
+    return null;
+  }
+}
+
 export async function printBoletaThermal({ businessId, invoiceId, file, resolucion, unidadSii, timbreStrategyId, saleNumber = null }) {
   try {
     if (saleNumber == null && invoiceId) saleNumber = await lookupSaleNumber(businessId, invoiceId);
+    const branding = await lookupBranding(businessId);
     const { dte, tedVerified } = await loadSource({ businessId, invoiceId, file });
     const { printerConfig, target } = resolveTarget(businessId, 'fiscal-reprint', dte.folio);
     const { receipt, timbre } = await buildBoletaReceipt({
@@ -156,6 +171,11 @@ export async function printBoletaThermal({ businessId, invoiceId, file, resoluci
       ),
       reprint: true,
       saleNumber,
+      nombreFantasia: branding?.name || undefined,
+      logoUrl: branding?.logoUrl || null,
+      printLogo: printerConfig.printLogo,
+      imageMode: printerConfig.imageMode,
+      effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,
       paperWidthMm: printerConfig.paperWidthMm,
       autoCut: printerConfig.autoCut,
       cutStrategyId: printerConfig.cutStrategyId,
