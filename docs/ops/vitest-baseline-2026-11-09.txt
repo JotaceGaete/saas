@@ -1,0 +1,37 @@
+# Pruebas Vitest que fallan en main (c5c3249) el 2026-11-09. Fallas preexistentes: la CI no debe
+# bloquear por estas, sí por cualquier falla nueva. Se elimina una línea al corregir la prueba.
+src/components/ui/BusinessSidebar.test.jsx :: BusinessSidebar — ítem Afiliados (rollout admin-only) > admin ve "Afiliados" en la navegación
+src/pages/crm/CrmCostCenter.test.jsx :: OPERATING-CALENDAR-1 — calendario operativo > con operatingDays configurado, un domingo pasado se muestra como "Cerrado" en el calendario
+src/pages/crm/CrmCostos.test.jsx :: OPERATING-CALENDAR-1 — costo fijo por día operativo (dentro del hero rediseñado) > con operatingDays configurado, usa días operativos (no calendario, no /20) y no muestra el aviso de estimación
+src/pages/crm/CrmCostos.test.jsx :: OPERATING-CALENDAR-1 — costo fijo por día operativo (dentro del hero rediseñado) > sin operatingDays configurado (legacy), usa días calendario del mes -- nunca /20 -- y muestra el aviso de estimación
+src/pages/crm/CrmInvoiceEditor.test.jsx :: (no carga el archivo: Missing Supabase environment variables. Please check your .env file for VITE_SUPABASE_URL )
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — estado de conexión > conectado pero sin impresoras detectadas lo indica explícitamente
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — estado de conexión > si QZ Tray no está disponible, muestra "Desconectado" y un mensaje de ayuda
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > PRINT-4-BUG10: la calibración de borde derecho imprime 5 bloques `raw` sin relleno, y pide corte
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > PRINT-4-BUG11: la calibración fina de borde imprime 6 bloques `raw` sin relleno, y pide corte
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > PRINT-4-BUG12: la calibración de borde de 8 dots imprime 6 bloques `raw` sin relleno, y pide corte
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > PRINT-4-BUG13: el diagnóstico de aspecto imprime cuadrado y círculo (2 bloques `raw` de imagen) y pide corte
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > PRINT-4-BUG2: el diagnóstico de corte (A/B) imprime ambas variantes con texto identificador, sin cortar de más
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > PRINT-4-BUG2: el diagnóstico de imagen (A/B) imprime ambas variantes ESC/POS con texto identificador, sin depender de un logo real
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > PRINT-4-BUG3: la impresión final de validación imprime un ticket completo (logo, items, TOTAL, corte) con datos sintéticos
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > PRINT-4-BUG6: el diagnóstico de logo (posición) imprime marcas de margen + el logo real del negocio, y pide corte
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > PRINT-4-BUG8: el diagnóstico de geometría imprime 3 bloques rasterBytes en posiciones distintas, y pide corte
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > PRINT-4-BUG9: el diagnóstico de posición explícita (ESC $) imprime 3 bloques `raw` sin relleno, y pide corte
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > PRINT-5 — Opciones avanzadas colapsadas por defecto > el bloque "Opciones avanzadas" existe como <details> colapsado (sin el atributo open)
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > el diagnóstico de aspecto está deshabilitado sin impresora seleccionada
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > el diagnóstico de geometría está deshabilitado sin impresora seleccionada
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > el diagnóstico de logo está deshabilitado sin impresora seleccionada
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > el diagnóstico de posición explícita está deshabilitado sin impresora seleccionada
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > la calibración de borde de 8 dots está deshabilitada sin impresora seleccionada
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > la calibración de borde derecho está deshabilitada sin impresora seleccionada
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > la calibración fina de borde está deshabilitada sin impresora seleccionada
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > la impresión final de validación está deshabilitada sin impresora seleccionada
+src/pages/crm/CrmPrintSettings.test.jsx :: CrmPrintSettings — imprimir ticket de prueba > los diagnósticos de imagen y corte están deshabilitados sin impresora seleccionada
+src/pages/crm/CrmTerminal.test.js :: CAJA-CIERRE-CONCILIACION-1 — PAYMENT_METHODS: débito/crédito separados + Mercado Pago > incluye debit_card (Débito), credit_card (Crédito) y mercado_pago (Mercado Pago)
+src/pages/crm/CrmTerminal.test.js :: CrmTerminal — borrador local: restauración conserva la key exacta > un retry (reintento tras error) no pasa por resetForm ni por applyDraft -- la key sigue intacta en saleIdempotencyKeyRef
+src/pages/crm/CrmTerminal.test.js :: CrmTerminal — cliente en etapa Cobro (sin duplicar estado) > el resumen de cliente en Zone 1 reutiliza selectedCustomer -- no declara un segundo selector/estado
+src/pages/crm/CrmTerminal.test.js :: CrmTerminal — etapa Cobro reutiliza el bloque de pagos existente (no lo reimplementa) > el bloque de 'payment' existe y contiene el selector de método, cuenta corriente y "Agregar medio de pago"
+src/pages/crm/CrmTerminal.test.js :: CrmTerminal — refreshProducts es reutilizable (montaje + retry tras STOCK_INSUFFICIENT) > refreshProducts está memoizado con useCallback y se usa tanto en el efecto de montaje como en handleRegister
+src/pages/crm/components/CrmThermalTicket.test.jsx :: (no carga el archivo: Missing Supabase environment variables. Please check your .env file for VITE_SUPABASE_URL )
+src/services/crmService.dailySummary.test.js :: getDailySummary — día sin actividad > devuelve todo en cero sin alertas
+src/services/crmService.dailySummary.test.js :: getDailySummary — inventario > cuenta productos con stock_actual <= stock_minimo como stock bajo
