@@ -43,10 +43,10 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
 
-      # npm ci no sirve hoy: package-lock.json no está sincronizado con package.json
-      # (ver la descripción de la PR). Se usa npm install, igual que el build de Vercel.
+      # npm ci instala exactamente package-lock.json. Respeta .npmrc (legacy-peer-deps=true), que
+      # evita instalar los peers next y webpack que exige @dhiwise/component-tagger.
       - name: Instalar dependencias
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
 
       - uses: denoland/setup-deno@v2
         with:
@@ -106,7 +106,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
       - name: Instalar dependencias
-        run: npm install --no-audit --no-fund
+        run: npm ci --no-audit --no-fund
       - name: Build (vite)
         env:
           VITE_VERCEL_ENV: production
