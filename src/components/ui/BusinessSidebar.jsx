@@ -341,6 +341,9 @@ Motivo (opcional):`;
                 )}
               </li>
               {[
+                ...(import.meta.env.VITE_FISCAL_CONNECTION_ENABLED === 'true'
+                  ? [{ label: 'Altas de facturación', path: '/admin/facturacion', icon: 'FileCheck', match: (p) => p === '/admin/facturacion' }]
+                  : []),
                 { label: 'Auditoría', path: '/admin/audit-log', icon: 'ClipboardList', match: (p) => p === '/admin/audit-log' },
                 { label: 'Emails',    path: '/admin/emails',    icon: 'Mail',          match: (p) => p === '/admin/emails' },
               ].map(item => {

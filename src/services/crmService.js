@@ -36,6 +36,22 @@ export function getQuoteDocLabel(documentTitleType = 'cotizacion') {
   };
 }
 
+/**
+ * Número interno (invoice_number) de una venta, leído del servidor. Para
+ * cuando una respuesta trae solo el id (p. ej. la recuperación de Point):
+ * el navegador nunca inventa un número. Devuelve null si no se pudo leer.
+ */
+export async function getSaleNumber(businessId, invoiceId) {
+  if (!businessId || !invoiceId) return null;
+  try {
+    const { data, error } = await supabase.from('crm_invoices')
+      .select('invoice_number').eq('id', invoiceId).eq('business_id', businessId).maybeSingle();
+    return error ? null : (data?.invoice_number ?? null);
+  } catch {
+    return null;
+  }
+}
+
 export function formatInvoiceNumber(n) {
   return `NV-${String(n).padStart(4, '0')}`;
 }

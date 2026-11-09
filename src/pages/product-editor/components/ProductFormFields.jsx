@@ -4,6 +4,7 @@ import Input from 'components/ui/Input';
 import { formatIntegerInputGrouped, parseCLPInput } from '../../../utils/formatCLP';
 import { createBusinessCategory } from '../../../services/waBusinessService';
 import { getDiscountPercent } from '../../../utils/offerHelpers';
+import { TAX_TREATMENTS, TAX_TREATMENT_LABELS } from '../../../lib/fiscal/taxTreatment';
 
 const MAX_NAME = 80;
 const MAX_DESC = 300;
@@ -16,7 +17,7 @@ function formatPriceInput(value, locale) {
   return formatIntegerInputGrouped(value, locale);
 }
 
-export default function ProductFormFields({ formData, errors, onChange, currencyCode = 'USD', locale = 'en-US', useCategories = false, businessCategories = [], rubroCategories = [], onImproveWithAi, isImprovingDescription = false, publicCode = '', businessId, onCategoryCreated, isRestaurant = false, onGenerateBarcode, productId }) {
+export default function ProductFormFields({ formData, errors, onChange, currencyCode = 'USD', locale = 'en-US', useCategories = false, businessCategories = [], rubroCategories = [], onImproveWithAi, isImprovingDescription = false, publicCode = '', businessId, onCategoryCreated, isRestaurant = false, onGenerateBarcode, productId, showTaxTreatment = false }) {
   const handleChange = (field, value) => onChange(field, value);
   const ownOptions   = Array.isArray(businessCategories) ? businessCategories.filter((c) => c?.name?.trim()) : [];
   const rubroOptions = Array.isArray(rubroCategories)    ? rubroCategories.filter((c) => c?.name?.trim())    : [];
@@ -114,6 +115,29 @@ export default function ProductFormFields({ formData, errors, onChange, currency
             Tu código interno de referencia
           </p>
         </div>
+
+        {/* Tratamiento tributario (boleta electrónica) */}
+        {showTaxTreatment && (
+          <div>
+            <label htmlFor="product-tax-treatment" className="block text-[13px] font-semibold mb-1" style={{ fontFamily: 'var(--font-caption)', color: 'var(--color-foreground)' }}>
+              IVA en la boleta electrónica
+            </label>
+            <select
+              id="product-tax-treatment"
+              value={formData?.taxTreatment || ''}
+              onChange={(e) => handleChange('taxTreatment', e?.target?.value)}
+              className="w-full min-h-[44px] rounded-lg border px-3 text-sm"
+              style={{ borderColor: 'var(--color-border)', backgroundColor: 'var(--color-background)', color: 'var(--color-foreground)' }}
+            >
+              <option value="">Usar el de mi negocio (Configuración › Facturación)</option>
+              {TAX_TREATMENTS.map((t) => <option key={t} value={t}>{TAX_TREATMENT_LABELS[t]}</option>)}
+            </select>
+            <p className="text-xs mt-1" style={{ color: 'var(--color-muted-foreground)', fontFamily: 'var(--font-caption)' }}>
+              El precio incluye IVA. Se aplica solo a ventas con boleta electrónica; no se elige en cada venta.
+              Por ahora Walinka emite boletas solo con productos afectos.
+            </p>
+          </div>
+        )}
 
         {/* Código de barras */}
         <div>

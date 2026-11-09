@@ -1,0 +1,143 @@
+name: Walinka Print Connector installer
+
+# Compila el conector en Windows, ejecuta su selftest y genera el instalador.
+# - Push a una rama (no main): instalador como artefacto de la ejecución, para revisar.
+# - Publicación: un tag print-connector-vX.Y.Z, o un push cuyo commit diga
+#   [publicar-conector] cuando esa versión todavía no tiene release. Publica un
+#   pre-release de GitHub con SHA256SUMS.txt y attestation de procedencia.
+#   Nunca marca "latest" ni reemplaza un release existente.
+on:
+  push:
+    branches-ignore:
+      - main
+    tags:
+      - 'print-connector-v*'
+    paths:
+      - 'tools/walinka-print-connector/**'
+      - '.github/workflows/print-connector-installer.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    permissions:
+      contents: write      # solo se usa para crear el release en un tag
+      id-token: write      # attestation de procedencia
+      attestations: write
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: tools/walinka-print-connector
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Instalar Inno Setup si falta
+        run: |
+          $iscc = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe") |
+            Where-Object { Test-Path $_ } | Select-Object -First 1
+          if (-not $iscc) { choco install innosetup -y --no-progress }
+
+      - name: Compilar y generar instalador
+        run: .\installer\build-installer.ps1
+
+      - name: Selftest
+        run: |
+          .\publish\WalinkaPrintConnector.exe selftest
+          if ($LASTEXITCODE -ne 0) { throw 'selftest falló' }
+
+      - name: Versión y SHA-256
+        id: meta
+        run: |
+          $v = (Select-String -Path 'WalinkaPrintConnector.csproj' -Pattern '<Version>(.+)</Version>').Matches[0].Groups[1].Value
+          $file = "WalinkaPrintConnector-Setup-$v.exe"
+          $path = Join-Path 'installer-output' $file
+          if (-not (Test-Path $path)) { throw "No se generó $file" }
+          $hash = (Get-FileHash -Algorithm SHA256 $path).Hash.ToLowerInvariant()
+          # Formato de sha256sum: "<hash>  <archivo>"
+          [IO.File]::WriteAllText((Join-Path 'installer-output' 'SHA256SUMS.txt'), "$hash  $file`n", (New-Object Text.UTF8Encoding $false))
+          "version=$v" >> $env:GITHUB_OUTPUT
+          "file=$file" >> $env:GITHUB_OUTPUT
+          "sha256=$hash" >> $env:GITHUB_OUTPUT
+          Write-Host "SHA-256 $file = $hash"
+
+      - name: ¿Publicar?
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+        run: |
+          $tag = "print-connector-v${{ steps.meta.outputs.version }}"
+          $isTag = $env:GITHUB_REF -like 'refs/tags/*'
+          if ($isTag -and $env:GITHUB_REF_NAME -ne $tag) { throw "El tag $env:GITHUB_REF_NAME no coincide con la versión del csproj ($tag)." }
+          $asked = $isTag -or ("$env:COMMIT_MESSAGE" -match '\[publicar-conector\]')
+          $exists = $false
+          if ($asked) {
+            gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
+            $exists = ($LASTEXITCODE -eq 0)
+            $global:LASTEXITCODE = 0
+          }
+          if ($asked -and $exists) { Write-Host "Ya existe el release $tag; no se modifica." }
+          $publish = $asked -and -not $exists
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "publish=$($publish.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          Write-Host "Publicar: $publish"
+
+      - uses: actions/attest-build-provenance@v2
+        if: steps.release.outputs.publish == 'true'
+        with:
+          subject-path: tools/walinka-print-connector/installer-output/${{ steps.meta.outputs.file }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WalinkaPrintConnector-Setup-${{ steps.meta.outputs.version }}
+          path: |
+            tools/walinka-print-connector/installer-output/WalinkaPrintConnector-Setup-*.exe
+            tools/walinka-print-connector/installer-output/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Publicar pre-release
+        if: steps.release.outputs.publish == 'true'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.meta.outputs.version }}
+          FILE: ${{ steps.meta.outputs.file }}
+          SHA256: ${{ steps.meta.outputs.sha256 }}
+        run: |
+          $notes = @"
+          Walinka Print Connector $env:VERSION (pre-release, para Previews).
+
+          Novedad: una Preview de Walinka se autoriza desde Windows con una ventana de confirmación, sin PowerShell ni editar JSON.
+
+          **SHA-256** de ``$env:FILE``:
+
+          ``$env:SHA256``
+
+          Verificar en Windows (Símbolo del sistema, en la carpeta de Descargas):
+
+          ``certutil -hashfile $env:FILE SHA256``
+
+          El resultado debe ser idéntico al de arriba (también está en SHA256SUMS.txt).
+
+          Procedencia: generado por GitHub Actions desde el commit $env:GITHUB_SHA. Verificable con ``gh attestation verify $env:FILE --repo $env:GITHUB_REPOSITORY``.
+
+          El instalador todavía no tiene firma digital (Authenticode): Windows SmartScreen puede advertir antes de ejecutarlo. Instálalo solo si el SHA-256 coincide.
+          "@
+          $notesPath = Join-Path $env:RUNNER_TEMP 'notes.md'
+          [IO.File]::WriteAllText($notesPath, $notes)
+          $tagArgs = if ($env:GITHUB_REF -like 'refs/tags/*') { @('--verify-tag') } else { @('--target', $env:GITHUB_SHA) }
+          gh release create $env:TAG `
+            "installer-output/$env:FILE" "installer-output/SHA256SUMS.txt" `
+            @tagArgs --prerelease --latest=false `
+            --title "Walinka Print Connector $env:VERSION" `
+            --notes-file $notesPath
+          if ($LASTEXITCODE -ne 0) { throw 'No se pudo crear el release.' }

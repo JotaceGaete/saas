@@ -138,3 +138,35 @@ test('pair devuelve el token entregado por el conector', async () => {
   assert.equal(calls[0].url, 'http://127.0.0.1:47801/v1/pair');
   assert.deepEqual(JSON.parse(calls[0].init.body), { code: '123456', deviceName: 'Caja 1' });
 });
+
+test('probeListening: petición no-cors a /v1/health, sin token ni credenciales', async () => {
+  const { fn, calls } = fakeFetch(() => ({ status: 0 }));
+  const provider = createLocalConnectorProvider({ token: 'secreto', fetchImpl: fn });
+  assert.equal(await provider.probeListening(), true);
+  assert.equal(calls[0].url, 'http://127.0.0.1:47801/v1/health');
+  assert.equal(calls[0].init.mode, 'no-cors');
+  assert.equal(calls[0].init.credentials, 'omit');
+  assert.equal(calls[0].init.headers, undefined);
+});
+
+test('probeListening: false si no hay nada escuchando', async () => {
+  const { fn } = fakeFetch(() => new TypeError('Failed to fetch'));
+  assert.equal(await createLocalConnectorProvider({ fetchImpl: fn }).probeListening(), false);
+});
+
+test('requestOriginApproval: POST no-cors sin token, cuerpo ni cabeceras (sin preflight)', async () => {
+  const { fn, calls } = fakeFetch(() => ({ status: 0 }));
+  const provider = createLocalConnectorProvider({ token: 'secreto', fetchImpl: fn });
+  assert.equal(await provider.requestOriginApproval(), true);
+  assert.equal(calls[0].url, 'http://127.0.0.1:47801/v1/origin-approval');
+  assert.equal(calls[0].init.method, 'POST');
+  assert.equal(calls[0].init.mode, 'no-cors');
+  assert.equal(calls[0].init.credentials, 'omit');
+  assert.equal(calls[0].init.headers, undefined);
+  assert.equal(calls[0].init.body, undefined);
+});
+
+test('requestOriginApproval: false si no hay nada escuchando', async () => {
+  const { fn } = fakeFetch(() => new TypeError('Failed to fetch'));
+  assert.equal(await createLocalConnectorProvider({ fetchImpl: fn }).requestOriginApproval(), false);
+});

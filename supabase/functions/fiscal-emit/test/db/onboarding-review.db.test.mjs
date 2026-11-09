@@ -1,0 +1,318 @@
+// Alta de facturación por comercio con revisión de Walinka (migración F,
+// 20261104_fiscal_onboarding_review.sql) contra Postgres real (solo walinka_test).
+// Nunca apunta a producción (assertLocalTestConfig en store-pg.mjs).
+import { test, before, after } from 'node:test';
+import assert from 'node:assert/strict';
+import { randomBytes, randomUUID } from 'node:crypto';
+import pg from 'pg';
+import { assertLocalTestConfig } from '../../lib/store-pg.mjs';
+import { seal } from '../../lib/secrets.mjs';
+import { CFG, makeFixture, uniqueRut, confirmRut, setEmissionControl } from './fixtures.mjs';
+
+const MASTER = randomBytes(32);
+const API_KEY = 'dtc_live_SECRET_DO_NOT_STORE_PLAIN_0123456789';
+
+let c;
+before(async () => { c = new pg.Client(assertLocalTestConfig(CFG)); await c.connect(); });
+after(async () => { await c.end(); });
+
+async function newBusiness() {
+  const userId = randomUUID();
+  const businessId = randomUUID();
+  await c.query(`insert into auth.users (id, email) values ($1, $2)`, [userId, `owner-${userId}@test.local`]);
+  await c.query(
+    `insert into public.wa_businesses (id, user_id, name, whatsapp, country_code, currency)
+     values ($1, $2, 'Comercio nuevo', '+56900000000', 'CL', 'CLP')`,
+    [businessId, userId],
+  );
+  return { businessId, ownerId: userId };
+}
+
+async function admin() {
+  const id = randomUUID();
+  await c.query(`insert into auth.users (id, email, raw_app_meta_data) values ($1, $2, '{"role":"admin"}')`,
+    [id, `admin-${id}@walinka.local`]);
+  return id;
+}
+
+async function plainUser() {
+  const id = randomUUID();
+  await c.query(`insert into auth.users (id, email) values ($1, $2)`, [id, `u-${id}@test.local`]);
+  return id;
+}
+
+// Un RUT propio por comercio (la migración H impide repetirlo entre comercios), estable entre
+// guardados del mismo comercio.
+const rutOf = new Map();
+async function saveKey(businessId, actorId, apiKey = API_KEY) {
+  if (!rutOf.has(businessId)) rutOf.set(businessId, uniqueRut());
+  const rec = seal({ apiKey }, { key: MASTER, businessId, provider: 'dtecore', keyVersion: 1 });
+  await c.query(`select public.crm_fiscal_save_credentials($1, $2, $6, $3, $4, $5, 1)`,
+    [businessId, actorId, rec.ciphertext, rec.iv, rec.authTag, rutOf.get(businessId)]);
+}
+
+const submit = (businessId, actorId, { numero = 80, fecha = '2014-08-22', sucursalNombre = null, sucursalCodigo = null } = {}) =>
+  c.query(`select public.crm_fiscal_submit_application($1, $2, $3, $4::date, $5, $6) as ok`,
+    [businessId, actorId, numero, fecha, sucursalNombre, sucursalCodigo]);
+
+const review = (businessId, adminId, decision, note = null) =>
+  c.query(`select public.crm_fiscal_review_application($1, $2, $3, $4) as ok`, [businessId, adminId, decision, note]);
+
+async function issuer(businessId) {
+  const r = await c.query(
+    `select review_status, review_note, enabled, verified, resolucion_numero, resolucion_fecha::text as resolucion_fecha,
+            sucursal_nombre, sucursal_codigo, submitted_by, reviewed_by
+       from fiscal.issuers where business_id = $1`, [businessId]);
+  return r.rows[0] ?? null;
+}
+
+async function status(businessId) {
+  return (await c.query(`select public.crm_fiscal_connection_status($1) as s`, [businessId])).rows[0].s;
+}
+
+async function audit(businessId) {
+  return (await c.query(
+    `select action, outcome, actor_user_id from fiscal.admin_audit where business_id = $1 and action like 'application_%' order by id`,
+    [businessId])).rows;
+}
+
+async function rejects(promise, code) {
+  await assert.rejects(promise, (err) => String(err.message).includes(code));
+}
+
+test('alta completa: guardar clave -> enviar -> Walinka aprueba -> emisor verificado y habilitado', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  const adminId = await admin();
+  await saveKey(businessId, ownerId);
+  assert.equal((await issuer(businessId)).review_status, 'draft');
+
+  await submit(businessId, ownerId, { sucursalNombre: 'Casa Matriz', sucursalCodigo: '1' });
+  let i = await issuer(businessId);
+  assert.deepEqual(
+    { s: i.review_status, e: i.enabled, v: i.verified, n: i.resolucion_numero, f: i.resolucion_fecha, sn: i.sucursal_nombre, sc: i.sucursal_codigo },
+    { s: 'pending_review', e: false, v: false, n: 80, f: '2014-08-22', sn: 'Casa Matriz', sc: '1' },
+  );
+
+  await review(businessId, adminId, 'approve');
+  i = await issuer(businessId);
+  assert.deepEqual({ s: i.review_status, e: i.enabled, v: i.verified, r: i.reviewed_by }, { s: 'approved', e: true, v: true, r: adminId });
+  assert.deepEqual((await audit(businessId)).map((a) => a.action), ['application_submitted', 'application_approved']);
+});
+
+test('sin API key guardada no se puede enviar la solicitud', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  await rejects(submit(businessId, ownerId), 'FISCAL_CREDENTIALS_REQUIRED');
+});
+
+test('datos inválidos: resolución fuera de rango, fecha futura o código de sucursal no numérico', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  await saveKey(businessId, ownerId);
+  await rejects(submit(businessId, ownerId, { numero: 0 }), 'FISCAL_APPLICATION_INVALID');
+  await rejects(submit(businessId, ownerId, { fecha: '2999-01-01' }), 'FISCAL_APPLICATION_INVALID');
+  await rejects(submit(businessId, ownerId, { sucursalCodigo: 'ABC' }), 'FISCAL_APPLICATION_INVALID');
+  assert.equal((await issuer(businessId)).review_status, 'draft');
+});
+
+test('solo un admin de Walinka puede revisar', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  await saveKey(businessId, ownerId);
+  await submit(businessId, ownerId);
+  await rejects(review(businessId, ownerId, 'approve'), 'FISCAL_REVIEWER_NOT_ADMIN');
+  await rejects(review(businessId, await plainUser(), 'approve'), 'FISCAL_REVIEWER_NOT_ADMIN');
+  assert.equal((await issuer(businessId)).verified, false);
+});
+
+test('rechazo con motivo obligatorio; el comercio corrige y vuelve a enviar', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  const adminId = await admin();
+  await saveKey(businessId, ownerId);
+  await submit(businessId, ownerId);
+  await rejects(review(businessId, adminId, 'reject'), 'FISCAL_REVIEW_NOTE_REQUIRED');
+  await review(businessId, adminId, 'reject', 'El RUT no corresponde a la cuenta DTE Core.');
+  let s = await status(businessId);
+  assert.equal(s.reviewStatus, 'rejected');
+  assert.equal(s.reviewNote, 'El RUT no corresponde a la cuenta DTE Core.');
+  assert.equal(s.enabled, false);
+  // Rechazada no se puede aprobar directamente: tiene que volver a enviarse.
+  await rejects(review(businessId, adminId, 'approve'), 'FISCAL_REVIEW_STATE');
+  await submit(businessId, ownerId, { numero: 99 });
+  s = await status(businessId);
+  assert.equal(s.reviewStatus, 'pending_review');
+  assert.equal(s.reviewNote, null);
+  await review(businessId, adminId, 'approve');
+  assert.equal((await issuer(businessId)).enabled, true);
+});
+
+test('cambiar la API key de un comercio aprobado lo devuelve a borrador y apaga la emisión', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  const adminId = await admin();
+  await saveKey(businessId, ownerId);
+  await submit(businessId, ownerId);
+  await review(businessId, adminId, 'approve');
+  await saveKey(businessId, ownerId, 'dtc_live_OTRA_CLAVE_0123456789abcdef');
+  const i = await issuer(businessId);
+  assert.deepEqual({ s: i.review_status, e: i.enabled, v: i.verified }, { s: 'draft', e: false, v: false });
+});
+
+test('desconectar devuelve a borrador; reenviar con datos nuevos exige otra revisión', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  const adminId = await admin();
+  await saveKey(businessId, ownerId);
+  await submit(businessId, ownerId);
+  await review(businessId, adminId, 'approve');
+  await c.query(`select public.crm_fiscal_disconnect($1, $2)`, [businessId, ownerId]);
+  assert.equal((await issuer(businessId)).review_status, 'draft');
+  await rejects(submit(businessId, ownerId), 'FISCAL_CREDENTIALS_REQUIRED');
+});
+
+test('suspender: solo un aprobado, con motivo; apaga la emisión', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  const adminId = await admin();
+  await saveKey(businessId, ownerId);
+  await submit(businessId, ownerId);
+  await rejects(review(businessId, adminId, 'suspend', 'x'), 'FISCAL_REVIEW_STATE');
+  await review(businessId, adminId, 'approve');
+  await rejects(review(businessId, adminId, 'suspend'), 'FISCAL_REVIEW_NOTE_REQUIRED');
+  await review(businessId, adminId, 'suspend', 'Reclamos del SII');
+  const i = await issuer(businessId);
+  assert.deepEqual({ s: i.review_status, e: i.enabled, v: i.verified }, { s: 'suspended', e: false, v: false });
+  assert.deepEqual((await audit(businessId)).map((a) => a.action),
+    ['application_submitted', 'application_approved', 'application_suspended']);
+});
+
+test('la base impide marcar un emisor verificado sin aprobación de Walinka', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  await saveKey(businessId, ownerId);
+  await rejects(c.query(`update fiscal.issuers set verified = true where business_id = $1`, [businessId]), 'issuers_review_check');
+});
+
+test('un emisor sin aprobar no puede emitir: el reclamo de una venta falla', async () => {
+  const f = await makeFixture(c, { issuerVerified: false, issuerEnabled: false });
+  const r = await c.query(
+    `select public.crm_fiscal_claim_with_credentials($1, $2, $3) as r`,
+    [f.businessId, f.saleId, randomUUID()],
+  ).catch((err) => ({ error: err }));
+  assert.equal(r.error?.message, 'FISCAL_ISSUER_NOT_ENABLED');
+});
+
+test('cola de revisión: pendientes primero, sin secretos, con correo del dueño', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  await saveKey(businessId, ownerId);
+  await submit(businessId, ownerId);
+  const list = (await c.query(`select public.crm_fiscal_list_applications('pending_review') as l`)).rows[0].l;
+  const row = list.find((x) => x.businessId === businessId);
+  assert.ok(row);
+  assert.equal(row.reviewStatus, 'pending_review');
+  assert.equal(row.hasCredentials, true);
+  assert.match(row.ownerEmail, /^owner-/);
+  assert.equal(JSON.stringify(list).includes(API_KEY), false);
+  assert.equal(JSON.stringify(list).includes('ciphertext'), false);
+});
+
+test('el contexto de emisión incluye la resolución del emisor (para imprimir la boleta)', async () => {
+  const f = await makeFixture(c);
+  const ctx = (await c.query(`select public.crm_fiscal_emission_context($1, $2) as x`, [f.businessId, f.saleId])).rows[0].x;
+  assert.equal(ctx.issuer.resolucion_numero, 80);
+  assert.equal(ctx.issuer.resolucion_fecha, '2014-08-22');
+});
+
+test('permisos: anon y authenticated no ejecutan las funciones nuevas', async () => {
+  for (const sig of [
+    'public.crm_fiscal_submit_application(uuid,uuid,integer,date,text,text)',
+    'public.crm_fiscal_review_application(uuid,uuid,text,text)',
+    'public.crm_fiscal_list_applications(text)',
+  ]) {
+    for (const role of ['anon', 'authenticated']) {
+      const r = await c.query(`select has_function_privilege($1, $2, 'execute') as ok`, [role, sig]);
+      assert.equal(r.rows[0].ok, false, `${role} no debe ejecutar ${sig}`);
+    }
+    const s = await c.query(`select has_function_privilege('service_role', $1, 'execute') as ok`, [sig]);
+    assert.equal(s.rows[0].ok, true);
+  }
+});
+
+// --- Confirmación del RUT por el propietario (migración H) ------------------------------------
+test('confirmación del RUT: aprobado pero sin confirmar no emite; confirmado sí reclama', async () => {
+  const f = await makeFixture(c, { rutConfirmed: false });
+  const prev = (await c.query(`select enabled from fiscal.dte39_emission_control where singleton`)).rows[0]?.enabled ?? false;
+  await setEmissionControl(c, true);
+  const claim = () => c.query(`select public.crm_fiscal_claim_with_credentials($1, $2, $3) as r`, [f.businessId, f.saleId, f.operationId]);
+  await rejects(claim(), 'FISCAL_RUT_NOT_CONFIRMED: not_confirmed');
+  assert.equal((await status(f.businessId)).rutConfirmationReason, 'not_confirmed');
+  const r = await confirmRut(c, f.businessId, f.userId, f.issuerRut);
+  assert.equal(r.confirmed, true);
+  assert.equal(r.block_reason, null);
+  assert.equal((await claim()).rows[0].r.claimed, true);
+  const aud = await c.query(`select action from fiscal.admin_audit where business_id = $1 and action = 'rut_confirmed'`, [f.businessId]);
+  assert.equal(aud.rowCount, 1);
+  await setEmissionControl(c, prev);
+});
+
+test('confirmación del RUT: solo el propietario fiscal y solo el RUT guardado (pantalla al día)', async () => {
+  const f = await makeFixture(c, { rutConfirmed: false });
+  const stranger = await admin();
+  await rejects(confirmRut(c, f.businessId, stranger, f.issuerRut), 'FISCAL_ROLE_REQUIRED');
+  await rejects(confirmRut(c, f.businessId, f.userId, uniqueRut()), 'FISCAL_RUT_CONFIRMATION_STALE');
+  await rejects(confirmRut(c, f.businessId, f.userId, '12345678-0'), 'FISCAL_RUT_CONFIRMATION_INVALID');
+  assert.equal((await status(f.businessId)).rutConfirmed, false);
+});
+
+test('confirmación del RUT: cambiar la API key o el RUT exige confirmar de nuevo', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  await saveKey(businessId, ownerId);
+  await confirmRut(c, businessId, ownerId, rutOf.get(businessId));
+  assert.equal((await status(businessId)).rutConfirmed, true);
+  await saveKey(businessId, ownerId, 'OTRA_KEY_DE_PRUEBA_0123456789');
+  assert.equal((await status(businessId)).rutConfirmationReason, 'credentials_changed');
+  await confirmRut(c, businessId, ownerId, rutOf.get(businessId));
+  await c.query(`update fiscal.issuers set issuer_rut = $2 where business_id = $1`, [businessId, uniqueRut()]);
+  assert.equal((await status(businessId)).rutConfirmationReason, 'rut_changed');
+});
+
+// Migración I (2026-11-06): en producción service_role no tiene SELECT sobre auth.users. PostgREST
+// ejecuta las RPC como service_role, así que la cola y la revisión deben funcionar con ese rol.
+// Antes de la migración ambas fallaban con «permission denied for table users» (403 en PostgREST).
+test('como service_role sin acceso a auth.users: la cola lista y el admin puede aprobar', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  await saveKey(businessId, ownerId);
+  await submit(businessId, ownerId);
+  const adminId = await admin();
+  const sr = new pg.Client(assertLocalTestConfig(CFG));
+  await sr.connect();
+  try {
+    const priv = await sr.query(`select has_table_privilege('service_role', 'auth.users', 'SELECT') as ok`);
+    assert.equal(priv.rows[0].ok, false, 'el escenario debe reproducir producción');
+    await sr.query('begin');
+    await sr.query('set local role service_role');
+    const pending = await sr.query(`select public.crm_fiscal_list_applications('pending_review') as j`);
+    const mine = pending.rows[0].j.find((a) => a.businessId === businessId);
+    assert.ok(mine, 'la solicitud aparece en Pendientes');
+    assert.equal(mine.reviewStatus, 'pending_review');
+    assert.match(mine.ownerEmail, /^owner-/);
+    const all = await sr.query(`select public.crm_fiscal_list_applications(null) as j`);
+    assert.ok(all.rows[0].j.some((a) => a.businessId === businessId), 'y en Todas');
+    // Un usuario sin rol admin sigue rechazado por la base.
+    const notAdmin = await plainUser();
+    await sr.query('savepoint s');
+    await assert.rejects(sr.query(`select public.crm_fiscal_review_application($1, $2, 'approve', null)`, [businessId, notAdmin]),
+      /FISCAL_REVIEWER_NOT_ADMIN/);
+    await sr.query('rollback to savepoint s');
+    const ok = await sr.query(`select public.crm_fiscal_review_application($1, $2, 'approve', null) as ok`, [businessId, adminId]);
+    assert.equal(ok.rows[0].ok, true);
+    await sr.query('rollback');
+  } finally {
+    await sr.end();
+  }
+});
+
+test('las funciones de revisión siguen ejecutables solo por service_role', async () => {
+  for (const sig of ['public.crm_fiscal_list_applications(text)', 'public.crm_fiscal_review_application(uuid, uuid, text, text)']) {
+    for (const role of ['anon', 'authenticated']) {
+      const r = await c.query(`select has_function_privilege($1, $2, 'execute') as ok`, [role, sig]);
+      assert.equal(r.rows[0].ok, false, `${role} ${sig}`);
+    }
+    const s = await c.query(`select p.prosecdef, p.proconfig from pg_proc p where p.oid = $1::regprocedure`, [sig]);
+    assert.equal(s.rows[0].prosecdef, true);
+    assert.deepEqual(s.rows[0].proconfig, ['search_path=public, fiscal, pg_temp']);
+  }
+});

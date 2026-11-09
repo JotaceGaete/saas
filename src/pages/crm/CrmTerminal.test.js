@@ -706,14 +706,14 @@ describe('PRINT-2 — ya no usa window.print() en ninguna parte', () => {
   });
 
   it('PRINT-4/PRINT-4-BUG1/BUG3: pasa autoCut, printLogo e imageMode de la config local a buildSaleReceipt (no hardcodea ninguno)', () => {
-    const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
+    const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\{ nonFiscal = false \} = \{\}\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
     expect(printCurrentTicketMatch[0]).toMatch(/autoCut: printerConfig\.autoCut/);
     expect(printCurrentTicketMatch[0]).toMatch(/printLogo: printerConfig\.printLogo/);
     expect(printCurrentTicketMatch[0]).toMatch(/imageMode: printerConfig\.imageMode/);
   });
 
   it('PRINT-5: pasa cutStrategyId y effectivePrintableWidthDots de la config local a buildSaleReceipt (misma capa de perfiles de compatibilidad, no hardcodea ninguno)', () => {
-    const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
+    const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\{ nonFiscal = false \} = \{\}\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
     expect(printCurrentTicketMatch[0]).toMatch(/cutStrategyId: printerConfig\.cutStrategyId/);
     expect(printCurrentTicketMatch[0]).toMatch(/effectivePrintableWidthDots: printerConfig\.effectivePrintableWidthDots/);
   });
@@ -727,7 +727,7 @@ describe('PRINT-2 — ya no usa window.print() en ninguna parte', () => {
 
 describe('PRINT-2 — la venta se guarda ANTES de imprimir (orden estructural)', () => {
   it('printCurrentTicket depende de ticketData y no existe ninguna llamada a createPosInvoice fuera de handleRegister', () => {
-    const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
+    const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\{ nonFiscal = false \} = \{\}\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
     expect(printCurrentTicketMatch).not.toBeNull();
     expect(printCurrentTicketMatch[0]).toMatch(/if \(!ticketData\) return;/);
 
@@ -749,7 +749,7 @@ describe('PRINT-2 — la venta se guarda ANTES de imprimir (orden estructural)',
 
 describe('PRINT-2 — falla de impresión: la venta queda registrada, nunca se repite ni se toca pago/stock', () => {
   it('printCurrentTicket solo hace catch de la impresión -- nunca de una creación de venta', () => {
-    const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
+    const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\{ nonFiscal = false \} = \{\}\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
     expect(printCurrentTicketMatch[0]).not.toMatch(/createPosInvoice|appliedPayments|removePosTerminalDraft/);
     expect(printCurrentTicketMatch[0]).toMatch(/setPrintStatus\('error'\);/);
   });
@@ -770,7 +770,7 @@ describe('PRINT-2 — falla de impresión: la venta queda registrada, nunca se r
   });
 
   it('sin impresora configurada, no se intenta imprimir (no llama a printService)', () => {
-    const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
+    const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\{ nonFiscal = false \} = \{\}\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
     const missingPrinterBranch = printCurrentTicketMatch[0].match(/if \(!printerConfig\.printerName\) \{[\s\S]*?\n {4}\}/);
     expect(missingPrinterBranch).not.toBeNull();
     expect(missingPrinterBranch[0]).not.toMatch(/printService/);
@@ -806,7 +806,7 @@ describe('PRINT-2 — cerrar el ticket o iniciar una nueva venta limpia el estad
  * también visible en la consola de CrmTerminal como respaldo.
  */
 describe('PRINT-3A-BUG1 — mensaje simple al cajero cuando QZ oculta la causa real', () => {
-  const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
+  const printCurrentTicketMatch = indexSource.match(/const printCurrentTicket = useCallback\(async \(\{ nonFiscal = false \} = \{\}\) => \{[\s\S]*?\n {2}\}, \[ticketData, business\]\);/);
 
   it('printCurrentTicket loguea el error real en consola antes de fijar el mensaje al usuario', () => {
     expect(printCurrentTicketMatch).not.toBeNull();

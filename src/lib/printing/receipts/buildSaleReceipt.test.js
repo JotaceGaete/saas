@@ -82,9 +82,17 @@ describe('buildSaleReceipt', () => {
     expect(withoutRut).not.toContain('RUT:');
   });
 
-  it('usa el número de factura para el ticket, o un fallback si no hay venta aún', async () => {
-    expect(await renderText(baseSale)).toContain('Ticket: NV-0042');
-    expect(await renderText({ ...baseSale, sale: null })).toMatch(/Ticket: T-\d+/);
+  it('usa el número interno del servidor (NV-) en el encabezado y al pie', async () => {
+    const text = await renderText(baseSale);
+    expect(text).toContain('Ticket: NV-0042');
+    expect(text).toContain('Ref. interna NV-0042');
+  });
+
+  it('sin número del servidor no inventa uno en el navegador', async () => {
+    const text = await renderText({ ...baseSale, sale: null });
+    expect(text).not.toMatch(/Ticket:/);
+    expect(text).not.toMatch(/T-\d+/);
+    expect(text).not.toContain('Ref. interna');
   });
 
   describe('PRINT-4 — logo del negocio', () => {
@@ -390,5 +398,22 @@ describe('buildFinalValidationReceipt — PRINT-4-BUG3 (ticket de validación f�
   it('el receipt resultante renderiza sin lanzar', async () => {
     vi.mocked(fetchLogoRaster).mockResolvedValue(null);
     await expect(renderEscPosReceipt(buildFinalValidationReceipt({ business }))).resolves.not.toThrow();
+  });
+});
+
+describe('buildSaleReceipt — comprobante interno de respaldo (boleta no emitida o sin confirmar)', () => {
+  const base = { business: { name: 'Bonita', currency: 'CLP' }, sale: { invoice_number: 1052 }, items: [{ name: 'Producto', quantity: 1, unit_price: 1000 }], total: 1000, subtotal: 1000 };
+  const texts = (r) => r.lines.map((l) => l.text).filter(Boolean);
+
+  it('con nonFiscalNotice dice que no es boleta, en negrita y centrado', () => {
+    const r = buildSaleReceipt({ ...base, nonFiscalNotice: true });
+    expect(texts(r)).toEqual(expect.arrayContaining(['COMPROBANTE INTERNO', 'NO VALIDO COMO BOLETA']));
+    const notice = r.lines.find((l) => l.text === 'NO VALIDO COMO BOLETA');
+    expect(notice).toMatchObject({ align: 'center', bold: true });
+  });
+
+  it('el ticket de siempre no cambia (sin el aviso)', () => {
+    expect(texts(buildSaleReceipt(base))).not.toContain('NO VALIDO COMO BOLETA');
+    expect(buildSaleReceipt(base).lines).toEqual(buildSaleReceipt({ ...base, nonFiscalNotice: false }).lines);
   });
 });

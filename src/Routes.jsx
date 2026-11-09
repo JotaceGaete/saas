@@ -61,6 +61,7 @@ import AdminEmailsPage from './pages/admin/AdminEmailsPage';
 import AdminConfigRubrosPage from './pages/admin/AdminConfigRubrosPage';
 import AdminPlanFeaturesPage from './pages/admin/AdminPlanFeaturesPage';
 import AdminCatalogTemplatesPage from './pages/admin/AdminCatalogTemplatesPage';
+import AdminFiscalApplicationsPage from './pages/admin/AdminFiscalApplicationsPage';
 import OnboardingPage from './pages/onboarding';
 import PlansPage from './pages/plans';
 import BillingSuccessPage from './pages/billing/BillingSuccessPage';
@@ -203,6 +204,9 @@ const Routes = () => {
             <Route path="/admin/businesses" element={<RequireAdmin><AdminBusinessesPage /></RequireAdmin>} />
             <Route path="/admin/businesses/:businessId" element={<RequireAdmin><AdminBusinessDetailPage /></RequireAdmin>} />
             <Route path="/admin/payments" element={<RequireAdmin><AdminPaymentsPage /></RequireAdmin>} />
+            {import.meta.env.VITE_FISCAL_CONNECTION_ENABLED === 'true' && (
+              <Route path="/admin/facturacion" element={<RequireAdmin><AdminFiscalApplicationsPage /></RequireAdmin>} />
+            )}
             <Route path="/admin/affiliate-payouts" element={<RequireAdmin><AdminAffiliatePayoutsPage /></RequireAdmin>} />
             <Route path="/admin/users" element={<RequireAdmin><AdminUsersPage /></RequireAdmin>} />
             <Route path="/admin/users/new" element={<RequireAdmin><AdminUserNewPage /></RequireAdmin>} />
