@@ -37,7 +37,7 @@ se activa antes, ninguna PR podría cumplir las verificaciones obligatorias.
 
 Implementada en la PR de CI. Diferencias con lo planeado:
 - Las pruebas corren **sin red**, con `scripts/ci/sin-red.sh` (espacio de red propio, solo loopback).
-- Se instala con `npm install`: `npm ci` falla porque `package-lock.json` no está sincronizado.
+- Se instala con `npm ci`. El lockfile está sincronizado con `package.json` y con `.npmrc` (`legacy-peer-deps=true`). El fallo inicial de `npm ci` venía de probar sin `.npmrc`.
 - Los jobs son `pruebas`, `build`, `secretos` y `trazabilidad`.
 
 Disparadores: `pull_request` hacia `main`, y `push` a `main` para verificar lo fusionado. Sin secretos de
@@ -120,7 +120,7 @@ Toda PR y toda tarea termina con esta tabla en su descripción:
 
 ### Pendientes
 
-1. Sincronizar `package-lock.json` con `package.json` y volver a `npm ci` en la CI.
+1. ~~Sincronizar `package-lock.json` y volver a `npm ci` en la CI.~~ Hecho: el lockfile ya estaba sincronizado con `.npmrc` y la CI usa `npm ci`.
 2. Corregir las 33 fallas de Vitest de la línea base. Primero, borrar las 2 entradas que ya pasan (`CrmInvoiceEditor` y `CrmThermalTicket`).
 3. Borrar el ruleset `ensayo-temporal` y después las ramas `ci-ruleset-ensayo` y `claude/ci-prueba-negativa`.
 4. Si se renombra un job de `ci.yml`, actualizar el ruleset en el mismo momento.
