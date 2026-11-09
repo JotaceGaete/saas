@@ -336,6 +336,12 @@ function CrmTerminalUI() {
 
   const searchRef = useRef(null);
   const printedTicketRef = useRef(null);
+  // true cuando el ticket abierto es el de la venta recién cobrada en este
+  // carrito (efectivo o Point). Cerrarlo —con «Nueva venta» o con la X—
+  // termina esa venta: carrito vacío y clave de idempotencia nueva. false
+  // cuando el ticket se reabrió desde «Recuperar boleta»: cerrarlo no toca el
+  // carrito en curso.
+  const ticketFromCheckoutRef = useRef(false);
   // E3 — claves de idempotencia del conector. `reprintRequestedRef` lo marca
   // "Reimprimir" (clave nueva, la venta ya se imprimió); `printAttemptRef`
   // recuerda el último intento: tras un error el reintento reutiliza la misma
@@ -1236,6 +1242,7 @@ function CrmTerminalUI() {
       const invoiceNumber = await getSaleNumber(business?.id, sale.id);
       if (invoiceNumber != null) sale = { ...sale, invoice_number: invoiceNumber };
     }
+    ticketFromCheckoutRef.current = true;
     setTicketData({ sale, ...saleSnapshot });
     refreshProducts();
   }, [cart, selectedCustomer, total, discountAmount, subtotal, notes, draftKey, pointStorageKey, business?.id]);
@@ -1532,6 +1539,7 @@ function CrmTerminalUI() {
       // no se vuelve a programar una escritura de borrador.
       draftDebouncerRef.current.cancel();
       if (draftKey) removePosTerminalDraft(draftKey);
+      ticketFromCheckoutRef.current = true;
       setTicketData({ sale: data, ...saleSnapshot });
     } finally {
       submitLockRef.current = false;
@@ -1539,10 +1547,18 @@ function CrmTerminalUI() {
     }
   };
 
+  // Cerrar con la X equivale a «Nueva venta» si el ticket es de la venta
+  // recién cobrada: la venta ya está registrada, así que el carrito y su clave
+  // de idempotencia no pueden seguir vivos (si no, el siguiente cobro reusaría
+  // la clave y el servidor devolvería la venta anterior). Las boletas
+  // pendientes se guardan aparte (fiscalPendingSales) y no se tocan aquí.
   const handleCloseTicket = () => {
+    const fromCheckout = ticketFromCheckoutRef.current;
+    ticketFromCheckoutRef.current = false;
     setTicketData(null);
     setPrintStatus('idle');
     setPrintErrorMessage(null);
+    if (fromCheckout) resetForm();
   };
 
   // Reutilizada tanto por "Reimprimir" como por "Reintentar impresión":
@@ -1558,6 +1574,7 @@ function CrmTerminalUI() {
   }, [navigate]);
 
   const handleNewSale = () => {
+    ticketFromCheckoutRef.current = false;
     setTicketData(null);
     setPrintStatus('idle');
     setPrintErrorMessage(null);
@@ -3136,7 +3153,7 @@ function CrmTerminalUI() {
           <div className="mt-2 flex flex-col gap-1.5">
             {pendingFiscal.slice(-5).reverse().map((p) => (
               <button key={p.saleId} type="button"
-                onClick={() => { printedTicketRef.current = String(p.saleId); setTicketData(p.ticketData); }}
+                onClick={() => { printedTicketRef.current = String(p.saleId); ticketFromCheckoutRef.current = false; setTicketData(p.ticketData); }}
                 className="rounded-lg bg-amber-600 px-3 py-1.5 text-left font-bold text-white hover:bg-amber-700">
                 Recuperar boleta · venta {p.ticketData?.sale?.invoice_number ?? p.saleId}
               </button>
