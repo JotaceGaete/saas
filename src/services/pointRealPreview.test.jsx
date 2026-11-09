@@ -147,7 +147,7 @@ describe('modo real en Preview autorizado por el servidor', () => {
     render(<TpvFiscalAutoBoleta businessId={BIZ} sale={{ id: 'sale-live-1' }} saleContext={ctx} mode="live" preview previewStatus={previewStatus} onPlainTicket={onPlainTicket} />);
     await vi.waitFor(() => expect(onPlainTicket).toHaveBeenCalledTimes(1));
     expect(previewStatus).toHaveBeenCalledWith('sale-live-1');
-    expect(invoke).toHaveBeenCalledWith('fiscal-emit', { body: { action: 'status', saleId: 'sale-live-1' } });
+    expect(invoke).toHaveBeenCalledWith('fiscal-emit', expect.objectContaining({ body: { action: 'status', saleId: 'sale-live-1' } }));
     expect(invoke.mock.calls.some(([, o]) => o.body.action === 'emit')).toBe(false);
     expect(screen.queryByText(/SIMULACIÓN/)).toBeNull();
   });

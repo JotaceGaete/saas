@@ -28,7 +28,7 @@ export const PHASE = Object.freeze({
   BLOCKED: 'blocked', // no se emitió por una regla (resolución, IVA, emisor...)
   UNCERTAIN: 'uncertain', // pudo emitirse: no se repite, se concilia
   REJECTED: 'rejected', // DTE Core rechazó, sin folio
-  ERROR: 'error', // no se pudo consultar el estado: no se emitió
+  ERROR: 'error', // no se pudo consultar el estado: estado fiscal desconocido
 });
 
 // El comercio no usa facturación electrónica (módulo opcional): no se emite ni se muestra nada
@@ -56,7 +56,9 @@ const MESSAGES = Object.freeze({
   RESOLUCION_REQUIRED: 'Falta la resolución del SII del emisor (Configuración > Facturación). No se emitió la boleta.',
   CONNECTOR_REQUIRED: 'El Walinka Print Connector no está activo y emparejado en este equipo. No se emitió la boleta.',
   MISSING_PRINTER: 'El conector no tiene impresora elegida. No se emitió la boleta.',
-  STATUS_UNAVAILABLE: 'No se pudo consultar el estado fiscal de la venta. No se emitió ninguna boleta.',
+  // Sin respuesta del servicio fiscal no se sabe si la venta tiene boleta (pudo emitirse desde otro
+  // equipo o en un envío anterior): el estado es desconocido, nunca «no emitida».
+  STATUS_UNAVAILABLE: 'No se pudo consultar el estado fiscal: el servicio fiscal no respondió. La venta quedó registrada y el estado de su boleta es desconocido. No se emite otra boleta hasta confirmarlo; puedes imprimir el comprobante interno (no es boleta).',
   FISCAL_NON_TAXABLE_NOT_SUPPORTED: 'La venta incluye productos exentos o no afectos a IVA: Walinka todavía no emite esas boletas. Emite el documento tributario por otro medio.',
   FISCAL_TAX_LINES_NOT_VERIFIED: 'Falta el tratamiento tributario (IVA) de algún producto. Configúralo en el editor de productos o en Configuración > Facturación.',
   DISCOUNT_NOT_SUPPORTED: 'Las ventas con descuento todavía no generan boleta electrónica. Emite el documento tributario por otro medio.',
@@ -64,6 +66,18 @@ const MESSAGES = Object.freeze({
   UNSUPPORTED_PAYMENT_METHOD: 'Este medio de pago todavía no genera boleta electrónica (solo efectivo o Point). Emite el documento tributario por otro medio.',
   FISCAL_ROLE_REQUIRED: 'Tu usuario no tiene permiso para emitir boletas en este negocio.',
 });
+
+// Rechazos que el servidor da ANTES de reclamar la venta (validación, permisos, configuración,
+// reglas de elegibilidad): con ellos es seguro decir que no se emitió. Cualquier otro código que
+// llegue después de enviar una emisión —incluidos los que el servidor da tras recibir el documento
+// del proveedor, como FISCAL_FOLIO_DUPLICATE— deja el resultado incierto: no se limpia la marca de
+// envío ni se ofrece emitir de nuevo.
+export const PRE_CLAIM_REJECTION_CODES = Object.freeze(new Set([
+  ...NOT_ELIGIBLE_CODES,
+  'UNAUTHENTICATED', 'BAD_REQUEST', 'UNKNOWN_FIELD', 'UNKNOWN_ACTION', 'INVALID_SALE_ID', 'METHOD_NOT_ALLOWED',
+  'ORIGIN_NOT_ALLOWED', 'FISCAL_NOT_CONFIGURED', 'SALE_NOT_FOUND', 'PROVIDER_NOT_READY', 'CREDENTIALS_MISSING',
+  'CREDENTIAL_INVALID', 'FISCAL_PROVIDER_MISMATCH', 'FISCAL_CROSS_PIPELINE_CONFLICT', 'DESCRIPTION_TOO_LONG',
+]));
 
 export function describeFlowCode(code) {
   return MESSAGES[code] || describeFiscalEmitError(code);
@@ -147,7 +161,12 @@ export function createFiscalSaleFlow({
 
   async function fromStatus(saleId, sale, { allowEmit }) {
     const st = await emitter.status(saleId, sale);
-    if (!st?.ok) return { phase: PHASE.ERROR, code: st?.code || 'STATUS_UNAVAILABLE' };
+    if (!st?.ok) {
+      const code = st?.code || 'STATUS_UNAVAILABLE';
+      // Si este equipo ya envió la emisión, no saber el estado es un resultado incierto: se
+      // muestra como tal y no se vuelve a emitir sola.
+      return { phase: marks.attempted(saleId) ? PHASE.UNCERTAIN : PHASE.ERROR, code };
+    }
     const d = st.data;
     switch (d.state) {
       case 'issued':
@@ -179,10 +198,12 @@ export function createFiscalSaleFlow({
       return printOriginal(saleId, r.folio);
     }
     const code = r?.code || 'RESPONSE_LOST';
-    if (code === 'ALREADY_ISSUED') return fromStatus(saleId, sale, { allowEmit: {} });
+    // La venta ya tiene fila en el servidor: se lee su estado real, nunca se vuelve a emitir.
+    if (code === 'ALREADY_ISSUED' || code === 'NOT_EMITTABLE_IN_STATE') return fromStatus(saleId, sale, { allowEmit: {} });
     if (LOCKING_CODES.has(code) || r?.status === 'unknown') return { phase: PHASE.UNCERTAIN, code };
     if (code === 'PROVIDER_REJECTED' || r?.status === 'failed') { marks.clearAttempt(saleId); return { phase: PHASE.REJECTED, code: 'PROVIDER_REJECTED' }; }
-    // El servidor rechazó antes de reclamar la venta (regla de negocio): no hubo emisión.
+    // Solo un rechazo conocido como previo al reclamo prueba que no hubo emisión.
+    if (!PRE_CLAIM_REJECTION_CODES.has(code)) return { phase: PHASE.UNCERTAIN, code };
     marks.clearAttempt(saleId);
     return { phase: NOT_ELIGIBLE_CODES.has(code) ? PHASE.NOT_ELIGIBLE : PHASE.BLOCKED, code };
   }

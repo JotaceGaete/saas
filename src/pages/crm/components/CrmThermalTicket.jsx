@@ -77,6 +77,7 @@ export default function CrmThermalTicket({
   fiscalSaleContext = null,
   onFiscalSettled,
   onPlainTicket,
+  onInternalReceipt,
 }) {
   const fiscalAuto = fiscalAutoMode !== 'off' && Boolean(sale?.id);
   // Pilot-only fiscal status. This never issues a DTE or allocates a folio.
@@ -593,7 +594,7 @@ export default function CrmThermalTicket({
 
           {fiscalAuto && (
             <TpvFiscalAutoBoleta businessId={business?.id} sale={sale} saleContext={fiscalSaleContext}
-              onPlainTicket={onPlainTicket} onSettled={onFiscalSettled} mode={fiscalAutoMode} />
+              onPlainTicket={onPlainTicket} onInternalReceipt={onInternalReceipt} onSettled={onFiscalSettled} mode={fiscalAutoMode} />
           )}
 
           {!fiscalAuto && FISCAL_EMIT_ENABLED && sale?.id && (

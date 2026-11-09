@@ -359,7 +359,10 @@ function CrmTerminalUI() {
   const [printStatus, setPrintStatus] = useState('idle');
   const [printErrorMessage, setPrintErrorMessage] = useState(null);
 
-  const printCurrentTicket = useCallback(async () => {
+  // nonFiscal: comprobante interno de respaldo cuando la boleta electrónica no salió (servicio
+  // fiscal sin respuesta, resultado incierto, bloqueada o rechazada). Mismos datos de la venta ya
+  // cobrada, rotulado «no válido como boleta»; nunca cobra, emite ni cambia el estado fiscal.
+  const printCurrentTicket = useCallback(async ({ nonFiscal = false } = {}) => {
     if (!ticketData) return;
     const printerConfig = readPrinterConfig(buildPrinterConfigKey(business?.id));
     const connectorConfig = readConnectorConfig(buildConnectorConfigKey(business?.id));
@@ -372,14 +375,16 @@ function CrmTerminalUI() {
       }
     }
     const saleKey = String(ticketData.sale?.id ?? ticketData.sale?.invoice_number);
+    const kind = nonFiscal ? 'internal' : 'ticket';
     const prevAttempt = printAttemptRef.current;
-    const sameSale = prevAttempt.saleKey === saleKey;
+    const sameSale = prevAttempt.saleKey === saleKey && (prevAttempt.kind ?? 'ticket') === kind;
     const reprintRequested = reprintRequestedRef.current;
     reprintRequestedRef.current = false;
     let idempotencyKey;
     if (sameSale && prevAttempt.failed) idempotencyKey = prevAttempt.key;
-    else if (sameSale && reprintRequested) idempotencyKey = `sale:${saleKey}:reprint:${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
-    else idempotencyKey = `sale:${saleKey}:ticket`;
+    // Otra copia del comprobante interno ya impreso: clave nueva (el conector descartaría la misma).
+    else if (sameSale && (reprintRequested || nonFiscal)) idempotencyKey = `sale:${saleKey}:${nonFiscal ? 'internal' : 'reprint'}:${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
+    else idempotencyKey = `sale:${saleKey}:${nonFiscal ? 'internal' : 'ticket'}`;
     const target = buildPrintTarget({ connectorConfig, qzPrinterName: printerConfig.printerName, idempotencyKey });
     if (target.error) {
       setPrintStatus('missing_printer');
@@ -402,6 +407,7 @@ function CrmTerminalUI() {
         // local de este dispositivo -- no decide nada acá.
         cutStrategyId: printerConfig.cutStrategyId,
         effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,
+        nonFiscalNotice: nonFiscal,
       });
       await printService.printReceipt(receipt, {
         printerName: target.printerName,
@@ -410,10 +416,10 @@ function CrmTerminalUI() {
       });
       // Un duplicado significa que el conector ya lo había enviado: para el
       // cajero es éxito, y no se vuelve a imprimir.
-      printAttemptRef.current = { saleKey, key: idempotencyKey, failed: false };
+      printAttemptRef.current = { saleKey, kind, key: idempotencyKey, failed: false };
       setPrintStatus('success');
     } catch (err) {
-      printAttemptRef.current = { saleKey, key: idempotencyKey, failed: true };
+      printAttemptRef.current = { saleKey, kind, key: idempotencyKey, failed: true };
       // PRINT-3A-BUG1: QZ Tray reemplaza cualquier rechazo de la firma por
       // el genérico "Failed to sign request" (ver qzTrayProvider.js, que
       // ya logueó la causa real con logSigningFailure antes de llegar
@@ -1568,6 +1574,8 @@ function CrmTerminalUI() {
     reprintRequestedRef.current = true;
     printCurrentTicket();
   }, [printCurrentTicket]);
+
+  const handlePrintInternalReceipt = useCallback(() => printCurrentTicket({ nonFiscal: true }), [printCurrentTicket]);
 
   const handleGoToPrintSettings = useCallback(() => {
     navigate('/crm/impresion');
@@ -3141,6 +3149,7 @@ function CrmTerminalUI() {
           onConfigurePrinter={handleGoToPrintSettings}
           fiscalSaleContext={fiscalSaleContext}
           onPlainTicket={printCurrentTicket}
+          onInternalReceipt={handlePrintInternalReceipt}
           onFiscalSettled={handleFiscalSettled}
         />
       )}

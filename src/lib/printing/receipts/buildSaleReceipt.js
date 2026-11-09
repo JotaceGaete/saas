@@ -99,6 +99,10 @@ export function buildSaleReceipt({
   cutStrategyId,
   effectivePrintableWidthDots,
   cashierName,
+  // Comprobante de respaldo cuando la boleta electrónica no se pudo emitir o
+  // confirmar: el papel dice que NO es un documento tributario. Solo lo pide
+  // el TPV en ese caso; el ticket de siempre no cambia.
+  nonFiscalNotice = false,
 }) {
   const currency = business?.currency;
   const lines = [];
@@ -205,6 +209,12 @@ export function buildSaleReceipt({
     push({ type: 'divider' });
     push({ text: 'Notas:' });
     push({ text: stripDiacritics(notes) });
+  }
+
+  if (nonFiscalNotice) {
+    push({ type: 'divider' });
+    push({ text: 'COMPROBANTE INTERNO', align: 'center', bold: true });
+    push({ text: 'NO VALIDO COMO BOLETA', align: 'center', bold: true });
   }
 
   push({ type: 'divider' });

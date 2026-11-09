@@ -400,3 +400,20 @@ describe('buildFinalValidationReceipt — PRINT-4-BUG3 (ticket de validación f�
     await expect(renderEscPosReceipt(buildFinalValidationReceipt({ business }))).resolves.not.toThrow();
   });
 });
+
+describe('buildSaleReceipt — comprobante interno de respaldo (boleta no emitida o sin confirmar)', () => {
+  const base = { business: { name: 'Bonita', currency: 'CLP' }, sale: { invoice_number: 1052 }, items: [{ name: 'Producto', quantity: 1, unit_price: 1000 }], total: 1000, subtotal: 1000 };
+  const texts = (r) => r.lines.map((l) => l.text).filter(Boolean);
+
+  it('con nonFiscalNotice dice que no es boleta, en negrita y centrado', () => {
+    const r = buildSaleReceipt({ ...base, nonFiscalNotice: true });
+    expect(texts(r)).toEqual(expect.arrayContaining(['COMPROBANTE INTERNO', 'NO VALIDO COMO BOLETA']));
+    const notice = r.lines.find((l) => l.text === 'NO VALIDO COMO BOLETA');
+    expect(notice).toMatchObject({ align: 'center', bold: true });
+  });
+
+  it('el ticket de siempre no cambia (sin el aviso)', () => {
+    expect(texts(buildSaleReceipt(base))).not.toContain('NO VALIDO COMO BOLETA');
+    expect(buildSaleReceipt(base).lines).toEqual(buildSaleReceipt({ ...base, nonFiscalNotice: false }).lines);
+  });
+});
