@@ -1,0 +1,18 @@
+# Escaneo de secretos de la CI (gitleaks). Reglas por defecto + excepciones ESTRECHAS para valores de
+# prueba conocidos y públicos. No se excluyen rutas: un secreto real pegado en un archivo de prueba
+# se detecta igual. Agregar aquí solo valores evidentemente ficticios, nunca uno real.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Valores ficticios de pruebas de Walinka"
+regexes = [
+  # Clave de prueba pública: los bytes 0..31 en base64 (no es una clave real).
+  '''AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8=''',
+  # API keys y secretos ficticios usados en pruebas.
+  '''^(CLAVE|OTRA|TEST|FAKE|DUMMY|NUEVA)[-_][A-Za-z0-9_-]+$''',
+  '''^secret[-_]?[a-z0-9_-]*$''',
+  '''^dtc_live_EXAMPLE_[A-Za-z0-9_]+$''',
+  '''^ci-dummy[-a-z0-9]*$''',
+  '''^flujos-[a-z0-9-]+$''',
+]

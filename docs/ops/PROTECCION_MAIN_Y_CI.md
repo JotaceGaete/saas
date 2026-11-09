@@ -21,7 +21,7 @@ defecto. Modo: **Active**.
 | Block force pushes | Sí | El historial de lo desplegado no se reescribe |
 | Require a pull request before merging | Sí, con 0 aprobaciones obligatorias mientras haya un solo desarrollador | Todo cambio pasa por una PR revisable. Subir a 1 aprobación cuando haya otro revisor. |
 | Require conversation resolution | Sí | No se fusiona con comentarios abiertos |
-| Require status checks to pass | `ci / pruebas`, `ci / build` y `Vercel` (Preview) | Ninguna fusión sin pruebas, build y Preview en verde |
+| Require status checks to pass | `pruebas`, `build`, `secretos`, `trazabilidad` (jobs de `ci.yml`) y `Vercel` (Preview) | Ninguna fusión sin pruebas, build, escaneo y Preview en verde |
 | Require branches to be up to date | Sí | Se prueba exactamente lo que se fusiona |
 | Allowed merge methods | Solo **merge commit** | Un commit de fusión por PR = un punto de reversión (`git revert -m 1`) |
 | Bypass | Ninguno, ni siquiera el administrador | Las urgencias también van por PR; el Instant Rollback de Vercel no necesita bypass |
@@ -33,7 +33,12 @@ Ajustes del repositorio:
 **Orden de activación:** primero el workflow de CI (sección 2) en verde sobre `main`. Después el ruleset. Si
 se activa antes, ninguna PR podría cumplir las verificaciones obligatorias.
 
-## 2. CI en cada PR (`.github/workflows/ci.yml`, a crear en una PR propia)
+## 2. CI en cada PR (`.github/workflows/ci.yml`)
+
+Implementada en la PR de CI. Diferencias con lo planeado:
+- Las pruebas corren **sin red**, con `scripts/ci/sin-red.sh` (espacio de red propio, solo loopback).
+- Se instala con `npm install`: `npm ci` falla porque `package-lock.json` no está sincronizado.
+- Los jobs son `pruebas`, `build`, `secretos` y `trazabilidad`.
 
 Disparadores: `pull_request` hacia `main`, y `push` a `main` para verificar lo fusionado. Sin secretos de
 producción.
