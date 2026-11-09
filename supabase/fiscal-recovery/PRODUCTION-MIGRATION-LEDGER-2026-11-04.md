@@ -14,6 +14,8 @@ Proyecto Supabase: `hxxdketymcntadffmajf` (Walinka). Auditoría de solo lectura 
 | F | `20261104182830` | `fiscal_f_onboarding_review` | `proposed/20261104_fiscal_onboarding_review.sql` | Herramienta de migraciones; SQL completo |
 | G | `20261104183454` | `fiscal_g_manual_sql_editor_verified` | `proposed/20261104_fiscal_product_tax_category.sql` | **SQL completo aplicado manualmente en SQL Editor**; la entrada registrada posteriormente ejecutó **solo verificaciones** |
 | H | `20261105200532` | `fiscal_h_identity_integrity` | `proposed/20261105_fiscal_identity_integrity.sql` | Herramienta de migraciones (`apply_migration`); SQL completo (agregado el 2026-11-05) |
+| I | `20261106153651` | `fiscal_i_applications_definer` | `proposed/20261106_fiscal_applications_definer.sql` (reversión: `proposed/20261106_fiscal_applications_definer_down.sql`) | Herramienta de migraciones (`apply_migration`); SQL completo (agregado el 2026-11-09) |
+| Respaldo | `20261109132105` | `fiscal_credentials_backup_20261109` | `backups/20261109_credentials_backup.sql` | Herramienta de migraciones (`apply_migration`); SQL completo. **Solo producción**: copia de datos, no forma parte de la estructura (agregado el 2026-11-09) |
 
 Los archivos fuente de A–G corresponden al commit `9baacf1509e10e58e23f93cdfbbb2850c541104f` de la rama de trabajo de PR #119. El de H, al commit `80e8d69` de la rama de PR #123 (`claude/fiscal-multiempresa-integridad`). **No inferir el orden por las fechas de los nombres de archivo**: seguir el orden A→B→C→D→E→F→G descrito en `F4-procedimiento-puesta-en-marcha-fiscal.md`.
 
@@ -31,8 +33,12 @@ Valores MD5 de `md5(array_to_string(statements, E'\\n'))` obtenidos de la tabla 
 | F | `69a9f756a36fc6ce1292a295f78077e2` |
 | G (verificación, **no SQL original**) | `e951ceea658909b106dc10df754b3a8f` |
 | H | `0c71ae71c9ab4ac1be9e78b70f8f3ded` |
+| I | `5fd4855ac2cd439e99cf6da7461af477` |
+| Respaldo | `2d701f6734dec5a5790ceddb4c2fda6a` |
 
-Huellas de F, G y H incorporadas el 2026-11-05 (solo lectura). A, B, C, E, F y H coinciden con el md5 de su archivo fuente. G, igual que D, contiene únicamente el bloque de verificación en el registro de Supabase, no el SQL original.
+Huellas de F, G y H incorporadas el 2026-11-05; las de I y Respaldo, el 2026-11-09 (todas de solo lectura).
+I coincide con el md5 de su archivo. Respaldo coincide con el md5 de su archivo sin el salto de línea final
+(md5 del archivo tal cual: `c5a04cbd9f2015e9b1fc94e113dffe9b`); el contenido es el mismo. A, B, C, E, F y H coinciden con el md5 de su archivo fuente. G, igual que D, contiene únicamente el bloque de verificación en el registro de Supabase, no el SQL original.
 
 La huella de D corresponde al bloque de verificación `DO $verify$ ...`, **no** al archivo `20261031_issuer_sucursal_config.sql`. No sustituirla por la huella del archivo original ni afirmar que la migración registrada ejecutó el archivo original.
 
@@ -76,9 +82,46 @@ La huella de D corresponde al bloque de verificación `DO $verify$ ...`, **no** 
   - emisión global apagada y triggers de colas antiguas desactivados.
 - **Recuperación:** `backups/2026-11-05-H/02-recuperacion-H.sql`, probada en local con el archivo exacto.
 
+## I (2026-11-06)
+
+- **Motivo:** Administración → Altas de facturación fallaba («No se pudo completar la acción»). PostgREST
+  respondía 403 porque `service_role` no tiene `SELECT` sobre `auth.users`, y las dos funciones de revisión
+  eran `SECURITY INVOKER`.
+- **Cambio:** `crm_fiscal_list_applications(text)` y `crm_fiscal_review_application(uuid, uuid, text, text)`
+  pasan a `SECURITY DEFINER` con `search_path = public, fiscal, pg_temp`. Mismos cuerpos, firmas y permisos
+  (`EXECUTE` solo para `service_role`). No toca datos ni el control de emisión.
+- **Aplicación:** 2026-11-06 15:36:51 UTC con `apply_migration`, tras autorización expresa con el md5 esperado.
+  Registrada una sola vez; md5 igual al archivo.
+- **Verificación:** Altas de facturación volvió a listar y aprobar solicitudes. `localdb/build.sh` aplica I
+  después de H.
+- **Recuperación:** `proposed/20261106_fiscal_applications_definer_down.sql` (vuelve a `SECURITY INVOKER`).
+
+## Respaldo de credenciales (2026-11-09)
+
+- **Motivo:** preservar, antes de cualquier rotación de `FISCAL_MASTER_KEY`, las credenciales cifradas de DTE
+  Core de Artesellos (78506417-8) y Bonita Casualidad (77804207-K).
+- **Cambio:** esquema nuevo `fiscal_backup`, solo para `postgres` y sin acceso desde la API. Contiene:
+  - copia exacta, sin descifrar, de `business_credentials`, `rut_confirmations` e `issuers` de esas dos
+    empresas;
+  - un manifiesto con conteos y sumas de comprobación.
+
+  Las tablas tienen RLS forzado y son de solo lectura (triggers). **No modifica los originales.**
+- **Aplicación:** 2026-11-09 13:21:05 UTC con `apply_migration`, con las tablas de origen bloqueadas contra
+  escritura durante la copia. Interruptor de emisión apagado.
+- **Verificación:**
+  - bytes cifrados, metadatos y huellas de credencial iguales a los originales;
+  - sumas del manifiesto iguales a las recalculadas;
+  - un `UPDATE` de prueba, rechazado;
+  - sin acceso para `anon`, `authenticated`, `service_role` ni `authenticator`;
+  - boletas, folios y recibos sin cambios.
+- **Dependencia:** las filas solo se descifran con la clave maestra original (versión 1). Procedimiento de
+  verificación y restauración: `docs/fiscal/RESPALDO_CREDENCIALES_2026-11-09.md`.
+- **No es parte de la estructura:** no va en `localdb/build.sh` ni en reconstrucciones. Volver a ejecutarlo
+  falla en `create schema fiscal_backup` y la transacción completa se revierte.
+
 ## Reglas para futuros despliegues
 
-1. **No volver a ejecutar A–H en producción** (en particular D y G) ni editar, borrar o renumerar las filas históricas para hacerlas parecer uniformes.
+1. **No volver a ejecutar A–I ni el Respaldo en producción** (en particular D y G) ni editar, borrar o renumerar las filas históricas para hacerlas parecer uniformes.
 2. Al reconstruir un entorno desde cero, aplicar **el SQL original de D** en su posición entre C y E, **el SQL original de G** después de F y H después de G (`localdb/build.sh` sigue ese orden). Las entradas `fiscal_d_manual_sql_editor_verified` y `fiscal_g_manual_sql_editor_verified` son comprobantes específicos de producción y **no sustituyen los SQL originales**.
 3. Si se crea una cadena formal de migraciones CLI en `supabase/migrations`, preparar una reconciliación separada: el registro del servidor y los archivos CLI todavía requieren un plan de baseline, no una copia automática de estas entradas.
 4. Antes de nuevos despliegues: revisar dependencias, respaldar, verificar estructura y permisos, y mantener desactivada la emisión.
