@@ -1,15 +1,18 @@
 // Lista de empresas autorizadas, concurrencia, consulta de operación y estado SII contra Postgres
 // real (solo walinka_test). Nunca apunta a producción.
-import { test, before, after } from 'node:test';
+import { test, before, after, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { createPgStore, assertLocalTestConfig } from '../../lib/store-pg.mjs';
 import { createFiscalEmitter } from '../../lib/emit.mjs';
 import { createSimulatedProvider } from '../../lib/providers/simulated.mjs';
 import { parseAllowedIssuers } from '../../lib/allowlist.mjs';
-import { CFG, TEST_MASTER_KEY, makeFixture, setEmissionControl } from './fixtures.mjs';
+import { CFG, TEST_MASTER_KEY, makeFixture, setEmissionControl, uniqueRut } from './fixtures.mjs';
 
-const RUT = '76123456-0';
+// RUT distintos en cada prueba: la migración H impide repetir un RUT entre comercios.
+let RUT;
+let OTHER;
+beforeEach(() => { RUT = uniqueRut(); OTHER = uniqueRut(); });
 let c;
 let store;
 let savedControl;
@@ -40,16 +43,16 @@ const rows = async (saleId) => (await c.query(`select status, folio, updated_at,
 
 test('negocio fuera de la lista: ninguna fila en el ledger y ninguna llamada al proveedor', async () => {
   const f = await makeFixture(c, { issuerRut: RUT });
-  const other = await makeFixture(c, { issuerRut: '77654321-7' });
+  const other = await makeFixture(c, { issuerRut: OTHER });
   const p = provider();
-  const e = emitterFor(p, `${other.businessId}=77654321-7`);
+  const e = emitterFor(p, `${other.businessId}=${OTHER}`);
   await assert.rejects(e.emitSale({ actorUserId: f.userId, saleId: f.saleId }), { code: 'FISCAL_BUSINESS_NOT_ALLOWED' });
   assert.equal(p.calls.emit, 0);
   assert.deepEqual(await rows(f.saleId), []);
 });
 
 test('negocio de la lista pero con otro RUT en fiscal.issuers: no emite', async () => {
-  const f = await makeFixture(c, { issuerRut: '77654321-7' });
+  const f = await makeFixture(c, { issuerRut: OTHER });
   const p = provider();
   const e = emitterFor(p, `${f.businessId}=${RUT}`);
   await assert.rejects(e.emitSale({ actorUserId: f.userId, saleId: f.saleId }), { code: 'FISCAL_BUSINESS_NOT_ALLOWED' });
@@ -91,9 +94,9 @@ test('consulta de un resultado desconocido: no toca el ledger, queda auditada y 
 
 test('consulta: usuario de otro negocio no ve la venta', async () => {
   const f = await makeFixture(c, { issuerRut: RUT });
-  const intruder = await makeFixture(c, { issuerRut: '77654321-7' });
+  const intruder = await makeFixture(c, { issuerRut: OTHER });
   const p = provider({ scenario: 'network' });
-  const e = emitterFor(p, `${f.businessId}=${RUT},${intruder.businessId}=77654321-7`);
+  const e = emitterFor(p, `${f.businessId}=${RUT},${intruder.businessId}=${OTHER}`);
   await e.emitSale({ actorUserId: f.userId, saleId: f.saleId });
   await assert.rejects(e.lookupOperation({ actorUserId: intruder.userId, saleId: f.saleId }), { code: 'SALE_NOT_FOUND' });
   await assert.rejects(e.refreshSiiStatus({ actorUserId: intruder.userId, saleId: f.saleId }), { code: 'SALE_NOT_FOUND' });

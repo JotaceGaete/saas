@@ -26,12 +26,16 @@ test('credenciales que no se descifran: se libera el reclamo, cero llamadas al p
   const { store, provider, emitter } = setup();
   // Credencial sellada con OTRA clave maestra: no se puede abrir.
   store.creds.set(IDS.bizA, seal({ apiKey: 'X' }, { key: randomBytes(32), businessId: IDS.bizA }));
+  // La credencial nueva invalida la confirmación del RUT (migración H): se simula que el
+  // propietario la volvió a confirmar para llegar al caso que interesa aquí (no se puede descifrar).
+  store.markRutConfirmed(IDS.bizA);
   await assert.rejects(emitter.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA }), { code: 'CREDENTIAL_INVALID' });
   assert.equal(provider.calls, 0);
   assert.equal(store.issuances.get(ROW_A).status, 'pending', 'el reclamo quedó liberado');
 
   // Se corrige la credencial y la misma venta se emite sin intervención manual.
   store.creds.set(IDS.bizA, seal({ apiKey: 'OK' }, { key: MASTER, businessId: IDS.bizA }));
+  store.markRutConfirmed(IDS.bizA);
   const r = await emitter.emitSale({ actorUserId: IDS.userA, saleId: IDS.saleA });
   assert.equal(r.status, 'issued');
   assert.equal(provider.calls, 1);

@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 const invoke = vi.fn();
 vi.mock('../lib/supabase', () => ({ supabase: { functions: { invoke: (...a) => invoke(...a) } } }));
 
-import { emitFiscalSale, describeFiscalEmitError, getFiscalSaleStatus, LOCKING_CODES, SII_STATUS_LABELS, describeFiscalState } from './fiscalEmitService';
+import { emitFiscalSale, describeFiscalEmitError, getFiscalSaleStatus, LOCKING_CODES, SII_STATUS_LABELS, describeFiscalState, FISCAL_EMIT_TIMEOUT_MS, FISCAL_STATUS_TIMEOUT_MS } from './fiscalEmitService';
 
 describe('emitFiscalSale', () => {
   beforeEach(() => invoke.mockReset());
@@ -11,7 +11,7 @@ describe('emitFiscalSale', () => {
   it('envía solo la acción y la venta, sin secretos', async () => {
     invoke.mockResolvedValueOnce({ data: { status: 'issued', folio: 51107 }, error: null });
     const r = await emitFiscalSale('sale-1');
-    expect(invoke).toHaveBeenCalledWith('fiscal-emit', { body: { action: 'emit', saleId: 'sale-1' } });
+    expect(invoke).toHaveBeenCalledWith('fiscal-emit', { body: { action: 'emit', saleId: 'sale-1' }, timeout: FISCAL_EMIT_TIMEOUT_MS });
     expect(r).toEqual({ ok: true, status: 'issued', folio: 51107 });
   });
 
@@ -55,7 +55,7 @@ describe('getFiscalSaleStatus', () => {
   it('pide solo la acción status (solo lectura)', async () => {
     invoke.mockResolvedValueOnce({ data: { state: 'none', canEmit: true }, error: null });
     const r = await getFiscalSaleStatus('sale-1');
-    expect(invoke).toHaveBeenCalledWith('fiscal-emit', { body: { action: 'status', saleId: 'sale-1' } });
+    expect(invoke).toHaveBeenCalledWith('fiscal-emit', { body: { action: 'status', saleId: 'sale-1' }, timeout: FISCAL_STATUS_TIMEOUT_MS });
     expect(r).toEqual({ ok: true, data: { state: 'none', canEmit: true } });
   });
 
@@ -82,5 +82,36 @@ describe('describeFiscalState', () => {
     expect(describeFiscalState({ state: 'issued', siiStatus: 'accepted' }).key).toBe('aceptada');
     expect(describeFiscalState({ state: 'issued', siiStatus: 'rejected' }).key).toBe('rechazada');
     expect(describeFiscalState({ state: 'failed' }).key).toBe('fallida');
+  });
+});
+
+// Servicio fiscal lento o caído: el navegador no espera para siempre, y lo que no se sabe queda
+// incierto o desconocido, nunca «no emitida».
+describe('fiscal-emit sin respuesta', () => {
+  beforeEach(() => invoke.mockReset());
+
+  it('plazos: el de emisión supera el peor caso del servidor (proveedor 20 s + 2 descargas de 12 s)', () => {
+    expect(FISCAL_EMIT_TIMEOUT_MS).toBeGreaterThan(20_000 + 2 * 12_000);
+    expect(FISCAL_STATUS_TIMEOUT_MS).toBeGreaterThan(0);
+    expect(FISCAL_STATUS_TIMEOUT_MS).toBeLessThan(FISCAL_EMIT_TIMEOUT_MS);
+  });
+
+  it('emisión cortada por el plazo (error sin cuerpo): RESPONSE_LOST, incierta y bloqueante', async () => {
+    invoke.mockResolvedValueOnce({ data: null, error: Object.assign(new Error('aborted'), { name: 'FunctionsFetchError' }) });
+    const r = await emitFiscalSale('sale-1');
+    expect(r.code).toBe('RESPONSE_LOST');
+    expect(LOCKING_CODES.has(r.code)).toBe(true);
+  });
+
+  it('estado cortado por el plazo: STATUS_UNAVAILABLE (no se sabe), nunca un estado inventado', async () => {
+    invoke.mockResolvedValueOnce({ data: null, error: Object.assign(new Error('aborted'), { name: 'FunctionsFetchError' }) });
+    expect(await getFiscalSaleStatus('sale-1')).toEqual({ ok: false, code: 'STATUS_UNAVAILABLE' });
+  });
+
+  it.each(['sending', 'pending', 'algo-nuevo', undefined])('respuesta 2xx con estado %s: incierta (UNKNOWN_REQUIRES_RECONCILIATION), nunca SERVER_ERROR', async (status) => {
+    invoke.mockResolvedValueOnce({ data: status === undefined ? {} : { status }, error: null });
+    const r = await emitFiscalSale('sale-1');
+    expect(r).toEqual({ ok: false, status: 'unknown', code: 'UNKNOWN_REQUIRES_RECONCILIATION' });
+    expect(LOCKING_CODES.has(r.code)).toBe(true);
   });
 });

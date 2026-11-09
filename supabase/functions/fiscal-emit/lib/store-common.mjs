@@ -1,6 +1,8 @@
 // Mapeo compartido entre almacenes (Postgres y supabase-js). Ambos reciben las mismas
 // respuestas JSON de las RPC del ledger y las convierten aquí, así no pueden divergir.
 
+// Buffer se importa explícitamente: el runtime de Supabase Edge no lo expone como global.
+import { Buffer } from 'node:buffer';
 import { FiscalError } from './errors.mjs';
 
 // Respuesta de public.crm_fiscal_emission_context(business, sale).
@@ -10,6 +12,10 @@ export function mapEmissionContext(raw) {
     issuer: raw.issuer
       ? {
           issuerRut: raw.issuer.issuer_rut, enabled: raw.issuer.enabled, verified: raw.issuer.verified,
+          // Migración H: el propietario confirmó este RUT para la credencial vigente (la base lo
+          // vuelve a exigir al reclamar).
+          rutConfirmed: raw.issuer.rut_confirmed === true,
+          rutConfirmationReason: raw.issuer.rut_confirmation_reason ?? null,
           sucursal: raw.issuer.sucursal_nombre && raw.issuer.sucursal_codigo
             ? { nombre: raw.issuer.sucursal_nombre, codigo: raw.issuer.sucursal_codigo } : null,
           // Resolución SII del emisor (migración F), para imprimir la boleta. null si falta.

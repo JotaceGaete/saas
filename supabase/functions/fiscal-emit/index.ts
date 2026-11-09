@@ -9,7 +9,7 @@
 //  - FISCAL_MASTER_KEY (32 bytes base64) cifra las credenciales por comercio.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
-import { buildFiscalHandler } from './app.ts';
+import { buildFiscalHandler, buildUnconfiguredHandler, describeFiscalEnv } from './app.ts';
 import { createDtecoreBlockedProvider } from './lib/providers/dtecore-blocked.mjs';
 import { createSiisolutionsHttpProvider } from './lib/providers/siisolutions-http.mjs';
 import { ALLOWED_ISSUERS_ENV, parseAllowedIssuers } from './lib/allowlist.mjs';
@@ -23,21 +23,32 @@ const provider = providerName === 'dtecore' || providerName === 'siisolutions'
   ? createSiisolutionsHttpProvider({ ready: true })
   : createDtecoreBlockedProvider();
 
-const service = createClient(
-  Deno.env.get('SUPABASE_URL') ?? '',
-  Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-  { auth: { persistSession: false } },
-);
-
 // Empresas autorizadas: FISCAL_ALLOWED_ISSUERS="<uuid>=<rut>,...". Vacía o inválida = nadie.
 const allowedIssuers = parseAllowedIssuers(Deno.env.get(ALLOWED_ISSUERS_ENV) ?? '');
 if (allowedIssuers.error) console.error('fiscal-emit: lista de empresas autorizadas no disponible', allowedIssuers.error);
 
-const handler = buildFiscalHandler({
-  db: service as any,
-  provider,
-  masterKey: Deno.env.get('FISCAL_MASTER_KEY'),
-  allowedIssuers,
-});
+// Diagnóstico sin valores: qué variables existen y en qué modo queda el proveedor.
+const env = describeFiscalEnv((n) => Deno.env.get(n));
+console.log('fiscal-emit config', JSON.stringify(env));
+
+// Configuración inválida (p. ej. falta FISCAL_MASTER_KEY): no se cae el proceso. Se sirve un
+// manejador que respeta CORS y responde 503 FISCAL_NOT_CONFIGURED, sin base ni proveedor.
+let handler: (req: Request) => Promise<Response>;
+try {
+  const service = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    { auth: { persistSession: false } },
+  );
+  handler = buildFiscalHandler({
+    db: service as any,
+    provider,
+    masterKey: Deno.env.get('FISCAL_MASTER_KEY'),
+    allowedIssuers,
+  });
+} catch (err) {
+  console.error('fiscal-emit: configuración inválida', (err as { code?: string })?.code ?? (err as { name?: string })?.name ?? 'Error');
+  handler = buildUnconfiguredHandler();
+}
 
 Deno.serve(handler);

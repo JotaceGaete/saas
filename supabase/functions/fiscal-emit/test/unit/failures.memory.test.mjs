@@ -72,7 +72,7 @@ test('recibo OK, finalizar falla en todos los intentos -> PERSIST_PENDING_RECOVE
   w.clock.advance(STALE);
   w.store.clearFaults();
   const rep = await w.recovery.recoverStaleSending();
-  assert.deepEqual(rep, { examined: 1, finalizedFromReceipt: 1, markedUnknown: 0, untouched: 0 });
+  assert.deepEqual(rep, { examined: 1, finalizedFromReceipt: 1, markedUnknown: 0, untouched: 0, errors: 0 });
   const row = w.store.issuances.get(ROW);
   assert.equal(row.status, 'issued');
   assert.equal(row.folio, 1000);
@@ -158,7 +158,7 @@ test('caída tras la respuesta del proveedor y antes del recibo: recuperación -
 
   w.clock.advance(STALE);
   const rep = await w.recovery.recoverStaleSending();
-  assert.deepEqual(rep, { examined: 1, finalizedFromReceipt: 0, markedUnknown: 1, untouched: 0 });
+  assert.deepEqual(rep, { examined: 1, finalizedFromReceipt: 0, markedUnknown: 1, untouched: 0, errors: 0 });
   const row = w.store.issuances.get(ROW);
   assert.equal(row.status, 'unknown');
   assert.equal(row.folio, null);

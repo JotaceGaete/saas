@@ -1,0 +1,34 @@
+-- RESPALDO DE ESTRUCTURA PREVIO A LA MIGRACIÓN H. Producción (hxxdketymcntadffmajf), PostgreSQL 17.6.
+-- Capturado: 2026-11-05, solo lectura (catálogo). Sin datos de clientes, credenciales ni secretos.
+-- Este archivo NO se ejecuta: documenta el estado exacto que 02-recuperacion-H.sql debe restaurar.
+--
+-- Estado del historial al capturar: última migración 20261104183454 fiscal_g_manual_sql_editor_verified;
+-- H no registrada y sin objetos (fiscal.rut_confirmations, fiscal.document_folios, fiscal.credit_notes,
+-- crm_fiscal_issuances.issuer_rut y fiscal.normalize_rut no existen). Ver PRODUCTION-MIGRATION-LEDGER-2026-11-04.md.
+-- Emisión global apagada; 0 filas en sending; 0 transacciones de más de 1 minuto.
+--
+-- Datos que H toca (conteos): 1 emisor (su RUT no cambia al normalizar); 1 documento issued que H
+-- completa con issuer_rut y registra en fiscal.document_folios; 1 venta que queda bloqueada para
+-- cambios tributarios.
+
+-- Objetos que H reemplaza (md5 de pg_get_functiondef / pg_get_constraintdef en producción) -------------
+-- public.crm_fiscal_connection_status(uuid)              b85a73313003bdec22c3791b2966d915  (G, con CRLF)
+--   sin CR = 8bea6b0fe5615319000a2395e0edba7f = versión de proposed/20261104_fiscal_product_tax_category.sql
+-- public.crm_fiscal_emission_context(uuid,uuid)          97607cb623e2318a66ce031618448617  (G, con CRLF)
+--   sin CR = f2531a894ff2ad7bf0e8018e7795ab54 = versión de proposed/20261104_fiscal_product_tax_category.sql
+-- public.crm_fiscal_get_issuance(uuid,uuid)              8171ae9700dcfd112827d70f70666def  (E, idéntica al archivo)
+-- public.crm_fiscal_finalize_from_receipt(uuid,uuid,text) 5846d7ce28158a652ce2530bbb59a74f (C, idéntica al archivo)
+-- Las cuatro: ACL {postgres=X/postgres,service_role=X/postgres}.
+-- 02-recuperacion-H.sql restaura exactamente esas versiones (desde los archivos C, E y G del repositorio);
+-- la única diferencia posible son los saltos de línea CRLF de las dos funciones de G, que no cambian su
+-- comportamiento.
+--
+-- fiscal.admin_audit.admin_audit_action_check (md5 7998b3982d8e1f43580c23e5784390a9):
+--   CHECK ((action = ANY (ARRAY['reconcile_attempt'::text, 'reconcile_result'::text, 'owner_changed'::text,
+--   'credentials_saved'::text, 'credentials_removed'::text, 'application_submitted'::text,
+--   'application_approved'::text, 'application_rejected'::text, 'application_suspended'::text,
+--   'tax_default_set'::text, 'tax_product_set'::text])))
+--
+-- Respaldo físico: el de la plataforma (Supabase → Database → Backups). La recuperación principal es
+-- lógica (02-recuperacion-H.sql, segundos, sin pérdida de ventas); la restauración física es el último
+-- recurso porque devuelve TODO el proyecto al momento del respaldo.

@@ -21,18 +21,24 @@ export function createRecovery({ store, now = () => new Date(), staleAfterMs = 1
   async function recoverStaleSending() {
     const before = new Date(now().getTime() - staleAfterMs);
     const rows = await store.listStaleSending(before);
-    const report = { examined: rows.length, finalizedFromReceipt: 0, markedUnknown: 0, untouched: 0 };
+    const report = { examined: rows.length, finalizedFromReceipt: 0, markedUnknown: 0, untouched: 0, errors: 0 };
 
     for (const row of rows) {
-      const fromReceipt = await store.finalizeFromReceipt(row.businessId, row.saleId, row.operationId);
-      if (fromReceipt) {
-        report.finalizedFromReceipt += 1;
-        continue;
+      // Aislamiento entre comercios: el error de una fila (p. ej. un conflicto documental de un
+      // emisor) no detiene la recuperación de las demás. La fila sigue en sending o unknown.
+      try {
+        const fromReceipt = await store.finalizeFromReceipt(row.businessId, row.saleId, row.operationId);
+        if (fromReceipt) {
+          report.finalizedFromReceipt += 1;
+          continue;
+        }
+        // Sin recibo: unknown. El almacén rechaza si entretanto apareció un recibo o la fila ya no es vencida.
+        const unknown = await store.markStaleUnknown(row.businessId, row.saleId, row.operationId, before);
+        if (unknown) report.markedUnknown += 1;
+        else report.untouched += 1;
+      } catch {
+        report.errors += 1;
       }
-      // Sin recibo: unknown. El almacén rechaza si entretanto apareció un recibo o la fila ya no es vencida.
-      const unknown = await store.markStaleUnknown(row.businessId, row.saleId, row.operationId, before);
-      if (unknown) report.markedUnknown += 1;
-      else report.untouched += 1;
     }
     return report;
   }

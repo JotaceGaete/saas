@@ -22,6 +22,42 @@ export async function setEmissionControl(c, enabled) {
   );
 }
 
+// RUT válido (dígito verificador módulo 11) y distinto en cada llamada: la migración H impide que
+// dos comercios independientes compartan RUT.
+export function rutDv(body) {
+  let sum = 0;
+  let mul = 2;
+  const digits = String(body);
+  for (let i = digits.length - 1; i >= 0; i -= 1) {
+    sum += Number(digits[i]) * mul;
+    mul = mul === 7 ? 2 : mul + 1;
+  }
+  const r = 11 - (sum % 11);
+  return r === 11 ? '0' : r === 10 ? 'K' : String(r);
+}
+export function uniqueRut() {
+  const body = randomInt(10_000_000, 99_999_999);
+  return `${body}-${rutDv(body)}`;
+}
+
+// Confirmación del RUT por el propietario sembrada directamente (como postgres, sin fila de
+// auditoría) para que las pruebas previas a H no cambien sus conteos de fiscal.admin_audit.
+export async function seedRutConfirmation(c, businessId, actorUserId) {
+  await c.query(
+    `insert into fiscal.rut_confirmations (business_id, provider, key_version, credential_fp, confirmed_rut, actor_user_id)
+     select c.business_id, c.provider, c.key_version, fiscal.credential_fp(c.business_id), i.issuer_rut, $2
+       from fiscal.business_credentials c join fiscal.issuers i on i.business_id = c.business_id
+      where c.business_id = $1`,
+    [businessId, actorUserId],
+  );
+}
+
+// Confirmación del RUT por el propietario vía RPC (como la hace api/_lib/fiscal-connection.js).
+export async function confirmRut(c, businessId, actorUserId, rut) {
+  const r = await c.query(`select public.crm_fiscal_confirm_issuer_rut($1, $2, $3) as res`, [businessId, actorUserId, rut]);
+  return r.rows[0].res;
+}
+
 async function ensureCashSession(c, businessId, userId) {
   const id = randomUUID();
   await c.query(
@@ -45,9 +81,11 @@ export async function makeFixture(c, opts = {}) {
     discount: 0,
     total: 2380,
     withCredentials: true,
-    issuerRut: '76123456-7',
+    issuerRut: null,
+    rutConfirmed: true,
     ...opts,
   };
+  o.issuerRut = o.issuerRut ?? uniqueRut();
   const businessId = randomUUID();
   const userId = randomUUID();
   const saleId = randomUUID();
@@ -73,8 +111,19 @@ export async function makeFixture(c, opts = {}) {
                                  review_status, resolucion_numero, resolucion_fecha)
      values ($1, $4, 'dtecore', $2, $3, 'SUCURSAL DE PRUEBA', '1',
              case when $3::boolean then 'approved' else 'draft' end, 80, date '2014-08-22')`,
-    [businessId, o.issuerEnabled, o.issuerVerified, o.issuerRut],
+    [businessId, false, false, o.issuerRut],
   );
+  // Migración H: el propietario confirmó el RUT para esta credencial.
+  if (o.withCredentials && o.rutConfirmed) {
+    await seedRutConfirmation(c, businessId, userId);
+  }
+  if (o.issuerEnabled || o.issuerVerified) {
+    await c.query(
+      `update fiscal.issuers set enabled = $2, verified = $3,
+              review_status = case when $3::boolean then 'approved' else 'draft' end where business_id = $1`,
+      [businessId, o.issuerEnabled, o.issuerVerified],
+    );
+  }
   await c.query(
     `insert into public.crm_invoices (id, business_id, invoice_number, status, paid_at, total, subtotal, discount_amount)
      values ($1, $2, $3, $4, $5, $6, $6, $7)`,
@@ -138,6 +187,7 @@ export async function makeFixture(c, opts = {}) {
     saleId,
     itemId,
     operationId: operationIdFor(businessId, saleId),
+    issuerRut: o.issuerRut,
   };
 }
 

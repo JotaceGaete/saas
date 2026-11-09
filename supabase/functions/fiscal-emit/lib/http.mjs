@@ -39,6 +39,11 @@ const STATUS_BY_CODE = {
   FISCAL_BUSINESS_NOT_ALLOWED: 403,
   // lookup solo aplica a ventas con resultado desconocido.
   NOT_UNKNOWN: 409,
+  // Migración H: el propietario no ha confirmado el RUT para la credencial vigente. No es
+  // reintentable hasta que lo confirme en Configuración.
+  FISCAL_RUT_NOT_CONFIRMED: 409,
+  FISCAL_DOCUMENT_ISSUER_MISMATCH: 409,
+  FISCAL_FOLIO_DUPLICATE: 409,
 };
 
 export function statusFor(err) {

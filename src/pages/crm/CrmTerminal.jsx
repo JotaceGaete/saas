@@ -336,6 +336,12 @@ function CrmTerminalUI() {
 
   const searchRef = useRef(null);
   const printedTicketRef = useRef(null);
+  // true cuando el ticket abierto es el de la venta recién cobrada en este
+  // carrito (efectivo o Point). Cerrarlo —con «Nueva venta» o con la X—
+  // termina esa venta: carrito vacío y clave de idempotencia nueva. false
+  // cuando el ticket se reabrió desde «Recuperar boleta»: cerrarlo no toca el
+  // carrito en curso.
+  const ticketFromCheckoutRef = useRef(false);
   // E3 — claves de idempotencia del conector. `reprintRequestedRef` lo marca
   // "Reimprimir" (clave nueva, la venta ya se imprimió); `printAttemptRef`
   // recuerda el último intento: tras un error el reintento reutiliza la misma
@@ -353,7 +359,10 @@ function CrmTerminalUI() {
   const [printStatus, setPrintStatus] = useState('idle');
   const [printErrorMessage, setPrintErrorMessage] = useState(null);
 
-  const printCurrentTicket = useCallback(async () => {
+  // nonFiscal: comprobante interno de respaldo cuando la boleta electrónica no salió (servicio
+  // fiscal sin respuesta, resultado incierto, bloqueada o rechazada). Mismos datos de la venta ya
+  // cobrada, rotulado «no válido como boleta»; nunca cobra, emite ni cambia el estado fiscal.
+  const printCurrentTicket = useCallback(async ({ nonFiscal = false } = {}) => {
     if (!ticketData) return;
     const printerConfig = readPrinterConfig(buildPrinterConfigKey(business?.id));
     const connectorConfig = readConnectorConfig(buildConnectorConfigKey(business?.id));
@@ -366,14 +375,16 @@ function CrmTerminalUI() {
       }
     }
     const saleKey = String(ticketData.sale?.id ?? ticketData.sale?.invoice_number);
+    const kind = nonFiscal ? 'internal' : 'ticket';
     const prevAttempt = printAttemptRef.current;
-    const sameSale = prevAttempt.saleKey === saleKey;
+    const sameSale = prevAttempt.saleKey === saleKey && (prevAttempt.kind ?? 'ticket') === kind;
     const reprintRequested = reprintRequestedRef.current;
     reprintRequestedRef.current = false;
     let idempotencyKey;
     if (sameSale && prevAttempt.failed) idempotencyKey = prevAttempt.key;
-    else if (sameSale && reprintRequested) idempotencyKey = `sale:${saleKey}:reprint:${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
-    else idempotencyKey = `sale:${saleKey}:ticket`;
+    // Otra copia del comprobante interno ya impreso: clave nueva (el conector descartaría la misma).
+    else if (sameSale && (reprintRequested || nonFiscal)) idempotencyKey = `sale:${saleKey}:${nonFiscal ? 'internal' : 'reprint'}:${Date.now()}${Math.random().toString(36).slice(2, 8)}`;
+    else idempotencyKey = `sale:${saleKey}:${nonFiscal ? 'internal' : 'ticket'}`;
     const target = buildPrintTarget({ connectorConfig, qzPrinterName: printerConfig.printerName, idempotencyKey });
     if (target.error) {
       setPrintStatus('missing_printer');
@@ -396,6 +407,7 @@ function CrmTerminalUI() {
         // local de este dispositivo -- no decide nada acá.
         cutStrategyId: printerConfig.cutStrategyId,
         effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,
+        nonFiscalNotice: nonFiscal,
       });
       await printService.printReceipt(receipt, {
         printerName: target.printerName,
@@ -404,10 +416,10 @@ function CrmTerminalUI() {
       });
       // Un duplicado significa que el conector ya lo había enviado: para el
       // cajero es éxito, y no se vuelve a imprimir.
-      printAttemptRef.current = { saleKey, key: idempotencyKey, failed: false };
+      printAttemptRef.current = { saleKey, kind, key: idempotencyKey, failed: false };
       setPrintStatus('success');
     } catch (err) {
-      printAttemptRef.current = { saleKey, key: idempotencyKey, failed: true };
+      printAttemptRef.current = { saleKey, kind, key: idempotencyKey, failed: true };
       // PRINT-3A-BUG1: QZ Tray reemplaza cualquier rechazo de la firma por
       // el genérico "Failed to sign request" (ver qzTrayProvider.js, que
       // ya logueó la causa real con logSigningFailure antes de llegar
@@ -1236,6 +1248,7 @@ function CrmTerminalUI() {
       const invoiceNumber = await getSaleNumber(business?.id, sale.id);
       if (invoiceNumber != null) sale = { ...sale, invoice_number: invoiceNumber };
     }
+    ticketFromCheckoutRef.current = true;
     setTicketData({ sale, ...saleSnapshot });
     refreshProducts();
   }, [cart, selectedCustomer, total, discountAmount, subtotal, notes, draftKey, pointStorageKey, business?.id]);
@@ -1532,6 +1545,7 @@ function CrmTerminalUI() {
       // no se vuelve a programar una escritura de borrador.
       draftDebouncerRef.current.cancel();
       if (draftKey) removePosTerminalDraft(draftKey);
+      ticketFromCheckoutRef.current = true;
       setTicketData({ sale: data, ...saleSnapshot });
     } finally {
       submitLockRef.current = false;
@@ -1539,10 +1553,18 @@ function CrmTerminalUI() {
     }
   };
 
+  // Cerrar con la X equivale a «Nueva venta» si el ticket es de la venta
+  // recién cobrada: la venta ya está registrada, así que el carrito y su clave
+  // de idempotencia no pueden seguir vivos (si no, el siguiente cobro reusaría
+  // la clave y el servidor devolvería la venta anterior). Las boletas
+  // pendientes se guardan aparte (fiscalPendingSales) y no se tocan aquí.
   const handleCloseTicket = () => {
+    const fromCheckout = ticketFromCheckoutRef.current;
+    ticketFromCheckoutRef.current = false;
     setTicketData(null);
     setPrintStatus('idle');
     setPrintErrorMessage(null);
+    if (fromCheckout) resetForm();
   };
 
   // Reutilizada tanto por "Reimprimir" como por "Reintentar impresión":
@@ -1553,11 +1575,14 @@ function CrmTerminalUI() {
     printCurrentTicket();
   }, [printCurrentTicket]);
 
+  const handlePrintInternalReceipt = useCallback(() => printCurrentTicket({ nonFiscal: true }), [printCurrentTicket]);
+
   const handleGoToPrintSettings = useCallback(() => {
     navigate('/crm/impresion');
   }, [navigate]);
 
   const handleNewSale = () => {
+    ticketFromCheckoutRef.current = false;
     setTicketData(null);
     setPrintStatus('idle');
     setPrintErrorMessage(null);
@@ -3124,6 +3149,7 @@ function CrmTerminalUI() {
           onConfigurePrinter={handleGoToPrintSettings}
           fiscalSaleContext={fiscalSaleContext}
           onPlainTicket={printCurrentTicket}
+          onInternalReceipt={handlePrintInternalReceipt}
           onFiscalSettled={handleFiscalSettled}
         />
       )}
@@ -3136,7 +3162,7 @@ function CrmTerminalUI() {
           <div className="mt-2 flex flex-col gap-1.5">
             {pendingFiscal.slice(-5).reverse().map((p) => (
               <button key={p.saleId} type="button"
-                onClick={() => { printedTicketRef.current = String(p.saleId); setTicketData(p.ticketData); }}
+                onClick={() => { printedTicketRef.current = String(p.saleId); ticketFromCheckoutRef.current = false; setTicketData(p.ticketData); }}
                 className="rounded-lg bg-amber-600 px-3 py-1.5 text-left font-bold text-white hover:bg-amber-700">
                 Recuperar boleta · venta {p.ticketData?.sale?.invoice_number ?? p.saleId}
               </button>

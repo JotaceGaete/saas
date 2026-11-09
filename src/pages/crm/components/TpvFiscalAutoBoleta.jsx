@@ -66,6 +66,21 @@ export function fiscalModeForSale(mode, sale, { preview = POINT_PREVIEW } = {}) 
   return mode;
 }
 
+/**
+ * Estado fiscal que se muestra cuando la boleta no salió, o null si no corresponde.
+ * - unknown: el servidor no confirmó (sin respuesta o envío incierto). Puede existir una boleta.
+ * - not_issued: confirmado que no se emitió (bloqueada antes de enviar, o rechazada sin folio).
+ */
+export function fiscalStateLabelFor(phase) {
+  if (phase === PHASE.ERROR || phase === PHASE.UNCERTAIN) {
+    return { key: 'unknown', text: 'desconocido, pendiente de confirmar. No se emite otra boleta.' };
+  }
+  if (phase === PHASE.BLOCKED || phase === PHASE.REJECTED) {
+    return { key: 'not_issued', text: 'sin boleta emitida.' };
+  }
+  return null;
+}
+
 /** Decisión en Preview a partir del estado del servidor: 'live' solo con liveAuthorized === true. */
 export function previewLiveDecision(statusResult) {
   return statusResult?.ok === true && statusResult.data?.liveAuthorized === true ? 'live' : 'simulated';
@@ -118,7 +133,7 @@ export function buildFlowForMode(mode, businessId) {
 }
 
 export default function TpvFiscalAutoBoleta({
-  businessId, sale, saleContext, onPlainTicket, onSettled, mode = FISCAL_AUTO_MODE, deps,
+  businessId, sale, saleContext, onPlainTicket, onInternalReceipt, onSettled, mode = FISCAL_AUTO_MODE, deps,
   preview = POINT_PREVIEW, previewStatus = getFiscalSaleStatus, queries = DEFAULT_QUERIES,
 }) {
   // Una venta simulada nunca llega a DTE Core. En una Preview, el modo real solo se usa si el
@@ -278,6 +293,10 @@ export default function TpvFiscalAutoBoleta({
   }
 
   const hasBoleta = phase === PHASE.PRINTED || phase === PHASE.PRINT_FAILED;
+  // Estado fiscal explícito cuando la boleta no salió. «Desconocido» si no hay confirmación del
+  // servidor (servicio sin respuesta o envío incierto): nunca se presenta como «no emitida».
+  const fiscalStateLabel = fiscalStateLabelFor(phase);
+  const canPrintInternal = Boolean(onInternalReceipt) && fiscalStateLabel !== null;
   return (
     <section aria-label="Boleta electrónica SII" style={box} data-testid="fiscal-auto-boleta" data-phase={phase}>
       <strong style={{ display: 'block', fontSize: 13, marginBottom: 5 }}>
@@ -297,7 +316,19 @@ export default function TpvFiscalAutoBoleta({
       {state.reprintError && (
         <div role="alert" style={{ marginTop: 4, color: '#b91c1c' }}>No se pudo reimprimir: {state.reprintError.message || describeFlowCode(state.reprintError.code)}</div>
       )}
+      {fiscalStateLabel && (
+        <div data-testid="fiscal-state" data-fiscal-state={fiscalStateLabel.key} style={{ marginTop: 4, fontWeight: 700, color: tone }}>
+          Estado fiscal: {fiscalStateLabel.text}
+        </div>
+      )}
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+        {canPrintInternal && (
+          // Respaldo para el cliente sin volver a cobrar: imprime el comprobante interno rotulado
+          // «no válido como boleta». Nunca emite ni cambia el estado fiscal de la venta.
+          <button type="button" style={btn(true)} data-testid="print-internal-receipt" onClick={() => onInternalReceipt()}>
+            Imprimir comprobante interno (no es boleta)
+          </button>
+        )}
         {phase === PHASE.PRINT_FAILED && !state.reprint && (
           <button type="button" style={btn(true)} disabled={busy} onClick={() => run('retryPrint')}>Reintentar impresión</button>
         )}

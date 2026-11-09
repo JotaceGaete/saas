@@ -31,6 +31,9 @@ export const FISCAL_EMIT_MESSAGES = Object.freeze({
   PROVIDER_REJECTED: 'DTE Core rechazó la boleta. No se asignó folio. Revisa el detalle antes de volver a intentarlo.',
   RESPONSE_LOST: 'No recibimos respuesta. No repitas la emisión: revisa el estado de la venta.',
   FISCAL_BUSINESS_NOT_ALLOWED: 'La boleta electrónica no está habilitada para este negocio.',
+  FISCAL_RUT_NOT_CONFIRMED: 'Antes de la primera boleta, el propietario debe confirmar el RUT en Configuración → Facturación electrónica.',
+  FISCAL_DOCUMENT_ISSUER_MISMATCH: 'El documento recibido no corresponde al RUT del comercio. Se revisa manualmente.',
+  FISCAL_FOLIO_DUPLICATE: 'El folio recibido ya existe para este RUT. Se revisa manualmente.',
   NOT_UNKNOWN: 'Esta venta no tiene un resultado pendiente de confirmar.',
   NOT_ISSUED: 'Esta venta no tiene una boleta emitida.',
 });
@@ -38,6 +41,14 @@ export const FISCAL_EMIT_MESSAGES = Object.freeze({
 export function describeFiscalEmitError(code) {
   return FISCAL_EMIT_MESSAGES[code] ?? 'No pudimos emitir la boleta. Inténtalo más tarde.';
 }
+
+// Plazos máximos de espera del navegador. Si fiscal-emit no responde, el TPV no queda
+// «emitiendo» para siempre. El de emisión supera el peor caso del servidor (proveedor 20 s +
+// descarga de XML y PDF 12 s c/u + base): cortarlo antes no deshace nada en el servidor, y el
+// resultado queda incierto (RESPONSE_LOST), nunca «no emitida».
+export const FISCAL_STATUS_TIMEOUT_MS = 15_000;
+export const FISCAL_EMIT_TIMEOUT_MS = 60_000;
+export const FISCAL_QUERY_TIMEOUT_MS = 20_000;
 
 // Códigos que bloquean el botón: el resultado pudo haber emitido una boleta y nunca se repite.
 export const LOCKING_CODES = Object.freeze(new Set([
@@ -47,7 +58,7 @@ export const LOCKING_CODES = Object.freeze(new Set([
 // Estado fiscal de la venta (solo lectura; nunca emite). Devuelve { ok, data } | { ok:false, code }.
 export async function getFiscalSaleStatus(saleId) {
   try {
-    const { data, error } = await supabase.functions.invoke('fiscal-emit', { body: { action: 'status', saleId } });
+    const { data, error } = await supabase.functions.invoke('fiscal-emit', { body: { action: 'status', saleId }, timeout: FISCAL_STATUS_TIMEOUT_MS });
     if (!error && data && typeof data.state === 'string') return { ok: true, data };
     let payload = null;
     try {
@@ -90,7 +101,7 @@ export async function emitFiscalSale(saleId) {
   let data;
   let error;
   try {
-    ({ data, error } = await supabase.functions.invoke('fiscal-emit', { body: { action: 'emit', saleId } }));
+    ({ data, error } = await supabase.functions.invoke('fiscal-emit', { body: { action: 'emit', saleId }, timeout: FISCAL_EMIT_TIMEOUT_MS }));
   } catch {
     // La solicitud pudo llegar al servidor: resultado incierto, nunca se repite.
     return { ok: false, status: 'error', code: 'RESPONSE_LOST' };
@@ -98,7 +109,10 @@ export async function emitFiscalSale(saleId) {
   if (!error) {
     const status = data?.status ?? 'unknown';
     if (status === 'issued') return { ok: true, status, folio: data?.folio ?? null };
-    return { ok: false, status, code: status === 'unknown' ? 'UNKNOWN_REQUIRES_RECONCILIATION' : (status === 'failed' ? 'PROVIDER_REJECTED' : 'SERVER_ERROR') };
+    if (status === 'failed') return { ok: false, status, code: 'PROVIDER_REJECTED' };
+    // Respuesta del servidor sin un resultado reconocible (unknown, sending u otro): la venta pudo
+    // quedar reclamada o emitida. Es incierta y nunca se trata como «no emitida».
+    return { ok: false, status: 'unknown', code: 'UNKNOWN_REQUIRES_RECONCILIATION' };
   }
   let payload = null;
   try {
@@ -112,7 +126,7 @@ export async function emitFiscalSale(saleId) {
 // Invoca una acción de CONSULTA de fiscal-emit. Nunca emite. Devuelve { ok, data } | { ok:false, code }.
 async function invokeQuery(action, saleId) {
   try {
-    const { data, error } = await supabase.functions.invoke('fiscal-emit', { body: { action, saleId } });
+    const { data, error } = await supabase.functions.invoke('fiscal-emit', { body: { action, saleId }, timeout: FISCAL_QUERY_TIMEOUT_MS });
     if (!error && data && typeof data === 'object') return { ok: true, data };
     let payload = null;
     try {

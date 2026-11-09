@@ -7,7 +7,7 @@ import { randomBytes, randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { assertLocalTestConfig } from '../../lib/store-pg.mjs';
 import { seal } from '../../lib/secrets.mjs';
-import { CFG, makeFixture } from './fixtures.mjs';
+import { CFG, makeFixture, uniqueRut, confirmRut, setEmissionControl } from './fixtures.mjs';
 
 const MASTER = randomBytes(32);
 const API_KEY = 'dtc_live_SECRET_DO_NOT_STORE_PLAIN_0123456789';
@@ -41,10 +41,14 @@ async function plainUser() {
   return id;
 }
 
+// Un RUT propio por comercio (la migración H impide repetirlo entre comercios), estable entre
+// guardados del mismo comercio.
+const rutOf = new Map();
 async function saveKey(businessId, actorId, apiKey = API_KEY) {
+  if (!rutOf.has(businessId)) rutOf.set(businessId, uniqueRut());
   const rec = seal({ apiKey }, { key: MASTER, businessId, provider: 'dtecore', keyVersion: 1 });
-  await c.query(`select public.crm_fiscal_save_credentials($1, $2, '12345678-5', $3, $4, $5, 1)`,
-    [businessId, actorId, rec.ciphertext, rec.iv, rec.authTag]);
+  await c.query(`select public.crm_fiscal_save_credentials($1, $2, $6, $3, $4, $5, 1)`,
+    [businessId, actorId, rec.ciphertext, rec.iv, rec.authTag, rutOf.get(businessId)]);
 }
 
 const submit = (businessId, actorId, { numero = 80, fecha = '2014-08-22', sucursalNombre = null, sucursalCodigo = null } = {}) =>
@@ -224,5 +228,91 @@ test('permisos: anon y authenticated no ejecutan las funciones nuevas', async ()
     }
     const s = await c.query(`select has_function_privilege('service_role', $1, 'execute') as ok`, [sig]);
     assert.equal(s.rows[0].ok, true);
+  }
+});
+
+// --- Confirmación del RUT por el propietario (migración H) ------------------------------------
+test('confirmación del RUT: aprobado pero sin confirmar no emite; confirmado sí reclama', async () => {
+  const f = await makeFixture(c, { rutConfirmed: false });
+  const prev = (await c.query(`select enabled from fiscal.dte39_emission_control where singleton`)).rows[0]?.enabled ?? false;
+  await setEmissionControl(c, true);
+  const claim = () => c.query(`select public.crm_fiscal_claim_with_credentials($1, $2, $3) as r`, [f.businessId, f.saleId, f.operationId]);
+  await rejects(claim(), 'FISCAL_RUT_NOT_CONFIRMED: not_confirmed');
+  assert.equal((await status(f.businessId)).rutConfirmationReason, 'not_confirmed');
+  const r = await confirmRut(c, f.businessId, f.userId, f.issuerRut);
+  assert.equal(r.confirmed, true);
+  assert.equal(r.block_reason, null);
+  assert.equal((await claim()).rows[0].r.claimed, true);
+  const aud = await c.query(`select action from fiscal.admin_audit where business_id = $1 and action = 'rut_confirmed'`, [f.businessId]);
+  assert.equal(aud.rowCount, 1);
+  await setEmissionControl(c, prev);
+});
+
+test('confirmación del RUT: solo el propietario fiscal y solo el RUT guardado (pantalla al día)', async () => {
+  const f = await makeFixture(c, { rutConfirmed: false });
+  const stranger = await admin();
+  await rejects(confirmRut(c, f.businessId, stranger, f.issuerRut), 'FISCAL_ROLE_REQUIRED');
+  await rejects(confirmRut(c, f.businessId, f.userId, uniqueRut()), 'FISCAL_RUT_CONFIRMATION_STALE');
+  await rejects(confirmRut(c, f.businessId, f.userId, '12345678-0'), 'FISCAL_RUT_CONFIRMATION_INVALID');
+  assert.equal((await status(f.businessId)).rutConfirmed, false);
+});
+
+test('confirmación del RUT: cambiar la API key o el RUT exige confirmar de nuevo', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  await saveKey(businessId, ownerId);
+  await confirmRut(c, businessId, ownerId, rutOf.get(businessId));
+  assert.equal((await status(businessId)).rutConfirmed, true);
+  await saveKey(businessId, ownerId, 'OTRA_KEY_DE_PRUEBA_0123456789');
+  assert.equal((await status(businessId)).rutConfirmationReason, 'credentials_changed');
+  await confirmRut(c, businessId, ownerId, rutOf.get(businessId));
+  await c.query(`update fiscal.issuers set issuer_rut = $2 where business_id = $1`, [businessId, uniqueRut()]);
+  assert.equal((await status(businessId)).rutConfirmationReason, 'rut_changed');
+});
+
+// Migración I (2026-11-06): en producción service_role no tiene SELECT sobre auth.users. PostgREST
+// ejecuta las RPC como service_role, así que la cola y la revisión deben funcionar con ese rol.
+// Antes de la migración ambas fallaban con «permission denied for table users» (403 en PostgREST).
+test('como service_role sin acceso a auth.users: la cola lista y el admin puede aprobar', async () => {
+  const { businessId, ownerId } = await newBusiness();
+  await saveKey(businessId, ownerId);
+  await submit(businessId, ownerId);
+  const adminId = await admin();
+  const sr = new pg.Client(assertLocalTestConfig(CFG));
+  await sr.connect();
+  try {
+    const priv = await sr.query(`select has_table_privilege('service_role', 'auth.users', 'SELECT') as ok`);
+    assert.equal(priv.rows[0].ok, false, 'el escenario debe reproducir producción');
+    await sr.query('begin');
+    await sr.query('set local role service_role');
+    const pending = await sr.query(`select public.crm_fiscal_list_applications('pending_review') as j`);
+    const mine = pending.rows[0].j.find((a) => a.businessId === businessId);
+    assert.ok(mine, 'la solicitud aparece en Pendientes');
+    assert.equal(mine.reviewStatus, 'pending_review');
+    assert.match(mine.ownerEmail, /^owner-/);
+    const all = await sr.query(`select public.crm_fiscal_list_applications(null) as j`);
+    assert.ok(all.rows[0].j.some((a) => a.businessId === businessId), 'y en Todas');
+    // Un usuario sin rol admin sigue rechazado por la base.
+    const notAdmin = await plainUser();
+    await sr.query('savepoint s');
+    await assert.rejects(sr.query(`select public.crm_fiscal_review_application($1, $2, 'approve', null)`, [businessId, notAdmin]),
+      /FISCAL_REVIEWER_NOT_ADMIN/);
+    await sr.query('rollback to savepoint s');
+    const ok = await sr.query(`select public.crm_fiscal_review_application($1, $2, 'approve', null) as ok`, [businessId, adminId]);
+    assert.equal(ok.rows[0].ok, true);
+    await sr.query('rollback');
+  } finally {
+    await sr.end();
+  }
+});
+
+test('las funciones de revisión siguen ejecutables solo por service_role', async () => {
+  for (const sig of ['public.crm_fiscal_list_applications(text)', 'public.crm_fiscal_review_application(uuid, uuid, text, text)']) {
+    for (const role of ['anon', 'authenticated']) {
+      const r = await c.query(`select has_function_privilege($1, $2, 'execute') as ok`, [role, sig]);
+      assert.equal(r.rows[0].ok, false, `${role} ${sig}`);
+    }
+    const s = await c.query(`select p.prosecdef, p.proconfig from pg_proc p where p.oid = $1::regprocedure`, [sig]);
+    assert.equal(s.rows[0].prosecdef, true);
+    assert.deepEqual(s.rows[0].proconfig, ['search_path=public, fiscal, pg_temp']);
   }
 });

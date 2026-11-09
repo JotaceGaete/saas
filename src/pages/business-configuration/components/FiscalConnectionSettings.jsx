@@ -5,6 +5,7 @@ import {
   submitFiscalApplication,
   setFiscalTaxDefault,
   disconnectFiscal,
+  confirmFiscalRut,
   describeFiscalError,
 } from '../../../services/fiscalConnectionService';
 import { TAX_TREATMENT, TAX_TREATMENT_LABELS } from '../../../lib/fiscal/taxTreatment';
@@ -68,6 +69,8 @@ export default function FiscalConnectionSettings({ businessId }) {
   const [confirm, setConfirm] = useState(null); // null | 'disconnect'
   const [disconnecting, setDisconnecting] = useState(false);
   const [taxSaving, setTaxSaving] = useState(false);
+  const [confirmingRut, setConfirmingRut] = useState(false);
+  const [rutAck, setRutAck] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -142,6 +145,24 @@ export default function FiscalConnectionSettings({ businessId }) {
     }
   };
 
+  // El propietario confirma expresamente el RUT mostrado (antes de la primera boleta y cada vez que
+  // cambian la API key o el RUT). Se envía el RUT que se ve: si cambió entretanto, el servidor lo rechaza.
+  const handleConfirmRut = async () => {
+    setConfirmingRut(true);
+    setFormError('');
+    setNotice('');
+    try {
+      const next = await confirmFiscalRut(businessId, connection?.issuerRut);
+      setConnection((prev) => ({ ...next, allowed: prev?.allowed }));
+      setRutAck(false);
+      setNotice('RUT confirmado. Ya puedes emitir boletas cuando Walinka habilite tu cuenta.');
+    } catch (err) {
+      setFormError(describeFiscalError(err));
+    } finally {
+      setConfirmingRut(false);
+    }
+  };
+
   const handleDisconnect = async () => {
     setDisconnecting(true);
     setFormError('');
@@ -189,6 +210,36 @@ export default function FiscalConnectionSettings({ businessId }) {
 
   return (
     <div className="space-y-5" data-testid="fiscal-onboarding">
+      {/* Confirmación del RUT (migración H): antes de la primera boleta con esta API key. */}
+      {connection?.connected && (
+        <div className="rounded-xl border p-3 text-sm space-y-2" style={cardStyle} data-testid="fiscal-rut-confirmation"
+             data-confirmed={connection.rutConfirmed ? 'true' : 'false'}>
+          {connection.rutConfirmed ? (
+            <p style={{ color: 'var(--color-text-primary)' }}>
+              RUT emisor confirmado: <strong data-testid="fiscal-rut-confirmed">{connection.issuerRut}</strong>
+            </p>
+          ) : (
+            <>
+              <p style={{ color: 'var(--color-text-primary)' }}>
+                Las boletas se emitirán con el RUT{' '}
+                <strong className="text-base" data-testid="fiscal-rut-to-confirm">{connection.issuerRut}</strong>.
+                {' '}Revisa que sea el de tu empresa y que la API key sea de su cuenta en DTE Core: Walinka no
+                puede comprobarlo por ti. Hasta confirmarlo, tus ventas imprimen el comprobante interno de siempre.
+              </p>
+              <label className="flex items-start gap-2">
+                <input type="checkbox" checked={rutAck} onChange={(e) => setRutAck(e.target.checked)}
+                       data-testid="fiscal-rut-ack" className="mt-1" />
+                <span>Confirmo que {connection.issuerRut} es el RUT de mi empresa y que la API key ingresada es de esa cuenta.</span>
+              </label>
+              <button type="button" onClick={handleConfirmRut} disabled={!rutAck || confirmingRut}
+                      className="rounded-lg border px-3 py-2 text-sm min-h-[44px]" style={cardStyle}
+                      data-testid="fiscal-rut-confirm">
+                {confirmingRut ? 'Confirmando…' : 'Confirmar RUT'}
+              </button>
+            </>
+          )}
+        </div>
+      )}
       {/* Progreso */}
       <ol className="grid grid-cols-3 gap-2" aria-label="Pasos para emitir boletas">
         {STEPS.map((s, i) => {

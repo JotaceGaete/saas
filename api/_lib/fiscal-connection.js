@@ -18,6 +18,7 @@ import { isAllowlist, normalizeRut } from '../../supabase/functions/fiscal-emit/
 const KEY_VERSION = 1;
 const CONNECT_FIELDS = new Set(['action', 'apiKey', 'issuerRut']);
 const DISCONNECT_FIELDS = new Set(['action']);
+const CONFIRM_RUT_FIELDS = new Set(['action', 'issuerRut']);
 const TAX_DEFAULT_FIELDS = new Set(['action', 'category']);
 const TAX_CATEGORIES = new Set(['IVA_AFECTO_19', 'EXENTO', 'NO_AFECTO']);
 const SUBMIT_FIELDS = new Set(['action', 'apiKey', 'issuerRut', 'resolucionNumero', 'resolucionFecha', 'sucursalNombre', 'sucursalCodigo']);
@@ -69,6 +70,13 @@ function mapDbError(err) {
   if (msg.includes('FISCAL_CREDENTIALS_REQUIRED')) return fail(409, 'API_KEY_REQUIRED');
   if (msg.includes('FISCAL_APPLICATION_INVALID')) return fail(400, 'INVALID_APPLICATION');
   if (msg.includes('FISCAL_TAX_INVALID')) return fail(400, 'INVALID_TAX_CATEGORY');
+  // Migración H. RUT_NOT_AVAILABLE no dice a quién pertenece el RUT (no revela otros comercios).
+  if (msg.includes('FISCAL_ISSUER_RUT_TAKEN')) return fail(409, 'RUT_NOT_AVAILABLE');
+  if (msg.includes('FISCAL_ISSUER_RUT_INVALID')) return fail(400, 'INVALID_RUT');
+  if (msg.includes('FISCAL_RUT_CHANGE_BLOCKED')) return fail(409, 'RUT_CHANGE_BLOCKED');
+  if (msg.includes('FISCAL_RUT_CONFIRMATION_STALE')) return fail(409, 'RUT_CONFIRMATION_STALE');
+  if (msg.includes('FISCAL_ROLE_REQUIRED')) return fail(403, 'BUSINESS_NOT_AUTHORIZED');
+  if (msg.includes('FISCAL_CREDENTIALS_MISSING')) return fail(409, 'API_KEY_REQUIRED');
   return fail(503, 'SERVER_ERROR');
 }
 
@@ -78,6 +86,8 @@ function toBytea(buf) {
 
 // Estado público de la conexión. Nunca contiene la clave.
 const REVIEW_STATUSES = new Set(['draft', 'pending_review', 'approved', 'rejected', 'suspended']);
+const RUT_CONFIRMATION_REASONS = new Set(['issuer_missing', 'credentials_missing', 'not_confirmed',
+  'credentials_changed', 'rut_changed']);
 
 function publicConnection(row) {
   if (!row) {
@@ -85,7 +95,7 @@ function publicConnection(row) {
       connected: false, issuerRut: null, enabled: false, verified: false, keyVersion: null, updatedAt: null,
       reviewStatus: 'draft', reviewNote: null, submittedAt: null, reviewedAt: null,
       resolucionNumero: null, resolucionFecha: null, sucursalNombre: null, sucursalCodigo: null,
-      defaultTaxCategory: null,
+      defaultTaxCategory: null, rutConfirmed: false, rutConfirmationReason: 'credentials_missing',
     };
   }
   return {
@@ -104,6 +114,9 @@ function publicConnection(row) {
     sucursalNombre: row.sucursalNombre ?? null,
     sucursalCodigo: row.sucursalCodigo ?? null,
     defaultTaxCategory: TAX_CATEGORIES.has(row.defaultTaxCategory) ? row.defaultTaxCategory : null,
+    // Migración H: el propietario confirmó el RUT para la API key vigente (sin esto no se emite).
+    rutConfirmed: row.rutConfirmed === true,
+    rutConfirmationReason: RUT_CONFIRMATION_REASONS.has(row.rutConfirmationReason) ? row.rutConfirmationReason : null,
   };
 }
 
@@ -154,6 +167,26 @@ export function createFiscalConnectionService({ admin, masterKey, allowedIssuers
     const failed = await saveCredentials(businessId, actorId, issuerRut, apiKey);
     if (failed) return failed;
 
+    const r = await readStatus(businessId);
+    if (!r.ok) return { status: r.status, body: r.body };
+    return { status: 200, body: { connection: r.connection } };
+  }
+
+  // Confirmación expresa del propietario: «este es el RUT de mi empresa y esta es su API key de
+  // DTE Core». issuerRut es el RUT que el propietario VE en pantalla; la base lo compara con el
+  // guardado (si cambió entretanto, RUT_CONFIRMATION_STALE) y ata la confirmación a la credencial
+  // vigente. Cambiar la key o el RUT exige confirmar de nuevo antes de emitir.
+  async function confirmRut({ businessId, actorId, body }) {
+    for (const key of Object.keys(body)) {
+      if (!CONFIRM_RUT_FIELDS.has(key)) return fail(400, 'UNKNOWN_FIELD');
+    }
+    const issuerRut = normalizeRut(body.issuerRut);
+    if (!issuerRut) return fail(400, 'INVALID_RUT');
+    if (!allowedIssuers.permits(businessId, issuerRut)) return NOT_ALLOWED();
+    const { error } = await admin.rpc('crm_fiscal_confirm_issuer_rut', {
+      p_business_id: businessId, p_actor_user_id: actorId, p_confirmed_rut: issuerRut,
+    });
+    if (error) return mapDbError(error);
     const r = await readStatus(businessId);
     if (!r.ok) return { status: r.status, body: r.body };
     return { status: 200, body: { connection: r.connection } };
@@ -230,5 +263,5 @@ export function createFiscalConnectionService({ admin, masterKey, allowedIssuers
     return { status: 200, body: { connection: r.connection } };
   }
 
-  return Object.freeze({ status, connect, submit, setTaxDefault, disconnect });
+  return Object.freeze({ status, connect, confirmRut, submit, setTaxDefault, disconnect });
 }

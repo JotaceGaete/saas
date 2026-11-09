@@ -341,3 +341,33 @@ test('sii-status: solo boletas emitidas; aislamiento por negocio, roles y lista'
   assert.equal(await code(() => emitter.refreshSiiStatus({ actorUserId: U1, saleId: S1 })), 'FISCAL_BUSINESS_NOT_ALLOWED');
   assert.equal(provider.calls.emit, 0);
 });
+
+// Método de verificación posterior al despliegue aislado: `status` (solo lectura) distingue el
+// proveedor bloqueado del real. Con el adaptador bloqueado, una venta sin emisión de la empresa
+// autorizada devuelve PROVIDER_NOT_READY; con un proveedor real activo, el motivo es otro.
+test('status distingue proveedor bloqueado del real, sin escrituras ni llamadas al proveedor', async () => {
+  const WRITES = ['claimWithCredentials', 'appendAudit', 'finalizeIssued', 'markUnknown', 'markFailed'];
+  for (const emissionEnabled of [true, false]) {
+    const blocked = fakeProvider({ ready: false });
+    const store = createMemoryStore({ masterKey: MASTER, emissionEnabled });
+    store.seed({ businessId: B1, userId: U1, saleId: S1, issuerRut: R1 });
+    const emitter = createFiscalEmitter({ store, provider: blocked, masterKey: MASTER, allowedIssuers: parseAllowedIssuers(`${B1}=${R1}`) });
+    const s = await emitter.status({ actorUserId: U1, saleId: S1 });
+    assert.equal(s.state, 'none');
+    assert.equal(s.blockedReason, 'PROVIDER_NOT_READY');
+    assert.equal(s.liveAuthorized, false);
+    assert.equal(s.canEmit, false);
+    assert.equal(blocked.calls.emit + blocked.calls.lookup + blocked.calls.docs + blocked.calls.sii, 0);
+    for (const w of WRITES) assert.equal(store.calls[w] ?? 0, 0, w);
+    assert.equal(store.issuances.size, 0);
+  }
+  // Proveedor real activo con la emisión global apagada: el motivo ya NO es PROVIDER_NOT_READY.
+  const real = fakeProvider({ ready: true });
+  const store = createMemoryStore({ masterKey: MASTER, emissionEnabled: false });
+  store.seed({ businessId: B1, userId: U1, saleId: S1, issuerRut: R1 });
+  const emitter = createFiscalEmitter({ store, provider: real, masterKey: MASTER, allowedIssuers: parseAllowedIssuers(`${B1}=${R1}`) });
+  const s = await emitter.status({ actorUserId: U1, saleId: S1 });
+  assert.notEqual(s.blockedReason, 'PROVIDER_NOT_READY');
+  assert.notEqual(s.blockedReason, null);
+  assert.equal(real.calls.emit, 0);
+});

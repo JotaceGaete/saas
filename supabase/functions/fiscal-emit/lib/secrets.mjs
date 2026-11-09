@@ -4,6 +4,8 @@
 //   comercio hace fallar la descifrada.
 // - Nunca se devuelve el secreto al frontend: estas funciones solo las usa el emisor.
 
+// Buffer se importa explícitamente: el runtime de Supabase Edge no lo expone como global.
+import { Buffer } from 'node:buffer';
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { FiscalError } from './errors.mjs';
 
