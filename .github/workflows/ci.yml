@@ -1,0 +1,175 @@
+# CI de Walinka. Ver docs/ops/PROTECCION_MAIN_Y_CI.md.
+#
+# Seguridad:
+#   - No usa ningún secreto del repositorio. Las variables de Supabase son ficticias (127.0.0.1:9).
+#   - Todas las pruebas corren SIN RED (scripts/ci/sin-red.sh): ninguna puede llegar a Supabase,
+#     DTE Core, Mercado Pago ni a otro servicio real, ni emitir, vender o modificar datos.
+#   - Las pruebas que necesitan PostgreSQL/PostgREST (test/db, contract) no corren aquí.
+name: ci
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: 'true'
+  NODE_VERSION: '22'
+  DENO_VERSION: 'v2.5.6'
+  GITLEAKS_VERSION: '8.21.2'
+  # Ficticias: no apuntan a ningún servicio ni son claves reales.
+  VITE_SUPABASE_URL: 'http://127.0.0.1:9'
+  VITE_SUPABASE_PUBLISHABLE_KEY: 'ci-dummy-not-a-key'
+
+jobs:
+  pruebas:
+    name: pruebas
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+
+      # npm ci no sirve hoy: package-lock.json no está sincronizado con package.json
+      # (ver la descripción de la PR). Se usa npm install, igual que el build de Vercel.
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: ${{ env.DENO_VERSION }}
+
+      # El type check necesita descargar los tipos de npm: (supabase-js); por eso va antes del
+      # aislamiento de red. Solo analiza tipos: no ejecuta la función.
+      - name: Deno check (fiscal-emit)
+        working-directory: supabase/functions/fiscal-emit
+        env:
+          DENO_NO_PACKAGE_JSON: '1'
+        run: deno check --no-config index.ts app.ts
+
+      - name: Comprobar que no hay credenciales reales en el entorno
+        run: |
+          set -euo pipefail
+          bad=$(env | grep -E '^(SUPABASE_SERVICE_ROLE_KEY|SUPABASE_URL|FISCAL_[A-Z0-9_]+|DATABASE_URL|PG(HOST|PASSWORD|USER)|MP_[A-Z_]*TOKEN|SIISOLUTIONS_[A-Z_]+|DTECORE_[A-Z_]+)=' | cut -d= -f1 || true)
+          if [ -n "$bad" ]; then echo "Variables sensibles presentes: $bad"; exit 1; fi
+          case "$VITE_SUPABASE_URL" in http://127.0.0.1:*) ;; *) echo "VITE_SUPABASE_URL no es ficticia"; exit 1;; esac
+          echo "Entorno sin credenciales; Supabase apunta a 127.0.0.1."
+
+      - name: Comprobar el aislamiento de red
+        run: |
+          set -uo pipefail
+          scripts/ci/sin-red.sh bash -c '
+            fail=0
+            for url in https://hxxdketymcntadffmajf.supabase.co/rest/v1/ https://api.siisolutions.cl/ https://api.mercadopago.com/ https://go.walinka.com/; do
+              if curl -sS --max-time 5 -o /dev/null "$url" 2>/dev/null; then echo "ALCANZABLE: $url"; fail=1; else echo "bloqueado: $url"; fi
+            done
+            node -e "fetch(\"https://hxxdketymcntadffmajf.supabase.co\").then(()=>{console.log(\"node fetch ALCANZÓ Supabase\");process.exit(1)}).catch(()=>console.log(\"node fetch bloqueado\"))" || fail=1
+            exit $fail'
+
+      - name: Vitest (contra la línea base de fallas)
+        run: |
+          set -uo pipefail
+          scripts/ci/sin-red.sh npx vitest run $(scripts/ci/list-tests.sh vitest-excludes) \
+            --reporter=default --reporter=json --outputFile=vitest-report.json || true
+          node scripts/ci/vitest-baseline.mjs vitest-report.json docs/ops/vitest-baseline-2026-11-09.txt
+
+      - name: node:test (sin pruebas de base de datos)
+        run: scripts/ci/sin-red.sh node --test $(scripts/ci/list-tests.sh node-test)
+
+      - name: Deno test (fiscal-emit)
+        working-directory: supabase/functions/fiscal-emit
+        env:
+          DENO_NO_PACKAGE_JSON: '1'
+        run: ../../../scripts/ci/sin-red.sh deno test --no-config --allow-env --allow-read --allow-run test/deno
+
+  build:
+    name: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - name: Instalar dependencias
+        run: npm install --no-audit --no-fund
+      - name: Build (vite)
+        env:
+          VITE_VERCEL_ENV: production
+        run: npm run build
+
+  secretos:
+    name: secretos
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Instalar gitleaks ${{ env.GITLEAKS_VERSION }}
+        run: |
+          set -euo pipefail
+          curl -sSfL -o /tmp/gitleaks.tgz \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tgz -C /tmp gitleaks
+          /tmp/gitleaks version
+      # Solo los commits nuevos: el historial antiguo se audita aparte.
+      - name: Escanear los commits de este cambio
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" = pull_request ]; then range="$PR_BASE..$PR_HEAD";
+          elif [ -n "${PUSH_BEFORE:-}" ] && [ "$PUSH_BEFORE" != 0000000000000000000000000000000000000000 ]; then range="$PUSH_BEFORE..$PUSH_AFTER";
+          else range="$PUSH_AFTER~1..$PUSH_AFTER"; fi
+          echo "Rango: $range"
+          /tmp/gitleaks git --log-opts="$range" --config .gitleaks.toml --redact --no-banner --exit-code 1
+
+  trazabilidad:
+    name: trazabilidad
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      # Todo SQL nuevo o cambiado bajo supabase/ debe venir con su entrada en el ledger, o con
+      # [sin-ledger] en la descripción de la PR explicando por qué (p. ej. solo pruebas locales).
+      - name: SQL con su entrada en el ledger
+        env:
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          changed=$(git diff --name-only "$PR_BASE...$PR_HEAD")
+          sql=$(printf '%s\n' "$changed" | grep -E '^supabase/.*\.sql$' || true)
+          if [ -z "$sql" ]; then echo "Sin SQL nuevo o cambiado."; exit 0; fi
+          echo "SQL en esta PR:"; printf '  %s\n' $sql
+          if printf '%s\n' "$changed" | grep -qE '^supabase/fiscal-recovery/PRODUCTION-MIGRATION-LEDGER-.*\.md$'; then
+            echo "El ledger también cambia: OK."; exit 0
+          fi
+          if printf '%s' "${PR_BODY:-}" | grep -qF '[sin-ledger]'; then
+            echo "::warning::SQL sin cambio en el ledger, justificado con [sin-ledger] en la PR."; exit 0
+          fi
+          echo "::error::La PR cambia SQL en supabase/ sin actualizar el ledger de migraciones ni justificar con [sin-ledger]."
+          exit 1
