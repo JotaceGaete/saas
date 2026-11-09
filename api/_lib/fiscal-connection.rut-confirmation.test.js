@@ -26,7 +26,7 @@ function fakeAdmin(confirmResult = { data: { confirmed: true, block_reason: null
     },
   };
 }
-const svcWith = (admin) => createFiscalConnectionService({ admin, masterKey: randomBytes(32), allowedIssuers: ALLOW });
+const svcWith = (admin) => createFiscalConnectionService({ admin, sealingKey: randomBytes(32), allowedIssuers: ALLOW });
 
 test('confirmar RUT: normaliza el RUT mostrado y lo envía a la base con el actor', async () => {
   const admin = fakeAdmin();

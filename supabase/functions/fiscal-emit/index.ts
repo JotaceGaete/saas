@@ -6,7 +6,8 @@
 // Seguridad:
 //  - Requiere Authorization: Bearer <JWT de usuario>; el usuario se resuelve con auth.getUser().
 //  - SUPABASE_SERVICE_ROLE_KEY solo vive en el servidor; nunca llega al navegador.
-//  - FISCAL_MASTER_KEY (32 bytes base64) cifra las credenciales por comercio.
+//  - FISCAL_MASTER_KEY (32 bytes base64) descifra las credenciales de versión 1.
+//  - FISCAL_MASTER_KEY_V2 + FISCAL_MASTER_KEY_V2_KCV (opcionales) descifran las de versión 2.
 
 import { createClient } from 'npm:@supabase/supabase-js@2.57.4';
 import { buildFiscalHandler, buildUnconfiguredHandler, describeFiscalEnv } from './app.ts';
@@ -44,6 +45,8 @@ try {
     db: service as any,
     provider,
     masterKey: Deno.env.get('FISCAL_MASTER_KEY'),
+    masterKeyV2: Deno.env.get('FISCAL_MASTER_KEY_V2'),
+    masterKeyV2Kcv: Deno.env.get('FISCAL_MASTER_KEY_V2_KCV'),
     allowedIssuers,
   });
 } catch (err) {

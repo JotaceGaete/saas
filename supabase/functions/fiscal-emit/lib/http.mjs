@@ -34,6 +34,9 @@ const STATUS_BY_CODE = {
   CREDENTIALS_MISSING: 503,
   // Configuración de proveedor o credencial inválida: no es reintentable hasta corregir la configuración.
   CREDENTIAL_INVALID: 503,
+  // La credencial está cifrada con una versión de clave que este servidor no tiene configurada
+  // (p. ej. falta FISCAL_MASTER_KEY_V2 o su KCV no coincide). No reintentable hasta configurarla.
+  CREDENTIAL_KEY_UNAVAILABLE: 503,
   FISCAL_PROVIDER_MISMATCH: 503,
   // Negocio o RUT fuera de la lista de empresas autorizadas del servidor.
   FISCAL_BUSINESS_NOT_ALLOWED: 403,

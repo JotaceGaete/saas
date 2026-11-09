@@ -6,6 +6,7 @@ export const FISCAL_EMIT_MESSAGES = Object.freeze({
   PROVIDER_NOT_READY: 'DTECore todavía no está habilitado para emitir en este entorno.',
   CREDENTIALS_MISSING: 'Conecta la cuenta DTECore de tu negocio antes de emitir.',
   CREDENTIAL_INVALID: 'La credencial DTECore de tu negocio no es válida. Reemplázala en Configuración.',
+  CREDENTIAL_KEY_UNAVAILABLE: 'El servidor no tiene configurada la clave para la credencial DTE Core de tu negocio. No se emitió la boleta; avisa a Walinka.',
   FISCAL_PROVIDER_MISMATCH: 'La cuenta DTECore no coincide con la configuración del emisor.',
   ALREADY_IN_PROGRESS: 'Esta venta ya tiene una emisión en curso.',
   NOT_EMITTABLE_IN_STATE: 'Esta venta ya fue emitida o está en proceso.',

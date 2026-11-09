@@ -17,7 +17,7 @@ import { FiscalError, ProviderRejectedError, ProviderTimeoutError } from './erro
 import { evaluateEligibility } from './eligibility.mjs';
 import { authorizeAction } from './authz.mjs';
 import { validDocument } from './document.mjs';
-import { open as openSecret, parseMasterKey } from './secrets.mjs';
+import { buildKeyring, openWithKeyring } from './secrets.mjs';
 import { expectedTotals } from './payload.mjs';
 import { isAllowlist } from './allowlist.mjs';
 
@@ -55,7 +55,10 @@ async function retryTransient(fn, attempts = PERSIST_ATTEMPTS) {
 export function createFiscalEmitter({
   store,
   provider,
-  masterKey, // string base64 de 32 bytes (FISCAL_MASTER_KEY)
+  masterKey = undefined, // string base64 de 32 bytes (FISCAL_MASTER_KEY): versión 1
+  // Llavero por versión (buildKeyring): v1 = FISCAL_MASTER_KEY, v2 = FISCAL_MASTER_KEY_V2 con su KCV.
+  // Si no se pasa, se arma solo con masterKey (comportamiento anterior: solo versión 1).
+  keyring: keyringArg = /** @type {{ keyFor: (v: number) => Uint8Array | null } | undefined} */ (undefined),
   // Empresas autorizadas (lib/allowlist.mjs, FISCAL_ALLOWED_ISSUERS): id del negocio + RUT del
   // emisor. Obligatoria: sin ella el emisor no se construye (falla cerrado).
   allowedIssuers,
@@ -64,7 +67,14 @@ export function createFiscalEmitter({
 }) {
   if (!store || !provider) throw new Error('store and provider are required');
   if (!isAllowlist(allowedIssuers)) throw new Error('allowedIssuers is required (fail-closed)');
-  const key = typeof masterKey === 'string' || masterKey === undefined ? parseMasterKey(masterKey) : masterKey;
+  const keyring = keyringArg ?? buildKeyring({ v1: masterKey });
+  const openSecret = (record, { businessId }) => openWithKeyring(record, { keyring, businessId });
+  // ¿Hay clave para la versión de la credencial guardada? Sin credencial, decide el reclamo
+  // (CREDENTIALS_MISSING); con una versión sin clave se rechaza ANTES de reclamar la venta.
+  async function assertCredentialKeyAvailable(businessId) {
+    const record = await store.loadCredentialRecord(businessId);
+    if (record && !keyring.keyFor(record.keyVersion)) throw new FiscalError('CREDENTIAL_KEY_UNAVAILABLE');
+  }
 
   async function readStatus(businessId, saleId) {
     try {
@@ -119,7 +129,7 @@ export function createFiscalEmitter({
   async function readOnlyCredentials(businessId) {
     const record = await store.loadCredentialRecord(businessId);
     if (!record) throw new FiscalError('CREDENTIALS_MISSING');
-    return openSecret(record, { key, businessId });
+    return openSecret(record, { businessId });
   }
 
   async function auditBestEffort(entry) {
@@ -168,6 +178,8 @@ export function createFiscalEmitter({
     // Lo que el documento devuelto debe declarar: total y emisor. Un XML que no coincide no se
     // marca issued (queda unknown con su folio para revisión).
     const expect = { total: expectedTotals(payload).total, rutEmisor: ctx.issuer?.issuerRut ?? null };
+    // Sin clave para la versión de la credencial no se reclama ni se llama al proveedor.
+    await assertCredentialKeyAvailable(businessId);
 
     // Reclamo atómico con credenciales (pending -> sending) bajo el mismo candado que conectar,
     // reemplazar o desconectar. Las credenciales se leen DENTRO del reclamo: una emisión nunca usa
@@ -187,11 +199,13 @@ export function createFiscalEmitter({
 
     let creds;
     try {
-      creds = openSecret(claim.credentials, { key, businessId });
-    } catch {
+      creds = openSecret(claim.credentials, { businessId });
+    } catch (err) {
       // Falla ANTES de llamar al proveedor: se libera el reclamo para que la venta pueda reintentarse.
       const released = await store.releaseClaim(businessId, sale.id, operationId);
       if (!released) throw new FiscalError('PERSIST_PENDING_RECOVERY', 'claim not released; recovery will decide');
+      // La credencial cambió de versión durante la preparación y esa versión no tiene clave.
+      if (err instanceof FiscalError && err.code === 'CREDENTIAL_KEY_UNAVAILABLE') throw err;
       throw new FiscalError('CREDENTIAL_INVALID');
     }
 
@@ -317,6 +331,13 @@ export function createFiscalEmitter({
     if (!authorizeAction(role, 'emit')) { out.blockedReason = 'FISCAL_ROLE_REQUIRED'; return out; }
     if (provider.ready === false) { out.blockedReason = 'PROVIDER_NOT_READY'; return out; }
     out.resolucion = ctx.issuer?.resolucion ?? null;
+    try {
+      await assertCredentialKeyAvailable(sale.businessId);
+    } catch (err) {
+      out.liveAuthorized = false;
+      out.blockedReason = err instanceof FiscalError ? err.code : 'STATUS_UNAVAILABLE';
+      return out;
+    }
     try {
       evaluateEligibility({
         sale, business, issuer: ctx.issuer, emissionEnabled: ctx.emissionEnabled,

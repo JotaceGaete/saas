@@ -4,7 +4,7 @@
 import { createClient } from '@supabase/supabase-js';
 import { createFiscalRoleGuard } from '../_lib/siisolutions-fiscal-role-guard.js';
 import { createFiscalConnectionService } from '../_lib/fiscal-connection.js';
-import { parseMasterKey } from '../../supabase/functions/fiscal-emit/lib/secrets.mjs';
+import { resolveKeyV2 } from '../../supabase/functions/fiscal-emit/lib/secrets.mjs';
 import { allowlistFromEnv } from '../../supabase/functions/fiscal-emit/lib/allowlist.mjs';
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -58,14 +58,12 @@ export default async function handler(req, res) {
     res.setHeader('Cache-Control', 'no-store');
     return res.status(503).json({ error: 'SERVER_NOT_CONFIGURED' });
   }
-  let masterKey;
-  try {
-    masterKey = parseMasterKey(process.env.FISCAL_MASTER_KEY);
-  } catch {
-    // Sin detalles: no revelar si falta o es inválida.
-    res.setHeader('Cache-Control', 'no-store');
-    return res.status(503).json({ error: 'SERVER_NOT_CONFIGURED' });
-  }
+  // Clave de cifrado de registros nuevos: FISCAL_MASTER_KEY_V2, solo si su KCV coincide con
+  // FISCAL_MASTER_KEY_V2_KCV (el mismo valor configurado en Supabase). FISCAL_MASTER_KEY ya no se
+  // lee aquí. Sin clave válida solo se bloquea guardar una API key; el resto sigue funcionando.
+  // El registro solo informa el estado, nunca valores.
+  const v2 = resolveKeyV2({ v2: process.env.FISCAL_MASTER_KEY_V2, v2Kcv: process.env.FISCAL_MASTER_KEY_V2_KCV });
+  if (v2.status !== 'ok') console.error('[fiscal/connection] clave de cifrado V2 no disponible', v2.status);
   const admin = createClient(url, secret, { auth: { persistSession: false, autoRefreshToken: false } });
   const authenticate = async (token) => {
     const { data, error } = await admin.auth.getUser(token);
@@ -76,7 +74,7 @@ export default async function handler(req, res) {
   // Empresas autorizadas: FISCAL_ALLOWED_ISSUERS (servidor). Vacía o inválida = ninguna.
   const allowedIssuers = allowlistFromEnv(process.env);
   if (allowedIssuers.error) console.error('[fiscal/connection] lista de empresas autorizadas no disponible', allowedIssuers.error);
-  const service = createFiscalConnectionService({ admin, masterKey, allowedIssuers });
+  const service = createFiscalConnectionService({ admin, sealingKey: v2.key, allowedIssuers });
   const parsed = Object.assign(req, { query: req.query || Object.fromEntries(new URL(req.url, 'http://x').searchParams) });
   return createFiscalConnectionHandler({ service, assertAccess })(parsed, res);
 }

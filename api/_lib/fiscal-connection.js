@@ -15,7 +15,10 @@ import { seal } from '../../supabase/functions/fiscal-emit/lib/secrets.mjs';
 import { CANONICAL_PROVIDER } from '../../supabase/functions/fiscal-emit/lib/provider-ids.mjs';
 import { isAllowlist, normalizeRut } from '../../supabase/functions/fiscal-emit/lib/allowlist.mjs';
 
-const KEY_VERSION = 1;
+// Los registros nuevos se cifran SIEMPRE con la clave de versión 2 (FISCAL_MASTER_KEY_V2, ver
+// api/fiscal/connection.js). La versión 1 (FISCAL_MASTER_KEY) solo la usa fiscal-emit para descifrar
+// las credenciales existentes; Vercel nunca la necesita porque nunca descifra.
+export const SEALING_KEY_VERSION = 2;
 const CONNECT_FIELDS = new Set(['action', 'apiKey', 'issuerRut']);
 const DISCONNECT_FIELDS = new Set(['action']);
 const CONFIRM_RUT_FIELDS = new Set(['action', 'issuerRut']);
@@ -120,9 +123,11 @@ function publicConnection(row) {
   };
 }
 
-export function createFiscalConnectionService({ admin, masterKey, allowedIssuers }) {
+// sealingKey: clave V2 ya verificada (Buffer de 32 bytes) o null. Sin ella, todo funciona salvo
+// guardar una API key nueva, que responde 503 SERVER_NOT_CONFIGURED sin tocar la base.
+export function createFiscalConnectionService({ admin, sealingKey = null, allowedIssuers }) {
   if (!admin || typeof admin.rpc !== 'function') throw new Error('admin client with rpc required');
-  if (!masterKey) throw new Error('master key required');
+  if (sealingKey !== null && !(Buffer.isBuffer(sealingKey) && sealingKey.length === 32)) throw new Error('invalid sealing key');
   if (!isAllowlist(allowedIssuers)) throw new Error('allowedIssuers required (fail-closed)');
   const NOT_ALLOWED = () => fail(403, 'FISCAL_BUSINESS_NOT_ALLOWED');
 
@@ -142,7 +147,8 @@ export function createFiscalConnectionService({ admin, masterKey, allowedIssuers
 
   // Guarda RUT + API key sellada. La clave no sale de este bloque: solo viajan bytes cifrados.
   async function saveCredentials(businessId, actorId, issuerRut, apiKey) {
-    const sealed = seal({ apiKey }, { key: masterKey, businessId, provider: CANONICAL_PROVIDER, keyVersion: KEY_VERSION });
+    if (!sealingKey) return fail(503, 'SERVER_NOT_CONFIGURED');
+    const sealed = seal({ apiKey }, { key: sealingKey, businessId, provider: CANONICAL_PROVIDER, keyVersion: SEALING_KEY_VERSION });
     const { error } = await admin.rpc('crm_fiscal_save_credentials', {
       p_business_id: businessId,
       p_actor_user_id: actorId,
@@ -150,7 +156,7 @@ export function createFiscalConnectionService({ admin, masterKey, allowedIssuers
       p_ciphertext: toBytea(sealed.ciphertext),
       p_iv: toBytea(sealed.iv),
       p_auth_tag: toBytea(sealed.authTag),
-      p_key_version: KEY_VERSION,
+      p_key_version: SEALING_KEY_VERSION,
     });
     return error ? mapDbError(error) : null;
   }

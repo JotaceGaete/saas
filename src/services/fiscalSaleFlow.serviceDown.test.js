@@ -93,7 +93,7 @@ describe('códigos después de enviar la emisión', () => {
       expect(emitter.emit).toHaveBeenCalledTimes(1);
     });
 
-  it.each(['FISCAL_EMISSION_DISABLED', 'FISCAL_BUSINESS_NOT_ALLOWED', 'CREDENTIALS_MISSING', 'UNAUTHENTICATED', 'ORIGIN_NOT_ALLOWED', 'FISCAL_NOT_CONFIGURED'])(
+  it.each(['FISCAL_EMISSION_DISABLED', 'FISCAL_BUSINESS_NOT_ALLOWED', 'CREDENTIALS_MISSING', 'CREDENTIAL_KEY_UNAVAILABLE', 'UNAUTHENTICATED', 'ORIGIN_NOT_ALLOWED', 'FISCAL_NOT_CONFIGURED'])(
     '%s: rechazo previo al reclamo → no hubo emisión (se limpia la marca)', async (code) => {
       expect(PRE_CLAIM_REJECTION_CODES.has(code)).toBe(true);
       const { flow, marks } = setup({ emit: async () => ({ ok: false, status: 'error', code }) });

@@ -11,6 +11,7 @@ import { createRecovery } from './lib/recovery.mjs';
 import { readRecoveryConfig } from './lib/config.mjs';
 import { EMPTY_ALLOWLIST } from './lib/allowlist.mjs';
 import { classifyOrigin, corsHeadersFor } from './lib/cors.mjs';
+import { buildKeyring, parseMasterKey, resolveKeyV2 } from './lib/secrets.mjs';
 
 // Interfaz mínima de supabase-js que usa la aplicación (compatible con el cliente real).
 export interface FiscalDbClient {
@@ -22,7 +23,9 @@ export interface FiscalDbClient {
 export interface FiscalAppDeps {
   db: FiscalDbClient;
   provider: unknown; // adaptador de proveedor (lib/providers/*)
-  masterKey: string | undefined;
+  masterKey: string | undefined; // FISCAL_MASTER_KEY: versión 1 (obligatoria)
+  masterKeyV2?: string; // FISCAL_MASTER_KEY_V2: versión 2 (opcional)
+  masterKeyV2Kcv?: string; // FISCAL_MASTER_KEY_V2_KCV: comprobación de la V2 (obligatoria para usarla)
   // Empresas autorizadas (lib/allowlist.mjs). Sin ella, ningún negocio puede emitir ni consultar.
   allowedIssuers?: unknown;
 }
@@ -30,7 +33,8 @@ export interface FiscalAppDeps {
 export function buildFiscalHandler(deps: FiscalAppDeps) {
   const store = createSupabaseStore(deps.db);
   const emitter = createFiscalEmitter({
-    store, provider: deps.provider as any, masterKey: deps.masterKey,
+    store, provider: deps.provider as any,
+    keyring: buildKeyring({ v1: deps.masterKey, v2: deps.masterKeyV2, v2Kcv: deps.masterKeyV2Kcv }),
     allowedIssuers: (deps.allowedIssuers ?? EMPTY_ALLOWLIST) as any,
   });
   const resolveUser = async (authHeader: string): Promise<string | null> => {
@@ -84,7 +88,21 @@ export function describeFiscalEnv(get: (name: string) => string | undefined) {
     missing: REQUIRED_ENV.filter((n) => !present(n)),
     fiscalProviderSet: present('FISCAL_PROVIDER'),
     providerMode: provider === 'dtecore' || provider === 'siisolutions' ? 'dtecore' : 'blocked',
+    // Solo estados: 'ok' | 'missing' | 'invalid' | 'kcv_missing' | 'kcv_mismatch' | 'same_as_v1'.
+    masterKeys: describeMasterKeys(get),
   };
+}
+
+// Estado de las claves maestras para el registro de arranque. Nunca devuelve valores ni KCV.
+export function describeMasterKeys(get: (name: string) => string | undefined) {
+  let v1Key: Uint8Array | null = null;
+  let v1 = 'missing';
+  const raw1 = get('FISCAL_MASTER_KEY');
+  if (typeof raw1 === 'string' && raw1.trim() !== '') {
+    try { v1Key = parseMasterKey(raw1); v1 = 'ok'; } catch { v1 = 'invalid'; }
+  }
+  const v2 = resolveKeyV2({ v2: get('FISCAL_MASTER_KEY_V2'), v2Kcv: get('FISCAL_MASTER_KEY_V2_KCV'), v1Key }).status;
+  return { v1, v2 };
 }
 
 // Manejador de respaldo cuando la configuración es inválida (p. ej. falta FISCAL_MASTER_KEY).
