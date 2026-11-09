@@ -258,6 +258,10 @@ export async function buildTimbreImage(tedXml, strategyId = DEFAULT_TIMBRE_STRAT
  * @param {number} [params.paperWidthMm]
  * @param {boolean} [params.autoCut]
  * @param {string} [params.cutStrategyId]
+ * @param {string} [params.logoUrl] - logo del negocio (mismo que el ticket normal)
+ * @param {boolean} [params.printLogo] - configuración de la impresora; false nunca imprime el logo
+ * @param {string} [params.imageMode] - estrategia de imagen del logo (printerConfig.imageMode)
+ * @param {number} [params.effectivePrintableWidthDots]
  * @param {Object} [params.bwip] - inyectable en pruebas
  * @returns {Promise<{ receipt: import('./renderEscPosReceipt').Receipt, timbre: Object }>}
  */
@@ -275,6 +279,10 @@ export async function buildBoletaReceipt({
   paperWidthMm = 80,
   autoCut = true,
   cutStrategyId,
+  logoUrl = null,
+  printLogo = true,
+  imageMode,
+  effectivePrintableWidthDots,
   bwip,
 } = {}) {
   if (!dte || dte.tipoDte !== 39) throw new BoletaReceiptError('DTE_TYPE_UNSUPPORTED');
@@ -299,20 +307,28 @@ export async function buildBoletaReceipt({
   if (simulation) lines.push(...SIMULATION_NOTICE, { type: 'divider' });
   if (notice) lines.push(...notice.header, { type: 'divider' });
   if (copyLabel) lines.push({ type: 'text', text: clean(copyLabel), align: 'center', bold: true });
-  if (nombreFantasia) lines.push({ type: 'text', text: clean(nombreFantasia), align: 'center', bold: true, double: true });
-  lines.push({ type: 'text', text: clean(emisor.razonSocial), align: 'center', bold: true });
-  lines.push({ type: 'text', text: `RUT: ${formatRut(emisor.rut)}`, align: 'center' });
+  // Logo del negocio, igual que en el ticket normal (misma configuración de
+  // impresora: printLogo e imageMode). Si no carga, el renderer lo omite y la
+  // boleta imprime completa.
+  if (logoUrl && printLogo !== false) lines.push({ type: 'logo', url: logoUrl });
+  if (nombreFantasia) lines.push({ type: 'text', text: clean(nombreFantasia).toUpperCase(), align: 'center', bold: true, double: true });
+  lines.push({ type: 'text', text: clean(emisor.razonSocial), align: 'center', bold: !nombreFantasia });
   if (emisor.giro) lines.push({ type: 'text', text: clean(emisor.giro), align: 'center' });
   const direccion = [emisor.direccion, emisor.comuna, emisor.ciudad !== emisor.comuna ? emisor.ciudad : null]
     .filter(Boolean).map(clean).join(', ');
   if (direccion) lines.push({ type: 'text', text: direccion, align: 'center' });
   if (emisor.sucursal) lines.push({ type: 'text', text: `Sucursal: ${clean(emisor.sucursal)}`, align: 'center' });
 
+  // Recuadro del documento: tamaño normal (antes iba en doble ancho y doble
+  // alto y ocupaba media boleta). El folio va solo en doble alto.
+  lines.push({ type: 'text', text: '' });
   lines.push({ type: 'divider' });
-  lines.push({ type: 'text', text: 'BOLETA ELECTRONICA', align: 'center', bold: true, double: true });
-  lines.push({ type: 'text', text: `Nro. ${dte.folio}`, align: 'center', bold: true, double: true });
+  lines.push({ type: 'text', text: `RUT ${formatRut(emisor.rut)}`, align: 'center', bold: true });
+  lines.push({ type: 'text', text: 'BOLETA ELECTRONICA', align: 'center', bold: true });
+  lines.push({ type: 'text', text: `Nro. ${dte.folio}`, align: 'center', bold: true, tall: true });
   if (unidadSii) lines.push({ type: 'text', text: `S.I.I. - ${clean(unidadSii).toUpperCase()}`, align: 'center' });
   lines.push({ type: 'divider' });
+  lines.push({ type: 'text', text: '' });
 
   lines.push({ type: 'row', left: 'Fecha emision', right: formatFechaEmision(dte.fechaEmision) });
   lines.push({ type: 'itemsHeader' });
@@ -336,6 +352,8 @@ export async function buildBoletaReceipt({
   lines.push({ type: 'text', text: 'Timbre Electronico SII', align: 'center' });
   lines.push({ type: 'text', text: hasResolucion ? `Res. ${resNumero} de ${resAnio}` : 'Res. SII: por confirmar', align: 'center' });
   lines.push({ type: 'text', text: 'Verifique documento: www.sii.cl', align: 'center' });
+  lines.push({ type: 'text', text: '' });
+  lines.push({ type: 'text', text: 'Gracias por su compra', align: 'center' });
   if (notice) lines.push(...notice.footer);
   if (simulation) lines.push({ type: 'text', text: '' }, ...SIMULATION_NOTICE);
   // Número interno de la venta, al pie y discreto. El folio SII sigue siendo
@@ -348,6 +366,8 @@ export async function buildBoletaReceipt({
       lines,
       paperWidthMm,
       currency: 'CLP',
+      imageMode,
+      effectivePrintableWidthDots,
       feedLines: 4,
       cut: autoCut !== false,
       cutStrategyId,

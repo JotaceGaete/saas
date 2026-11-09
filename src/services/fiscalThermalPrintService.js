@@ -232,9 +232,9 @@ export function hasValidResolucion(resolucion) {
  * Nunca emite ni llama al proveedor. Si el XML es una simulación, el papel
  * sale rotulado SIMULACION / SIN VALOR TRIBUTARIO: lo decide el documento,
  * no quien llama.
- * @param {{ businessId: string, bytes: ArrayBuffer|Uint8Array, reprint?: boolean, idempotencyKey?: string, settings?: ReturnType<typeof readFiscalPrintSettings>, sender?: Function }} params
+ * @param {{ businessId: string, bytes: ArrayBuffer|Uint8Array, reprint?: boolean, idempotencyKey?: string, branding?: { name?: string, logoUrl?: string }|null, settings?: ReturnType<typeof readFiscalPrintSettings>, sender?: Function }} params
  */
-export async function printIssuedBoleta({ businessId, bytes, reprint = false, idempotencyKey, saleNumber = null, settings = readFiscalPrintSettings(), sender = send }) {
+export async function printIssuedBoleta({ businessId, bytes, reprint = false, idempotencyKey, saleNumber = null, branding = null, settings = readFiscalPrintSettings(), sender = send }) {
   try {
     const { dte, tedVerified } = await verifyDteBytes(bytes);
     const simulation = isSimulatedDte(dte);
@@ -250,6 +250,11 @@ export async function printIssuedBoleta({ businessId, bytes, reprint = false, id
       reprint,
       simulation,
       saleNumber,
+      nombreFantasia: branding?.name || undefined,
+      logoUrl: branding?.logoUrl || null,
+      printLogo: printerConfig.printLogo,
+      imageMode: printerConfig.imageMode,
+      effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,
       paperWidthMm: printerConfig.paperWidthMm,
       autoCut: printerConfig.autoCut,
       cutStrategyId: printerConfig.cutStrategyId,

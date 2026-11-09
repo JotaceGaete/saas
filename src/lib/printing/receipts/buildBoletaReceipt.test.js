@@ -24,11 +24,33 @@ describe('formatos', () => {
 });
 
 describe('buildBoletaReceipt', () => {
+  it('formato compacto: logo del negocio y recuadro en tamaño normal', async () => {
+    const { receipt } = await buildBoletaReceipt({
+      ...base, nombreFantasia: 'Artesellos', logoUrl: 'https://x/logo.png', imageMode: 'rasterGsV0',
+    });
+    expect(receipt.lines[0]).toEqual({ type: 'logo', url: 'https://x/logo.png' });
+    expect(receipt.imageMode).toBe('rasterGsV0');
+    const boleta = receipt.lines.find((l) => l.text === 'BOLETA ELECTRONICA');
+    expect(boleta.double).toBeUndefined();
+    const folio = receipt.lines.find((l) => l.text === 'Nro. 1201');
+    expect(folio).toMatchObject({ tall: true });
+    expect(folio.double).toBeUndefined();
+    // Sin printLogo no hay logo; sin logoUrl tampoco.
+    const off = await buildBoletaReceipt({ ...base, logoUrl: 'https://x/logo.png', printLogo: false });
+    expect(off.receipt.lines.some((l) => l.type === 'logo')).toBe(false);
+    const none = await buildBoletaReceipt(base);
+    expect(none.receipt.lines.some((l) => l.type === 'logo')).toBe(false);
+    // Doble alto solo en el folio: GS ! 0x01 y vuelta a 0x00.
+    const bytes = await renderEscPosReceipt(none.receipt);
+    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(' ');
+    expect(hex).toContain('1d 21 01');
+  });
+
   it('arma la representación con los datos del XML y las leyendas del timbre', async () => {
     const { receipt, timbre } = await buildBoletaReceipt({ ...base, unidadSii: 'Concepción', nombreFantasia: 'Bonita' });
     const texts = receipt.lines.filter((l) => l.type === 'text').map((l) => l.text);
     expect(texts).toEqual(expect.arrayContaining([
-      'Comercial Nandu SpA', 'RUT: 11.111.111-1', 'VENTA AL POR MENOR', 'Calle Falsa 123, Coronel',
+      'Comercial Nandu SpA', 'RUT 11.111.111-1', 'VENTA AL POR MENOR', 'Calle Falsa 123, Coronel',
       'BOLETA ELECTRONICA', 'Nro. 1201', 'S.I.I. - CONCEPCION',
       'Timbre Electronico SII', 'Res. 80 de 2014', 'Verifique documento: www.sii.cl',
     ]));

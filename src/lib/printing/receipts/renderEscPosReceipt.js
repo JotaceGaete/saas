@@ -38,6 +38,7 @@ const CMD = {
   BOLD_OFF: [ESC, 0x45, 0x00], // ESC E 0
   DOUBLE_ON: [GS, 0x21, 0x11],  // GS !  0x11 — doble ancho + doble alto
   DOUBLE_OFF: [GS, 0x21, 0x00], // GS !  0x00
+  TALL_ON: [GS, 0x21, 0x01],    // GS !  0x01 — solo doble alto (mismo ancho de línea)
   // PRINT-4-BUG (corte no funcionaba): la forma anterior [GS,0x56,0x00]
   // es el formato LEGACY de 1 byte "GS V m". La especificación ESC/POS
   // moderna (Epson, y la emulación ESC/POS de Star, que es la que reporta
@@ -250,12 +251,13 @@ export async function renderEscPosReceipt(receipt) {
   const currency = receipt?.currency;
   const bytes = [...CMD.INIT];
 
-  const emit = (text, { align, bold, double } = {}) => {
+  const emit = (text, { align, bold, double, tall } = {}) => {
     bytes.push(...(align === 'center' ? CMD.ALIGN_CENTER : CMD.ALIGN_LEFT));
     if (bold) bytes.push(...CMD.BOLD_ON);
     if (double) bytes.push(...CMD.DOUBLE_ON);
+    else if (tall) bytes.push(...CMD.TALL_ON);
     bytes.push(...textBytes(text));
-    if (double) bytes.push(...CMD.DOUBLE_OFF);
+    if (double || tall) bytes.push(...CMD.DOUBLE_OFF);
     if (bold) bytes.push(...CMD.BOLD_OFF);
   };
 
@@ -364,7 +366,7 @@ export async function renderEscPosReceipt(receipt) {
       }
       case 'text':
       default:
-        emitWrapped(line.text, { align: line.align, bold: line.bold, double: line.double });
+        emitWrapped(line.text, { align: line.align, bold: line.bold, double: line.double, tall: line.tall });
         break;
     }
   }

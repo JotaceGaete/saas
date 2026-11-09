@@ -110,7 +110,7 @@ export function withServerResolucion(emitter) {
   });
 }
 
-export function buildFlowForMode(mode, businessId) {
+export function buildFlowForMode(mode, businessId, branding = null) {
   if (mode === 'off' || mode === PREVIEW_LIVE || !mode || !businessId) return null;
   const emitter = mode === 'live' ? withServerResolucion(createLiveEmitter({ businessId })) : createSimulatedEmitter({ businessId });
   const settings = () => (mode === 'live'
@@ -121,7 +121,7 @@ export function buildFlowForMode(mode, businessId) {
     businessId,
     emitter,
     print: ({ bytes, reprint, idempotencyKey, saleNumber }) => printIssuedBoleta({
-      businessId, bytes, reprint, idempotencyKey, saleNumber, settings: settings(),
+      businessId, bytes, reprint, idempotencyKey, saleNumber, branding, settings: settings(),
     }),
     // Una boleta nueva no se emite si este equipo no puede imprimirla: conector
     // activo con impresora y, en modo real, resolución SII.
@@ -134,6 +134,7 @@ export function buildFlowForMode(mode, businessId) {
 
 export default function TpvFiscalAutoBoleta({
   businessId, sale, saleContext, onPlainTicket, onInternalReceipt, onSettled, mode = FISCAL_AUTO_MODE, deps,
+  businessName = null, logoUrl = null,
   preview = POINT_PREVIEW, previewStatus = getFiscalSaleStatus, queries = DEFAULT_QUERIES,
 }) {
   // Una venta simulada nunca llega a DTE Core. En una Preview, el modo real solo se usa si el
@@ -153,7 +154,10 @@ export default function TpvFiscalAutoBoleta({
   }, [requestedMode, deps, saleIdForMode, previewStatus]);
   const effectiveMode = requestedMode !== PREVIEW_LIVE ? requestedMode
     : (previewDecision?.saleId === saleIdForMode ? previewDecision.mode : PREVIEW_LIVE);
-  const built = useMemo(() => deps || buildFlowForMode(effectiveMode, businessId), [deps, effectiveMode, businessId]);
+  const built = useMemo(
+    () => deps || buildFlowForMode(effectiveMode, businessId, { name: businessName, logoUrl }),
+    [deps, effectiveMode, businessId, businessName, logoUrl],
+  );
   const [state, setState] = useState({ phase: PHASE.CHECKING });
   const [busy, setBusy] = useState(false);
   const [scenario, setScenario] = useState(readScenario);
