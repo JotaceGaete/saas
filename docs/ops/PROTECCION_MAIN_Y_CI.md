@@ -108,3 +108,19 @@ Toda PR y toda tarea termina con esta tabla en su descripción:
 | Desarrollado | Probado | Fusionado | Desplegado | Verificado |
 |---|---|---|---|---|
 | sí / no | qué pruebas y resultado | commit de fusión | despliegue (Vercel, Supabase) | qué se comprobó después |
+
+## 5. Estado de la protección (2026-11-09)
+
+- Ruleset `main-protegida` **activo** sobre la rama por defecto, sin excepciones, con:
+  - borrado de la rama y force push prohibidos;
+  - PR obligatoria con 0 aprobaciones, conversaciones resueltas y solo merge commit;
+  - los checks `pruebas`, `build`, `secretos` y `trazabilidad`, exigidos a GitHub Actions (integración 15368), con la rama al día.
+- Repositorio: solo merge commits y el botón «Update branch» activado.
+- Ensayo previo en `ci-ruleset-ensayo`: GitHub rechazó un push directo y un force push (`GH013`).
+
+### Pendientes
+
+1. Sincronizar `package-lock.json` con `package.json` y volver a `npm ci` en la CI.
+2. Corregir las 33 fallas de Vitest de la línea base. Primero, borrar las 2 entradas que ya pasan (`CrmInvoiceEditor` y `CrmThermalTicket`).
+3. Borrar el ruleset `ensayo-temporal` y después las ramas `ci-ruleset-ensayo` y `claude/ci-prueba-negativa`.
+4. Si se renombra un job de `ci.yml`, actualizar el ruleset en el mismo momento.
