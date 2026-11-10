@@ -319,17 +319,10 @@ export async function buildBoletaReceipt({
   if (logoUrl && printLogo !== false) lines.push({ type: 'logo', url: logoUrl });
   if (nombreFantasia) lines.push({ type: 'text', text: clean(nombreFantasia).toUpperCase(), align: 'center', bold: true, double: true });
 
-  // Recuadro del documento (RUT, tipo y folio), como en las boletas impresas
-  // habituales. La oficina del SII va justo debajo.
-  lines.push({
-    type: 'box',
-    width: 30,
-    rows: [
-      { text: `RUT ${formatRut(emisor.rut)}`, bold: true },
-      { text: 'BOLETA ELECTRONICA', bold: true },
-      { text: `Nro. ${dte.folio}`, bold: true },
-    ],
-  });
+  // Documento: RUT, tipo y folio, centrados y en negrita. La oficina del SII va debajo.
+  lines.push({ type: 'text', text: `RUT ${formatRut(emisor.rut)}`, align: 'center', bold: true });
+  lines.push({ type: 'text', text: 'BOLETA ELECTRONICA', align: 'center', bold: true });
+  lines.push({ type: 'text', text: `Nro. ${dte.folio}`, align: 'center', bold: true });
   if (unidadSii) lines.push({ type: 'text', text: `S.I.I. - ${clean(unidadSii).toUpperCase()}`, align: 'center', bold: true });
   lines.push({ type: 'text', text: '' });
 
@@ -361,13 +354,11 @@ export async function buildBoletaReceipt({
   }
   lines.push({ type: 'divider' });
 
-  // Totales en recuadro. Todo sale del XML emitido.
-  const totalRows = [];
-  if (totales.neto != null) totalRows.push({ left: 'NETO:', amount: totales.neto, bold: true });
-  if (totales.iva != null) totalRows.push({ left: 'IVA (19%):', amount: totales.iva, bold: true });
-  totalRows.push({ left: 'Total Exento:', amount: totales.exento || 0 });
-  totalRows.push({ left: 'TOTAL:', amount: totales.total, bold: true });
-  lines.push({ type: 'box', width: 30, rows: totalRows });
+  // Totales. Todo sale del XML emitido.
+  if (totales.neto != null) lines.push({ type: 'row', left: 'Neto', amount: totales.neto });
+  if (totales.iva != null) lines.push({ type: 'row', left: 'IVA (19%)', amount: totales.iva });
+  lines.push({ type: 'row', left: 'Total exento', amount: totales.exento || 0 });
+  lines.push({ type: 'row', left: 'TOTAL', amount: totales.total, bold: true });
   lines.push({ type: 'text', text: '' });
 
   lines.push({ type: 'rasterBytes', command: timbre.command, align: timbre.align });
