@@ -1063,6 +1063,12 @@ function CrmTerminalUI() {
 
   const persistDraftNow = useCallback(() => {
     if (!draftKey || cart.length === 0) return;
+    // Venta ya cobrada (ticket recién emitido): el carrito y su clave de
+    // idempotencia pertenecen a una venta registrada. Guardarlos como borrador
+    // (al salir del TPV, ocultar la pestaña o cerrar la página) hacía que el
+    // siguiente cobro restaurara la clave y la RPC devolviera la venta
+    // anterior en vez de registrar la nueva (caso NV-0067, 10-11-2026).
+    if (ticketFromCheckoutRef.current) return;
     const snapshot = buildPosTerminalDraftSnapshot({
       cart,
       customerId,
