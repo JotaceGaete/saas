@@ -327,7 +327,7 @@ export async function buildBoletaReceipt({
     rows: [
       { text: `RUT ${formatRut(emisor.rut)}`, bold: true },
       { text: 'BOLETA ELECTRONICA', bold: true },
-      { text: `N° ${dte.folio}`, bold: true },
+      { text: `Nro. ${dte.folio}`, bold: true },
     ],
   });
   if (unidadSii) lines.push({ type: 'text', text: `S.I.I. - ${clean(unidadSii).toUpperCase()}`, align: 'center', bold: true });

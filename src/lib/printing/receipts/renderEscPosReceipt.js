@@ -224,25 +224,9 @@ function formatItemLines(item, columns, defaultCurrency) {
  * @property {string} [currency]
  */
 
-// Recuadros de la boleta: caracteres de línea de la página de códigos PC437,
-// la que traen por defecto las térmicas ESC/POS (incluida la emulación de la
-// Star). No se envía ESC t: el validador del conector lo rechazaría.
-const CP437 = {
-  '─': 0xC4, '│': 0xB3, '┌': 0xDA, '┐': 0xBF, '└': 0xC0, '┘': 0xD9, '°': 0xF8,
-};
-
-function cp437Bytes(text) {
-  const out = [];
-  for (const ch of String(text ?? '')) {
-    if (CP437[ch] != null) out.push(CP437[ch]);
-    else {
-      const code = ch.charCodeAt(0);
-      out.push(code >= 0x20 && code < 0x7f ? code : 0x3F);
-    }
-  }
-  return out;
-}
-
+// Recuadros de la boleta con caracteres ASCII (+ - |). Los caracteres de línea
+// de PC437 salen como letras chinas en impresoras en modo chino (p. ej. la
+// Xprinter XP-80C), y el conector no admite el comando para salir de ese modo.
 function padCenter(text, width) {
   const t = String(text ?? '').slice(0, width);
   const left = Math.floor((width - t.length) / 2);
@@ -257,21 +241,21 @@ function padCenter(text, width) {
  */
 export function formatBoxLines(rows, width, { currency } = {}) {
   const inner = Math.max(4, width - 4);
-  const out = [{ text: `┌${'─'.repeat(width - 2)}┐`, bold: false }];
+  const out = [{ text: `+${'-'.repeat(width - 2)}+`, bold: false }];
   for (const row of rows || []) {
     if (row.left != null || row.right != null || row.amount != null) {
       const right = row.amount != null ? formatMoney(row.amount, row.currency ?? currency) : String(row.right ?? '');
       for (const l of formatRowLines(String(row.left ?? ''), right, inner)) {
-        out.push({ text: `│ ${l.padEnd(inner).slice(0, inner)} │`, bold: Boolean(row.bold) });
+        out.push({ text: `| ${l.padEnd(inner).slice(0, inner)} |`, bold: Boolean(row.bold) });
       }
     } else {
       for (const l of wrapText(String(row.text ?? ''), inner)) {
         const body = row.align === 'left' ? l.padEnd(inner) : padCenter(l, inner);
-        out.push({ text: `│ ${body} │`, bold: Boolean(row.bold) });
+        out.push({ text: `| ${body} |`, bold: Boolean(row.bold) });
       }
     }
   }
-  out.push({ text: `└${'─'.repeat(width - 2)}┘`, bold: false });
+  out.push({ text: `+${'-'.repeat(width - 2)}+`, bold: false });
   return out;
 }
 
@@ -413,10 +397,7 @@ export async function renderEscPosReceipt(receipt) {
       case 'box': {
         const width = Math.min(columns, line.width || columns);
         for (const boxLine of formatBoxLines(line.rows, width, { currency })) {
-          bytes.push(...CMD.ALIGN_CENTER);
-          if (boxLine.bold) bytes.push(...CMD.BOLD_ON);
-          bytes.push(...cp437Bytes(boxLine.text), LF);
-          if (boxLine.bold) bytes.push(...CMD.BOLD_OFF);
+          emit(boxLine.text, { align: 'center', bold: boxLine.bold });
         }
         break;
       }
