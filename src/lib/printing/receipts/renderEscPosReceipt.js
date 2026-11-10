@@ -312,7 +312,17 @@ export async function renderEscPosReceipt(receipt) {
   const currency = receipt?.currency;
   const bytes = [...CMD.INIT];
 
+  // `centerBlock`: el bloque de texto (38 columnas, el ancho seguro) va centrado
+  // en el papel. Cada línea alineada a la izquierda se completa con espacios
+  // hasta el ancho del bloque y se envía centrada; así el margen izquierdo y el
+  // derecho quedan iguales también en impresoras de 48 columnas (XP-80C).
+  const centerBlock = receipt?.centerBlock === true;
   const emit = (text, { align, bold, double, tall } = {}) => {
+    if (centerBlock && align !== 'center') {
+      const width = double ? layout.doubleWidthCharsPerLine : columns;
+      text = String(text ?? '').padEnd(width);
+      align = 'center';
+    }
     bytes.push(...(align === 'center' ? CMD.ALIGN_CENTER : CMD.ALIGN_LEFT));
     if (bold) bytes.push(...CMD.BOLD_ON);
     if (double) bytes.push(...CMD.DOUBLE_ON);

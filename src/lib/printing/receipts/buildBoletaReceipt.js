@@ -389,6 +389,8 @@ export async function buildBoletaReceipt({
       lines,
       paperWidthMm,
       currency: 'CLP',
+      // Bloque de texto centrado en el papel (ver renderEscPosReceipt).
+      centerBlock: true,
       imageMode,
       effectivePrintableWidthDots,
       feedLines: 4,
