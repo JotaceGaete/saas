@@ -124,3 +124,12 @@ describe('fiscalThermalPrintService', () => {
     expect(printReceipt).not.toHaveBeenCalled();
   });
 });
+
+describe('oficina del SII por emisor', () => {
+  it('Artesellos y Bonita imprimen S.I.I. - CONCEPCION; otro RUT, nada', async () => {
+    const { unidadSiiDe } = await import('./fiscalThermalPrintService');
+    expect(unidadSiiDe('78506417-8')).toBe('CONCEPCION');
+    expect(unidadSiiDe('77804207-k')).toBe('CONCEPCION');
+    expect(unidadSiiDe('11111111-1')).toBeUndefined();
+  });
+});

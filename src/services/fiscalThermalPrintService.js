@@ -140,6 +140,18 @@ async function lookupSaleNumber(businessId, invoiceId) {
   }
 }
 
+// Oficina del SII de cada emisor, impresa bajo el recuadro ("S.I.I. - CONCEPCION").
+// Walinka todavía no guarda este dato en fiscal.issuers; mientras tanto se
+// configura aquí por RUT. Ambas empresas tienen domicilio en Coronel.
+export const SII_UNIDAD_POR_RUT = Object.freeze({
+  '78506417-8': 'CONCEPCION', // Artema SpA (Artesellos)
+  '77804207-K': 'CONCEPCION', // Artes SpA (Bonita Casualidad)
+});
+
+export function unidadSiiDe(rut) {
+  return SII_UNIDAD_POR_RUT[String(rut || '').trim().toUpperCase()] || undefined;
+}
+
 // Nombre y logo del negocio para el encabezado. Mejor esfuerzo: sin ellos la
 // boleta sale igual, con la razón social del XML.
 async function lookupBranding(businessId) {
@@ -164,7 +176,7 @@ export async function printBoletaThermal({ businessId, invoiceId, file, resoluci
       dte,
       tedVerified,
       resolucion,
-      unidadSii,
+      unidadSii: unidadSii || unidadSiiDe(dte.emisor?.rut),
       timbreStrategyId: resolveTimbreStrategyId(
         { printerName: target.printerName, imageMode: printerConfig.imageMode },
         timbreStrategyId,
@@ -267,6 +279,7 @@ export async function printIssuedBoleta({ businessId, bytes, reprint = false, id
       dte,
       tedVerified,
       resolucion: settings.resolucion,
+      unidadSii: unidadSiiDe(dte.emisor?.rut),
       timbreStrategyId: resolveTimbreStrategyId(
         { printerName: target.printerName, imageMode: printerConfig.imageMode },
         settings.timbreStrategyId,
