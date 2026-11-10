@@ -58,7 +58,7 @@ describe('boleta automática al confirmar el cobro', () => {
     expect(jobs[0].key).toBe(`fiscal:${BIZ}:900001:boleta`);
     expect(jobs[0].bytes).toContain('BOLETA ELECTRONICA');
     expect(jobs[0].bytes).toContain('Timbre Electronico S.I.I.');
-    expect(jobs[0].bytes).toContain('Ref. interna NV-0058');
+    expect(jobs[0].bytes).toContain('Ref. NV-0058');
     expect(onPlainTicket).not.toHaveBeenCalled();
   });
 
@@ -71,7 +71,7 @@ describe('boleta automática al confirmar el cobro', () => {
     await screen.findByText(/no se imprimió/);
     await screen.findByText(/Boleta 900001 emitida y enviada a la impresora/, {}, { timeout: 6000 });
     expect(jobs).toHaveLength(1);
-    expect(jobs[0].bytes).toContain('Ref. interna NV-0056');
+    expect(jobs[0].bytes).toContain('Ref. NV-0056');
     expect(onPlainTicket).not.toHaveBeenCalled();
   }, 10000);
 });
