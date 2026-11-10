@@ -359,6 +359,11 @@ export async function renderEscPosReceipt(receipt) {
           bytes.push(...CMD.ALIGN_LEFT);
           bytes.push(...raster.command);
           bytes.push(LF);
+          // La posición absoluta del logo (ESC $) quedaba aplicada al texto
+          // centrado siguiente en la Xprinter XP-80C (boleta 25007: RUT y folio
+          // corridos a la derecha). ESC @ vuelve al estado inicial; cada línea
+          // vuelve a enviar su alineación y estilo.
+          bytes.push(...CMD.INIT);
         } else if (line.fallbackText) {
           // Si el logo no carga, va el nombre del negocio en su lugar.
           emitWrapped(line.fallbackText, { align: 'center', bold: true, double: true });
