@@ -157,4 +157,18 @@ describe('TPV — cerrar el ticket con la X', () => {
     expect(second.items).toEqual([expect.objectContaining({ quantity: 3 })]);
     expect(second.idempotencyKey).not.toBe(first.idempotencyKey);
   });
+
+  it('salir del TPV con el ticket recién cobrado no guarda un borrador con la clave de esa venta', async () => {
+    await addProduct(1);
+    const first = await payCash();
+    // Ocultar la pestaña y salir del TPV (desmontar) sin pulsar «Nueva venta» ni la X.
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    document.dispatchEvent(new Event('visibilitychange'));
+    window.dispatchEvent(new Event('pagehide'));
+    cleanup();
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    const raw = localStorage.getItem(`pos-terminal-draft:${BIZ}`);
+    expect(raw === null || !raw.includes(first.idempotencyKey)).toBe(true);
+  });
 });
+
