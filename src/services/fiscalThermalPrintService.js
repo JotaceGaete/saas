@@ -146,9 +146,9 @@ async function lookupBranding(businessId) {
   try {
     if (!businessId || typeof supabase.from !== 'function') return null;
     const { data, error } = await supabase.from('wa_businesses')
-      .select('name, logo_url, design_settings').eq('id', businessId).maybeSingle();
+      .select('name, logo_url, design_settings, whatsapp').eq('id', businessId).maybeSingle();
     if (error || !data) return null;
-    return { name: data.name || null, logoUrl: data.logo_url || data.design_settings?.logoUrl || null };
+    return { name: data.name || null, logoUrl: data.logo_url || data.design_settings?.logoUrl || null, phone: data.whatsapp || null };
   } catch {
     return null;
   }
@@ -173,6 +173,7 @@ export async function printBoletaThermal({ businessId, invoiceId, file, resoluci
       saleNumber,
       nombreFantasia: branding?.name || undefined,
       logoUrl: branding?.logoUrl || null,
+      telefono: branding?.phone || null,
       printLogo: printerConfig.printLogo,
       imageMode: printerConfig.imageMode,
       effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,
@@ -252,12 +253,15 @@ export function hasValidResolucion(resolucion) {
  * Nunca emite ni llama al proveedor. Si el XML es una simulación, el papel
  * sale rotulado SIMULACION / SIN VALOR TRIBUTARIO: lo decide el documento,
  * no quien llama.
- * @param {{ businessId: string, bytes: ArrayBuffer|Uint8Array, reprint?: boolean, idempotencyKey?: string, branding?: { name?: string, logoUrl?: string }|null, settings?: ReturnType<typeof readFiscalPrintSettings>, sender?: Function }} params
+ * @param {{ businessId: string, bytes: ArrayBuffer|Uint8Array, reprint?: boolean, idempotencyKey?: string, branding?: { name?: string, logoUrl?: string, phone?: string, seller?: string, paymentLabel?: string }|(() => Object)|null, settings?: ReturnType<typeof readFiscalPrintSettings>, sender?: Function }} params
  */
 export async function printIssuedBoleta({ businessId, bytes, reprint = false, idempotencyKey, saleNumber = null, branding = null, settings = readFiscalPrintSettings(), sender = send }) {
   try {
     const { dte, tedVerified } = await verifyDteBytes(bytes);
     const simulation = isSimulatedDte(dte);
+    // `branding` puede ser una función: se lee al imprimir (datos de la venta en curso).
+    let brand = null;
+    try { brand = typeof branding === 'function' ? branding() : branding; } catch { brand = null; }
     const { printerConfig, target } = resolveTarget(businessId, reprint ? 'fiscal-reprint' : 'fiscal', dte.folio, idempotencyKey);
     const { receipt, timbre } = await buildBoletaReceipt({
       dte,
@@ -270,8 +274,11 @@ export async function printIssuedBoleta({ businessId, bytes, reprint = false, id
       reprint,
       simulation,
       saleNumber,
-      nombreFantasia: branding?.name || undefined,
-      logoUrl: branding?.logoUrl || null,
+      nombreFantasia: brand?.name || undefined,
+      logoUrl: brand?.logoUrl || null,
+      telefono: brand?.phone || null,
+      vendedor: brand?.seller || null,
+      formaPago: brand?.paymentLabel || null,
       printLogo: printerConfig.printLogo,
       imageMode: printerConfig.imageMode,
       effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,

@@ -127,7 +127,7 @@ describe('TpvFiscalAutoBoleta — sin intervención del cajero', () => {
 describe('modo real: resolución SII del servidor', () => {
   it('printableResolucion convierte { numero, fecha } en { numero, anio }', async () => {
     const { printableResolucion } = await import('./TpvFiscalAutoBoleta');
-    expect(printableResolucion({ numero: 80, fecha: '2014-08-22' })).toEqual({ numero: '80', anio: '2014' });
+    expect(printableResolucion({ numero: 80, fecha: '2014-08-22' })).toEqual({ numero: '80', anio: '2014', fecha: '2014-08-22' });
     expect(printableResolucion(null)).toEqual({ numero: '', anio: '' });
   });
 

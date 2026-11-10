@@ -18,7 +18,7 @@ import { stripDiacritics } from './renderEscPosReceipt';
 // No decide nada de impresora/QZ Tray: eso es responsabilidad de
 // printService + el PrinterProvider configurado.
 
-const PAYMENT_LABELS = {
+export const PAYMENT_LABELS = {
   cash: 'Efectivo',
   bank_transfer: 'Transferencia',
   card: 'Tarjeta',

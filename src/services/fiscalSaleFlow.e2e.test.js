@@ -71,10 +71,10 @@ describe('flujo TPV completo (simulado) hasta el conector', () => {
     expect(text).toContain('SIN VALOR TRIBUTARIO');
     expect(text).toContain('BOLETA ELECTRONICA');
     expect(text).toContain('900001');
-    expect(text).toContain('Timbre Electronico SII');
+    expect(text).toContain('Timbre Electronico S.I.I.');
     // Número interno de la venta al pie, sin tocar el folio SII.
     expect(text).toContain('Ref. interna NV-0001');
-    expect(text.indexOf('Ref. interna NV-0001')).toBeGreaterThan(text.indexOf('Timbre Electronico SII'));
+    expect(text.indexOf('Ref. interna NV-0001')).toBeGreaterThan(text.indexOf('Timbre Electronico S.I.I.'));
     expect(hasSeq(job.bytes, [0x1b, 0x2a, 0x20])).toBe(true); // ESC * 32
     expect(hasSeq(job.bytes, [0x1d, 0x76, 0x30])).toBe(false); // nunca GS v 0 en la Star
     // El conector acepta el trabajo tal cual (copia de EscPosStreamValidator.cs)...

@@ -9,6 +9,7 @@ const DEFAULT_QUERIES = Object.freeze({ lookup: lookupFiscalOperation, siiStatus
 import { createFiscalSaleFlow, describeFlowCode, MODULE_OFF_CODES, PHASE } from '../../../services/fiscalSaleFlow';
 import { fiscalPrintBlocker, printIssuedBoleta, readFiscalPrintSettings } from '../../../services/fiscalThermalPrintService';
 import { POINT_PREVIEW } from '../../../services/pointClient';
+import { PAYMENT_LABELS } from '../../../lib/printing/receipts/buildSaleReceipt';
 
 // Boleta electrónica automática al confirmar una venta cobrada en el TPV.
 // Emite (DTE Core o simulación) y envía la boleta con su timbre PDF417 a la
@@ -89,7 +90,7 @@ export function previewLiveDecision(statusResult) {
 /** Resolución del servidor ({ numero, fecha }) en la forma que imprime la boleta ({ numero, anio }). */
 export function printableResolucion(resolucion) {
   if (!resolucion?.numero || !resolucion?.fecha) return { numero: '', anio: '' };
-  return { numero: String(resolucion.numero), anio: String(resolucion.fecha).slice(0, 4) };
+  return { numero: String(resolucion.numero), anio: String(resolucion.fecha).slice(0, 4), fecha: String(resolucion.fecha).slice(0, 10) };
 }
 
 /**
@@ -108,6 +109,16 @@ export function withServerResolucion(emitter) {
     },
     resolucion: () => resolucion,
   });
+}
+
+/** Forma de pago legible de los pagos de la venta ("Efectivo", "Efectivo / Tarjeta"). */
+export function paymentLabelOf(payments) {
+  const methods = [...new Set((payments || [])
+    .filter((p) => Number(p?.amount || 0) > 0)
+    .map((p) => p.payment_method || p.method)
+    .filter(Boolean))];
+  if (!methods.length) return null;
+  return methods.map((m) => PAYMENT_LABELS[m] || (/mercado|point/i.test(m) ? 'Tarjeta' : m)).join(' / ');
 }
 
 export function buildFlowForMode(mode, businessId, branding = null) {
@@ -134,7 +145,7 @@ export function buildFlowForMode(mode, businessId, branding = null) {
 
 export default function TpvFiscalAutoBoleta({
   businessId, sale, saleContext, onPlainTicket, onInternalReceipt, onSettled, mode = FISCAL_AUTO_MODE, deps,
-  businessName = null, logoUrl = null,
+  businessName = null, logoUrl = null, businessPhone = null,
   preview = POINT_PREVIEW, previewStatus = getFiscalSaleStatus, queries = DEFAULT_QUERIES,
 }) {
   // Una venta simulada nunca llega a DTE Core. En una Preview, el modo real solo se usa si el
@@ -154,9 +165,14 @@ export default function TpvFiscalAutoBoleta({
   }, [requestedMode, deps, saleIdForMode, previewStatus]);
   const effectiveMode = requestedMode !== PREVIEW_LIVE ? requestedMode
     : (previewDecision?.saleId === saleIdForMode ? previewDecision.mode : PREVIEW_LIVE);
+  // Datos del encabezado y de la venta en curso; se leen al imprimir.
+  const brandingRef = useRef(null);
+  brandingRef.current = {
+    name: businessName, logoUrl, phone: businessPhone, paymentLabel: paymentLabelOf(saleContext?.payments),
+  };
   const built = useMemo(
-    () => deps || buildFlowForMode(effectiveMode, businessId, { name: businessName, logoUrl }),
-    [deps, effectiveMode, businessId, businessName, logoUrl],
+    () => deps || buildFlowForMode(effectiveMode, businessId, () => brandingRef.current),
+    [deps, effectiveMode, businessId],
   );
   const [state, setState] = useState({ phase: PHASE.CHECKING });
   const [busy, setBusy] = useState(false);

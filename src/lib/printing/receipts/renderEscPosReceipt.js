@@ -224,6 +224,83 @@ function formatItemLines(item, columns, defaultCurrency) {
  * @property {string} [currency]
  */
 
+// Recuadros de la boleta: caracteres de línea de la página de códigos PC437,
+// la que traen por defecto las térmicas ESC/POS (incluida la emulación de la
+// Star). No se envía ESC t: el validador del conector lo rechazaría.
+const CP437 = {
+  '─': 0xC4, '│': 0xB3, '┌': 0xDA, '┐': 0xBF, '└': 0xC0, '┘': 0xD9, '°': 0xF8,
+};
+
+function cp437Bytes(text) {
+  const out = [];
+  for (const ch of String(text ?? '')) {
+    if (CP437[ch] != null) out.push(CP437[ch]);
+    else {
+      const code = ch.charCodeAt(0);
+      out.push(code >= 0x20 && code < 0x7f ? code : 0x3F);
+    }
+  }
+  return out;
+}
+
+function padCenter(text, width) {
+  const t = String(text ?? '').slice(0, width);
+  const left = Math.floor((width - t.length) / 2);
+  return ' '.repeat(left) + t + ' '.repeat(width - t.length - left);
+}
+
+/**
+ * Filas de texto de un recuadro de `width` columnas. Cada fila es
+ * `{ text, align }` (centrada por defecto) o `{ left, right }` (etiqueta y
+ * monto, ambos pegados a la derecha como en una caja de totales).
+ * @returns {{ text: string, bold: boolean }[]}
+ */
+export function formatBoxLines(rows, width, { currency } = {}) {
+  const inner = Math.max(4, width - 4);
+  const out = [{ text: `┌${'─'.repeat(width - 2)}┐`, bold: false }];
+  for (const row of rows || []) {
+    if (row.left != null || row.right != null || row.amount != null) {
+      const right = row.amount != null ? formatMoney(row.amount, row.currency ?? currency) : String(row.right ?? '');
+      for (const l of formatRowLines(String(row.left ?? ''), right, inner)) {
+        out.push({ text: `│ ${l.padEnd(inner).slice(0, inner)} │`, bold: Boolean(row.bold) });
+      }
+    } else {
+      for (const l of wrapText(String(row.text ?? ''), inner)) {
+        const body = row.align === 'left' ? l.padEnd(inner) : padCenter(l, inner);
+        out.push({ text: `│ ${body} │`, bold: Boolean(row.bold) });
+      }
+    }
+  }
+  out.push({ text: `└${'─'.repeat(width - 2)}┘`, bold: false });
+  return out;
+}
+
+// Tabla de ítems de la boleta: CANT | ITEM | VALOR U. | SUBTOTAL. El nombre
+// se envuelve en su columna; los montos van en la primera línea del ítem.
+function boletaTableWidths(columns) {
+  const money = columns >= 40 ? 10 : 8;
+  const qty = 4;
+  const name = Math.max(6, columns - qty - 1 - 2 * (money + 1));
+  return { qty, name, money };
+}
+
+export function formatBoletaTableHeader(columns) {
+  const w = boletaTableWidths(columns);
+  return `${'CANT'.padEnd(w.qty)} ${'ITEM'.padEnd(w.name)} ${'VALOR U.'.padStart(w.money)} ${'SUBTOTAL'.padStart(w.money)}`;
+}
+
+export function formatBoletaTableItem(item, columns, currency) {
+  const w = boletaTableWidths(columns);
+  const qty = Number(item.qty);
+  const qtyStr = Number.isFinite(qty) ? (Number.isInteger(qty) ? String(qty) : String(qty).replace('.', ',')) : String(item.qty ?? '');
+  const nameLines = wrapText(stripDiacritics(item.name || ''), w.name);
+  const unit = formatMoney(item.unitPrice, currency);
+  const total = formatMoney(item.lineTotal, currency);
+  return nameLines.map((n, i) => (i === 0
+    ? `${qtyStr.padStart(w.qty - 1).padEnd(w.qty)} ${n.padEnd(w.name)} ${unit.padStart(w.money)} ${total.padStart(w.money)}`
+    : `${' '.repeat(w.qty)} ${n}`).replace(/\s+$/, ''));
+}
+
 /**
  * Receipt -> comandos ESC/POS crudos, listos para PrinterProvider.print().
  * Async porque el logo (type: 'logo') requiere cargar/rasterizar una
@@ -333,6 +410,33 @@ export async function renderEscPosReceipt(receipt) {
         }
         break;
       }
+      case 'box': {
+        const width = Math.min(columns, line.width || columns);
+        for (const boxLine of formatBoxLines(line.rows, width, { currency })) {
+          bytes.push(...CMD.ALIGN_CENTER);
+          if (boxLine.bold) bytes.push(...CMD.BOLD_ON);
+          bytes.push(...cp437Bytes(boxLine.text), LF);
+          if (boxLine.bold) bytes.push(...CMD.BOLD_OFF);
+        }
+        break;
+      }
+      // "Etiqueta: valor" con los valores alineados en columna; si el valor
+      // no cabe, sigue en la línea siguiente con la misma sangría.
+      case 'field': {
+        const labelWidth = Math.min(Math.max(String(line.label || '').length + 1, line.labelWidth || 11), columns - 8);
+        const valueLines = wrapText(stripDiacritics(String(line.value ?? '')), columns - labelWidth);
+        valueLines.forEach((v, idx) => {
+          const prefix = idx === 0 ? String(line.label || '').padEnd(labelWidth) : ' '.repeat(labelWidth);
+          emit(prefix + v, { bold: line.bold });
+        });
+        break;
+      }
+      case 'boletaItemsHeader':
+        emit(formatBoletaTableHeader(columns), { bold: true });
+        break;
+      case 'boletaItem':
+        for (const itemLine of formatBoletaTableItem(line, columns, currency)) emit(itemLine);
+        break;
       case 'itemsHeader':
         emit(formatRowLines('CANT/PRODUCTO', 'TOTAL', columns)[0], { bold: true });
         break;

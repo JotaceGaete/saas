@@ -24,46 +24,65 @@ describe('formatos', () => {
 });
 
 describe('buildBoletaReceipt', () => {
-  it('formato compacto: logo del negocio y recuadro en tamaño normal', async () => {
+  it('formato tipo boleta impresa: logo, recuadro del documento, tabla y totales en recuadro', async () => {
     const { receipt } = await buildBoletaReceipt({
-      ...base, nombreFantasia: 'Artesellos', logoUrl: 'https://x/logo.png', imageMode: 'rasterGsV0',
+      ...base, resolucion: { numero: 80, anio: 2014, fecha: '2014-08-22' },
+      nombreFantasia: 'Artesellos', logoUrl: 'https://x/logo.png', imageMode: 'rasterGsV0',
+      telefono: '9 1234 5678', formaPago: 'Efectivo',
     });
     expect(receipt.lines[0]).toEqual({ type: 'logo', url: 'https://x/logo.png' });
     expect(receipt.imageMode).toBe('rasterGsV0');
-    const boleta = receipt.lines.find((l) => l.text === 'BOLETA ELECTRONICA');
-    expect(boleta.double).toBeUndefined();
-    const folio = receipt.lines.find((l) => l.text === 'Nro. 1201');
-    expect(folio).toMatchObject({ tall: true });
-    expect(folio.double).toBeUndefined();
+    const boxes = receipt.lines.filter((l) => l.type === 'box');
+    expect(boxes[0].rows.map((r) => r.text)).toEqual(['RUT 11.111.111-1', 'BOLETA ELECTRONICA', 'N° 1201']);
+    expect(boxes[1].rows.map((r) => r.left)).toEqual(['NETO:', 'IVA (19%):', 'Total Exento:', 'TOTAL:']);
+    const texts = receipt.lines.filter((l) => l.type === 'text').map((l) => l.text);
+    expect(texts).toContain('Res. 80 del 22-08-2014');
+    expect(receipt.lines).toEqual(expect.arrayContaining([
+      { type: 'field', label: 'Fono:', value: '9 1234 5678' },
+      { type: 'field', label: 'Forma de pago:', value: 'EFECTIVO' },
+    ]));
     // Sin printLogo no hay logo; sin logoUrl tampoco.
     const off = await buildBoletaReceipt({ ...base, logoUrl: 'https://x/logo.png', printLogo: false });
     expect(off.receipt.lines.some((l) => l.type === 'logo')).toBe(false);
     const none = await buildBoletaReceipt(base);
     expect(none.receipt.lines.some((l) => l.type === 'logo')).toBe(false);
-    // Doble alto solo en el folio: GS ! 0x01 y vuelta a 0x00.
-    const bytes = await renderEscPosReceipt(none.receipt);
-    const hex = Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join(' ');
-    expect(hex).toContain('1d 21 01');
+    // Recuadro con caracteres de línea PC437 y N° (0xF8), sin ESC t (el conector lo rechaza).
+    const bytes = Array.from(await renderEscPosReceipt(none.receipt));
+    expect(bytes).toEqual(expect.arrayContaining([0xDA, 0xC4, 0xBF, 0xB3, 0xC0, 0xD9, 0xF8]));
+    const hasEscT = bytes.some((b, i) => b === 0x1b && bytes[i + 1] === 0x74);
+    expect(hasEscT).toBe(false);
+    const text = asText(bytes);
+    expect(text).toContain('CANT ITEM');
+    expect(text).toContain('SUBTOTAL');
+    expect(text).toContain('Comuna:    Coronel');
   });
 
   it('arma la representación con los datos del XML y las leyendas del timbre', async () => {
     const { receipt, timbre } = await buildBoletaReceipt({ ...base, unidadSii: 'Concepción', nombreFantasia: 'Bonita' });
     const texts = receipt.lines.filter((l) => l.type === 'text').map((l) => l.text);
     expect(texts).toEqual(expect.arrayContaining([
-      'Comercial Nandu SpA', 'RUT 11.111.111-1', 'VENTA AL POR MENOR', 'Calle Falsa 123, Coronel',
-      'BOLETA ELECTRONICA', 'Nro. 1201', 'S.I.I. - CONCEPCION',
-      'Timbre Electronico SII', 'Res. 80 de 2014', 'Verifique documento: www.sii.cl',
+      'COMERCIAL NANDU SPA', 'VENTA AL POR MENOR', 'S.I.I. - CONCEPCION',
+      'Timbre Electronico S.I.I.', 'Res. 80 de 2014', 'Verifique documento: www.sii.cl',
     ]));
     expect(receipt.lines).toEqual(expect.arrayContaining([
-      { type: 'row', left: 'Fecha emision', right: '01-11-2026' },
-      { type: 'row', left: 'Monto neto', amount: 1000 },
-      { type: 'row', left: 'IVA (19%)', amount: 190 },
-      { type: 'total', label: 'TOTAL', amount: 1190, emphasize: true },
-      expect.objectContaining({ type: 'item', name: 'Cafe con leche', qty: 1, unitPrice: 1190, lineTotal: 1190 }),
+      { type: 'field', label: 'Direccion:', value: 'Calle Falsa 123' },
+      { type: 'field', label: 'Comuna:', value: 'Coronel' },
+      { type: 'field', label: 'Fecha:', value: '01/11/2026' },
+    ]));
+    const boxes = receipt.lines.filter((l) => l.type === 'box');
+    expect(boxes[0].rows.map((r) => r.text)).toEqual(['RUT 11.111.111-1', 'BOLETA ELECTRONICA', 'N° 1201']);
+    expect(boxes[1].rows).toEqual([
+      { left: 'NETO:', amount: 1000, bold: true },
+      { left: 'IVA (19%):', amount: 190, bold: true },
+      { left: 'Total Exento:', amount: 0 },
+      { left: 'TOTAL:', amount: 1190, bold: true },
+    ]);
+    expect(receipt.lines).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'boletaItem', name: 'Cafe con leche', qty: 1, unitPrice: 1190, lineTotal: 1190 }),
     ]));
     // Las leyendas van inmediatamente bajo el timbre.
     const timbreIndex = receipt.lines.findIndex((l) => l.type === 'rasterBytes');
-    expect(receipt.lines[timbreIndex + 1].text).toBe('Timbre Electronico SII');
+    expect(receipt.lines[timbreIndex + 1].text).toBe('Timbre Electronico S.I.I.');
     expect(timbre).toMatchObject({ strategyId: 'rasterGsV0', meetsSiiResolution: true, withinSiiSize: true, columns: 273 });
   });
 
