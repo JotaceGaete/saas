@@ -24,6 +24,8 @@ import {
   buildPosTerminalDraftSnapshot,
   isDraftFromToday,
 } from '../../lib/posTerminalDraftStorage';
+import { isStaleSaleReplay } from '../../lib/posSaleReplay';
+import { formatSaleNumber } from '../../lib/printing/receipts/saleNumber';
 import { printService } from 'lib/printing/printService';
 import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
@@ -747,6 +749,16 @@ function CrmTerminalUI() {
       return acc;
     }, [])
     .map((payment) => ({ ...payment, amount: +payment.amount.toFixed(2) }));
+
+  // Única excepción a «la key solo se renueva en resetForm»: la RPC confirmó
+  // que esta clave ya pertenece a OTRA venta (isStaleSaleReplay). No es un
+  // error ni un timeout -- reintentar con la misma clave devolvería siempre esa
+  // venta. Se descarta la clave y el borrador; el carrito se conserva.
+  const discardReplayedSaleKey = () => {
+    saleIdempotencyKeyRef.current = null;
+    draftDebouncerRef.current.cancel();
+    if (draftKey) removePosTerminalDraft(draftKey);
+  };
 
   const resetForm = () => {
     // Reset real de intento de venta: la próxima "Completar venta" debe
@@ -1543,6 +1555,16 @@ function CrmTerminalUI() {
         } else {
           setErrorMsg(error.message || 'No se pudo registrar el pago de la venta.');
         }
+        return;
+      }
+
+      // La RPC devolvió una venta que no es este cobro (clave repetida desde
+      // un borrador viejo): no se registró nada. Se descarta la clave y el
+      // borrador para que «Confirmar» registre la venta con una clave nueva.
+      if (isStaleSaleReplay(data, total)) {
+        discardReplayedSaleKey();
+        const previous = data?.invoice_number != null ? ` (${formatSaleNumber(data.invoice_number)})` : '';
+        setErrorMsg(`Esta venta todavía no se registró: Walinka devolvió una venta anterior${previous}. Pulsa Confirmar otra vez para registrarla.`);
         return;
       }
 

@@ -172,3 +172,25 @@ describe('TPV — cerrar el ticket con la X', () => {
   });
 });
 
+
+describe('TPV — la RPC devuelve una venta anterior (clave repetida)', () => {
+  it('no la muestra como registrada: avisa, descarta la clave y el siguiente Confirmar usa otra', async () => {
+    const { createPosInvoice } = await import('../../services/crmService');
+    createPosInvoice.mockImplementationOnce(async (...args) => {
+      calls.push({ name: 'createPosInvoice', args });
+      return { data: { id: 'old-67', invoice_number: 67, total: 1000, created_at: '2026-11-09T21:03:35Z' }, error: null };
+    });
+    await addProduct(1);
+    const cobrar = await screen.findAllByRole('button', { name: /Cobrar/ });
+    fireEvent.click(cobrar[0]);
+    await screen.findByTestId('payment-method-picker');
+    fireEvent.click(screen.getAllByRole('button', { name: /Confirmar/ })[0]);
+    expect(await screen.findByText(/todavía no se registró.*NV-0067/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Cerrar' })).toBeNull();
+    const firstKey = invoiceCalls()[0].args[1].idempotencyKey;
+    fireEvent.click(screen.getAllByRole('button', { name: /Confirmar/ })[0]);
+    await waitFor(() => expect(invoiceCalls()).toHaveLength(2));
+    expect(invoiceCalls()[1].args[1].idempotencyKey).not.toBe(firstKey);
+    await screen.findByRole('button', { name: 'Cerrar' });
+  });
+});
