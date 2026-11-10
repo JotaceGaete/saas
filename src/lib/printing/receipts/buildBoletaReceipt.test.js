@@ -195,3 +195,16 @@ describe('boleta corta', () => {
     expect(exento.receipt.lines).toEqual(expect.arrayContaining([{ type: 'row', left: 'Total exento', amount: 500 }]));
   });
 });
+
+describe('bloque centrado', () => {
+  it('las líneas a la izquierda van completas a 38 columnas y centradas', async () => {
+    const { receipt } = await buildBoletaReceipt(base);
+    expect(receipt.centerBlock).toBe(true);
+    const bytes = Array.from(await renderEscPosReceipt({ ...receipt, lines: receipt.lines.filter((l) => l.type !== 'rasterBytes') }));
+    const text = asText(bytes);
+    expect(text).toContain(`${'Direccion: Calle Falsa 123, Coronel'.padEnd(38)}\n`);
+    // Ninguna línea va con ESC a 0 (izquierda).
+    const leftAlign = bytes.some((b, i) => b === 0x1b && bytes[i + 1] === 0x61 && bytes[i + 2] === 0x00);
+    expect(leftAlign).toBe(false);
+  });
+});
