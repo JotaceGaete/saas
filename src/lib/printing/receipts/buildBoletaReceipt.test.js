@@ -32,9 +32,8 @@ describe('buildBoletaReceipt', () => {
     });
     expect(receipt.lines[0]).toEqual({ type: 'logo', url: 'https://x/logo.png' });
     expect(receipt.imageMode).toBe('rasterGsV0');
-    const boxes = receipt.lines.filter((l) => l.type === 'box');
-    expect(boxes[0].rows.map((r) => r.text)).toEqual(['RUT 11.111.111-1', 'BOLETA ELECTRONICA', 'N° 1201']);
-    expect(boxes[1].rows.map((r) => r.left)).toEqual(['NETO:', 'IVA (19%):', 'Total Exento:', 'TOTAL:']);
+    expect(receipt.lines.some((l) => l.type === 'box')).toBe(false);
+    expect(receipt.lines.filter((l) => l.type === 'row').map((r) => r.left)).toEqual(['Neto', 'IVA (19%)', 'Total exento', 'TOTAL']);
     const texts = receipt.lines.filter((l) => l.type === 'text').map((l) => l.text);
     expect(texts).toContain('Res. 80 del 22-08-2014');
     expect(receipt.lines).toEqual(expect.arrayContaining([
@@ -46,12 +45,14 @@ describe('buildBoletaReceipt', () => {
     expect(off.receipt.lines.some((l) => l.type === 'logo')).toBe(false);
     const none = await buildBoletaReceipt(base);
     expect(none.receipt.lines.some((l) => l.type === 'logo')).toBe(false);
-    // Recuadro con caracteres de línea PC437 y N° (0xF8), sin ESC t (el conector lo rechaza).
-    const bytes = Array.from(await renderEscPosReceipt(none.receipt));
-    expect(bytes).toEqual(expect.arrayContaining([0xDA, 0xC4, 0xBF, 0xB3, 0xC0, 0xD9, 0xF8]));
-    const hasEscT = bytes.some((b, i) => b === 0x1b && bytes[i + 1] === 0x74);
-    expect(hasEscT).toBe(false);
+    // Recuadro solo con ASCII: ningún byte >= 0x80 fuera del timbre (en modo chino
+    // de la XP-80C los caracteres de línea salían como letras chinas).
+    const noTimbre = { ...none.receipt, lines: none.receipt.lines.filter((l) => l.type !== 'rasterBytes') };
+    const bytes = Array.from(await renderEscPosReceipt(noTimbre));
+    expect(bytes.some((b) => b >= 0x80)).toBe(false);
     const text = asText(bytes);
+    expect(text).not.toContain('+----');
+    expect(text).toContain('RUT 11.111.111-1');
     expect(text).toContain('CANT ITEM');
     expect(text).toContain('SUBTOTAL');
     expect(text).toContain('Comuna:    Coronel');
@@ -69,14 +70,13 @@ describe('buildBoletaReceipt', () => {
       { type: 'field', label: 'Comuna:', value: 'Coronel' },
       { type: 'field', label: 'Fecha:', value: '01/11/2026' },
     ]));
-    const boxes = receipt.lines.filter((l) => l.type === 'box');
-    expect(boxes[0].rows.map((r) => r.text)).toEqual(['RUT 11.111.111-1', 'BOLETA ELECTRONICA', 'N° 1201']);
-    expect(boxes[1].rows).toEqual([
-      { left: 'NETO:', amount: 1000, bold: true },
-      { left: 'IVA (19%):', amount: 190, bold: true },
-      { left: 'Total Exento:', amount: 0 },
-      { left: 'TOTAL:', amount: 1190, bold: true },
-    ]);
+    expect(texts).toEqual(expect.arrayContaining(['RUT 11.111.111-1', 'BOLETA ELECTRONICA', 'Nro. 1201']));
+    expect(receipt.lines).toEqual(expect.arrayContaining([
+      { type: 'row', left: 'Neto', amount: 1000 },
+      { type: 'row', left: 'IVA (19%)', amount: 190 },
+      { type: 'row', left: 'Total exento', amount: 0 },
+      { type: 'row', left: 'TOTAL', amount: 1190, bold: true },
+    ]));
     expect(receipt.lines).toEqual(expect.arrayContaining([
       expect.objectContaining({ type: 'boletaItem', name: 'Cafe con leche', qty: 1, unitPrice: 1190, lineTotal: 1190 }),
     ]));
