@@ -57,7 +57,7 @@ describe('boleta automática al confirmar el cobro', () => {
     expect(jobs).toHaveLength(1);
     expect(jobs[0].key).toBe(`fiscal:${BIZ}:900001:boleta`);
     expect(jobs[0].bytes).toContain('BOLETA ELECTRONICA');
-    expect(jobs[0].bytes).toContain('Timbre Electronico SII');
+    expect(jobs[0].bytes).toContain('Timbre Electronico S.I.I.');
     expect(jobs[0].bytes).toContain('Ref. interna NV-0058');
     expect(onPlainTicket).not.toHaveBeenCalled();
   });

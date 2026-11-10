@@ -593,7 +593,9 @@ export default function CrmThermalTicket({
           )}
 
           {fiscalAuto && (
-            <TpvFiscalAutoBoleta businessId={business?.id} sale={sale} saleContext={fiscalSaleContext}
+            <TpvFiscalAutoBoleta businessId={business?.id} businessName={business?.name || null} logoUrl={logoUrl}
+              businessPhone={business?.whatsapp || null}
+              sale={sale} saleContext={fiscalSaleContext}
               onPlainTicket={onPlainTicket} onInternalReceipt={onInternalReceipt} onSettled={onFiscalSettled} mode={fiscalAutoMode} />
           )}
 

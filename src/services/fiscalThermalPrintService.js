@@ -140,22 +140,55 @@ async function lookupSaleNumber(businessId, invoiceId) {
   }
 }
 
+// Oficina del SII de cada emisor, impresa bajo el recuadro ("S.I.I. - CONCEPCION").
+// Walinka todavía no guarda este dato en fiscal.issuers; mientras tanto se
+// configura aquí por RUT. Ambas empresas tienen domicilio en Coronel.
+export const SII_UNIDAD_POR_RUT = Object.freeze({
+  '78506417-8': 'CONCEPCION', // Artema SpA (Artesellos)
+  '77804207-K': 'CONCEPCION', // Artes SpA (Bonita Casualidad)
+});
+
+export function unidadSiiDe(rut) {
+  return SII_UNIDAD_POR_RUT[String(rut || '').trim().toUpperCase()] || undefined;
+}
+
+// Nombre y logo del negocio para el encabezado. Mejor esfuerzo: sin ellos la
+// boleta sale igual, con la razón social del XML.
+async function lookupBranding(businessId) {
+  try {
+    if (!businessId || typeof supabase.from !== 'function') return null;
+    const { data, error } = await supabase.from('wa_businesses')
+      .select('name, logo_url, design_settings, whatsapp').eq('id', businessId).maybeSingle();
+    if (error || !data) return null;
+    return { name: data.name || null, logoUrl: data.logo_url || data.design_settings?.logoUrl || null, phone: data.whatsapp || null };
+  } catch {
+    return null;
+  }
+}
+
 export async function printBoletaThermal({ businessId, invoiceId, file, resolucion, unidadSii, timbreStrategyId, saleNumber = null }) {
   try {
     if (saleNumber == null && invoiceId) saleNumber = await lookupSaleNumber(businessId, invoiceId);
+    const branding = await lookupBranding(businessId);
     const { dte, tedVerified } = await loadSource({ businessId, invoiceId, file });
     const { printerConfig, target } = resolveTarget(businessId, 'fiscal-reprint', dte.folio);
     const { receipt, timbre } = await buildBoletaReceipt({
       dte,
       tedVerified,
       resolucion,
-      unidadSii,
+      unidadSii: unidadSii || unidadSiiDe(dte.emisor?.rut),
       timbreStrategyId: resolveTimbreStrategyId(
         { printerName: target.printerName, imageMode: printerConfig.imageMode },
         timbreStrategyId,
       ),
       reprint: true,
       saleNumber,
+      nombreFantasia: branding?.name || undefined,
+      logoUrl: branding?.logoUrl || null,
+      telefono: branding?.phone || null,
+      printLogo: printerConfig.printLogo,
+      imageMode: printerConfig.imageMode,
+      effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,
       paperWidthMm: printerConfig.paperWidthMm,
       autoCut: printerConfig.autoCut,
       cutStrategyId: printerConfig.cutStrategyId,
@@ -232,17 +265,21 @@ export function hasValidResolucion(resolucion) {
  * Nunca emite ni llama al proveedor. Si el XML es una simulación, el papel
  * sale rotulado SIMULACION / SIN VALOR TRIBUTARIO: lo decide el documento,
  * no quien llama.
- * @param {{ businessId: string, bytes: ArrayBuffer|Uint8Array, reprint?: boolean, idempotencyKey?: string, settings?: ReturnType<typeof readFiscalPrintSettings>, sender?: Function }} params
+ * @param {{ businessId: string, bytes: ArrayBuffer|Uint8Array, reprint?: boolean, idempotencyKey?: string, branding?: { name?: string, logoUrl?: string, phone?: string, seller?: string, paymentLabel?: string }|(() => Object)|null, settings?: ReturnType<typeof readFiscalPrintSettings>, sender?: Function }} params
  */
-export async function printIssuedBoleta({ businessId, bytes, reprint = false, idempotencyKey, saleNumber = null, settings = readFiscalPrintSettings(), sender = send }) {
+export async function printIssuedBoleta({ businessId, bytes, reprint = false, idempotencyKey, saleNumber = null, branding = null, settings = readFiscalPrintSettings(), sender = send }) {
   try {
     const { dte, tedVerified } = await verifyDteBytes(bytes);
     const simulation = isSimulatedDte(dte);
+    // `branding` puede ser una función: se lee al imprimir (datos de la venta en curso).
+    let brand = null;
+    try { brand = typeof branding === 'function' ? branding() : branding; } catch { brand = null; }
     const { printerConfig, target } = resolveTarget(businessId, reprint ? 'fiscal-reprint' : 'fiscal', dte.folio, idempotencyKey);
     const { receipt, timbre } = await buildBoletaReceipt({
       dte,
       tedVerified,
       resolucion: settings.resolucion,
+      unidadSii: unidadSiiDe(dte.emisor?.rut),
       timbreStrategyId: resolveTimbreStrategyId(
         { printerName: target.printerName, imageMode: printerConfig.imageMode },
         settings.timbreStrategyId,
@@ -250,6 +287,14 @@ export async function printIssuedBoleta({ businessId, bytes, reprint = false, id
       reprint,
       simulation,
       saleNumber,
+      nombreFantasia: brand?.name || undefined,
+      logoUrl: brand?.logoUrl || null,
+      telefono: brand?.phone || null,
+      vendedor: brand?.seller || null,
+      formaPago: brand?.paymentLabel || null,
+      printLogo: printerConfig.printLogo,
+      imageMode: printerConfig.imageMode,
+      effectivePrintableWidthDots: printerConfig.effectivePrintableWidthDots,
       paperWidthMm: printerConfig.paperWidthMm,
       autoCut: printerConfig.autoCut,
       cutStrategyId: printerConfig.cutStrategyId,

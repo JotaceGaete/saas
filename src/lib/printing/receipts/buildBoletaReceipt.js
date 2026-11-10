@@ -247,7 +247,7 @@ export async function buildTimbreImage(tedXml, strategyId = DEFAULT_TIMBRE_STRAT
  * @param {Object} params
  * @param {import('../../fiscal/dte/parseDteXml').ParsedDte} params.dte
  * @param {boolean} params.tedVerified - resultado de verifyTedSignature (debe ser true)
- * @param {{ numero: number|string, anio: number|string }} params.resolucion - resolución SII del emisor
+ * @param {{ numero: number|string, anio: number|string, fecha?: string }} params.resolucion - resolución SII del emisor (fecha YYYY-MM-DD opcional)
  * @param {string} [params.unidadSii] - unidad regional del SII (p. ej. "CONCEPCION"), si corresponde
  * @param {string} [params.nombreFantasia]
  * @param {string} [params.copyLabel] - leyenda superior opcional (p. ej. "PRUEBA DE IMPRESION")
@@ -258,6 +258,13 @@ export async function buildTimbreImage(tedXml, strategyId = DEFAULT_TIMBRE_STRAT
  * @param {number} [params.paperWidthMm]
  * @param {boolean} [params.autoCut]
  * @param {string} [params.cutStrategyId]
+ * @param {string} [params.telefono] - teléfono del negocio (opcional)
+ * @param {string} [params.vendedor] - quien vendió (opcional)
+ * @param {string} [params.formaPago] - forma de pago de la venta (opcional, informativa)
+ * @param {string} [params.logoUrl] - logo del negocio (mismo que el ticket normal)
+ * @param {boolean} [params.printLogo] - configuración de la impresora; false nunca imprime el logo
+ * @param {string} [params.imageMode] - estrategia de imagen del logo (printerConfig.imageMode)
+ * @param {number} [params.effectivePrintableWidthDots]
  * @param {Object} [params.bwip] - inyectable en pruebas
  * @returns {Promise<{ receipt: import('./renderEscPosReceipt').Receipt, timbre: Object }>}
  */
@@ -275,6 +282,13 @@ export async function buildBoletaReceipt({
   paperWidthMm = 80,
   autoCut = true,
   cutStrategyId,
+  logoUrl = null,
+  printLogo = true,
+  telefono = null,
+  vendedor = null,
+  formaPago = null,
+  imageMode,
+  effectivePrintableWidthDots,
   bwip,
 } = {}) {
   if (!dte || dte.tipoDte !== 39) throw new BoletaReceiptError('DTE_TYPE_UNSUPPORTED');
@@ -299,26 +313,46 @@ export async function buildBoletaReceipt({
   if (simulation) lines.push(...SIMULATION_NOTICE, { type: 'divider' });
   if (notice) lines.push(...notice.header, { type: 'divider' });
   if (copyLabel) lines.push({ type: 'text', text: clean(copyLabel), align: 'center', bold: true });
-  if (nombreFantasia) lines.push({ type: 'text', text: clean(nombreFantasia), align: 'center', bold: true, double: true });
-  lines.push({ type: 'text', text: clean(emisor.razonSocial), align: 'center', bold: true });
-  lines.push({ type: 'text', text: `RUT: ${formatRut(emisor.rut)}`, align: 'center' });
-  if (emisor.giro) lines.push({ type: 'text', text: clean(emisor.giro), align: 'center' });
-  const direccion = [emisor.direccion, emisor.comuna, emisor.ciudad !== emisor.comuna ? emisor.ciudad : null]
-    .filter(Boolean).map(clean).join(', ');
-  if (direccion) lines.push({ type: 'text', text: direccion, align: 'center' });
-  if (emisor.sucursal) lines.push({ type: 'text', text: `Sucursal: ${clean(emisor.sucursal)}`, align: 'center' });
+  // Logo del negocio, igual que en el ticket normal (misma configuración de
+  // impresora: printLogo e imageMode). Si no carga, el renderer lo omite y la
+  // boleta imprime completa.
+  if (logoUrl && printLogo !== false) lines.push({ type: 'logo', url: logoUrl });
+  if (nombreFantasia) lines.push({ type: 'text', text: clean(nombreFantasia).toUpperCase(), align: 'center', bold: true, double: true });
+
+  // Recuadro del documento (RUT, tipo y folio), como en las boletas impresas
+  // habituales. La oficina del SII va justo debajo.
+  lines.push({
+    type: 'box',
+    width: 30,
+    rows: [
+      { text: `RUT ${formatRut(emisor.rut)}`, bold: true },
+      { text: 'BOLETA ELECTRONICA', bold: true },
+      { text: `N° ${dte.folio}`, bold: true },
+    ],
+  });
+  if (unidadSii) lines.push({ type: 'text', text: `S.I.I. - ${clean(unidadSii).toUpperCase()}`, align: 'center', bold: true });
+  lines.push({ type: 'text', text: '' });
+
+  lines.push({ type: 'text', text: clean(emisor.razonSocial).toUpperCase(), bold: true });
+  if (emisor.giro) lines.push({ type: 'text', text: clean(emisor.giro).toUpperCase() });
+  const field = (label, value) => {
+    const v = clean(value);
+    if (v) lines.push({ type: 'field', label, value: v });
+  };
+  field('Direccion:', emisor.direccion);
+  field('Comuna:', emisor.comuna);
+  if (emisor.ciudad && emisor.ciudad !== emisor.comuna) field('Ciudad:', emisor.ciudad);
+  if (emisor.sucursal) field('Sucursal:', emisor.sucursal);
+  field('Fono:', telefono);
+  field('Vendedor:', vendedor);
+  field('Fecha:', formatFechaEmision(dte.fechaEmision).replace(/-/g, '/'));
+  if (formaPago) lines.push({ type: 'field', label: 'Forma de pago:', value: clean(formaPago).toUpperCase() });
 
   lines.push({ type: 'divider' });
-  lines.push({ type: 'text', text: 'BOLETA ELECTRONICA', align: 'center', bold: true, double: true });
-  lines.push({ type: 'text', text: `Nro. ${dte.folio}`, align: 'center', bold: true, double: true });
-  if (unidadSii) lines.push({ type: 'text', text: `S.I.I. - ${clean(unidadSii).toUpperCase()}`, align: 'center' });
-  lines.push({ type: 'divider' });
-
-  lines.push({ type: 'row', left: 'Fecha emision', right: formatFechaEmision(dte.fechaEmision) });
-  lines.push({ type: 'itemsHeader' });
+  lines.push({ type: 'boletaItemsHeader' });
   for (const item of dte.items) {
     lines.push({
-      type: 'item',
+      type: 'boletaItem',
       qty: item.cantidad ?? 1,
       name: item.exento ? `${item.nombre} (EX)` : item.nombre,
       unitPrice: item.precio ?? item.monto,
@@ -326,16 +360,25 @@ export async function buildBoletaReceipt({
     });
   }
   lines.push({ type: 'divider' });
-  if (totales.exento) lines.push({ type: 'row', left: 'Monto exento', amount: totales.exento });
-  if (totales.neto != null) lines.push({ type: 'row', left: 'Monto neto', amount: totales.neto });
-  if (totales.iva != null) lines.push({ type: 'row', left: 'IVA (19%)', amount: totales.iva });
-  lines.push({ type: 'total', label: 'TOTAL', amount: totales.total, emphasize: true });
 
+  // Totales en recuadro. Todo sale del XML emitido.
+  const totalRows = [];
+  if (totales.neto != null) totalRows.push({ left: 'NETO:', amount: totales.neto, bold: true });
+  if (totales.iva != null) totalRows.push({ left: 'IVA (19%):', amount: totales.iva, bold: true });
+  totalRows.push({ left: 'Total Exento:', amount: totales.exento || 0 });
+  totalRows.push({ left: 'TOTAL:', amount: totales.total, bold: true });
+  lines.push({ type: 'box', width: 30, rows: totalRows });
   lines.push({ type: 'text', text: '' });
+
   lines.push({ type: 'rasterBytes', command: timbre.command, align: timbre.align });
-  lines.push({ type: 'text', text: 'Timbre Electronico SII', align: 'center' });
-  lines.push({ type: 'text', text: hasResolucion ? `Res. ${resNumero} de ${resAnio}` : 'Res. SII: por confirmar', align: 'center' });
+  lines.push({ type: 'text', text: 'Timbre Electronico S.I.I.', align: 'center', bold: true });
+  const fechaRes = /^\d{4}-\d{2}-\d{2}$/.test(String(resolucion?.fecha || '')) ? formatFechaEmision(resolucion.fecha) : null;
+  let resText = 'Res. SII: por confirmar';
+  if (hasResolucion) resText = fechaRes ? `Res. ${resNumero} del ${fechaRes}` : `Res. ${resNumero} de ${resAnio}`;
+  lines.push({ type: 'text', text: resText, align: 'center' });
   lines.push({ type: 'text', text: 'Verifique documento: www.sii.cl', align: 'center' });
+  lines.push({ type: 'text', text: '' });
+  lines.push({ type: 'text', text: 'Gracias por su compra', align: 'center' });
   if (notice) lines.push(...notice.footer);
   if (simulation) lines.push({ type: 'text', text: '' }, ...SIMULATION_NOTICE);
   // Número interno de la venta, al pie y discreto. El folio SII sigue siendo
@@ -348,6 +391,8 @@ export async function buildBoletaReceipt({
       lines,
       paperWidthMm,
       currency: 'CLP',
+      imageMode,
+      effectivePrintableWidthDots,
       feedLines: 4,
       cut: autoCut !== false,
       cutStrategyId,
