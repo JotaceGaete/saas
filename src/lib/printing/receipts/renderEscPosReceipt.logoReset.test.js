@@ -7,6 +7,12 @@ vi.mock('./fetchLogoRaster', () => ({
 const { renderEscPosReceipt } = await import('./renderEscPosReceipt');
 
 describe('logo seguido de texto centrado', () => {
+  it('logo centered: sin ESC $ y con ESC a 1 (la impresora lo centra)', async () => {
+    const { fetchLogoRaster } = await import('./fetchLogoRaster');
+    await renderEscPosReceipt({ paperWidthMm: 80, lines: [{ type: 'logo', url: 'https://x/l.png', centered: true, imageMode: 'rasterGsV0' }] });
+    expect(fetchLogoRaster).toHaveBeenLastCalledWith('https://x/l.png', expect.objectContaining({ absolutePosition: false, graphicsStrategyId: 'rasterGsV0' }));
+  });
+
   it('después del logo se reinicia la impresora (ESC @) antes de la línea siguiente', async () => {
     const bytes = Array.from(await renderEscPosReceipt({
       paperWidthMm: 80,

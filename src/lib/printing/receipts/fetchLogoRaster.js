@@ -80,6 +80,9 @@ export function computeFitSize(naturalWidth, naturalHeight, maxWidth, maxHeight)
  */
 export async function fetchLogoRaster(logoUrl, {
   maxWidthDots, maxHeightDots = DEFAULT_MAX_HEIGHT_DOTS, graphicsStrategyId, effectivePrintableWidthDots = 0,
+  // false: sin ESC $; la imagen la centra la impresora con ESC a 1 (como el
+  // timbre de la boleta). Solo tiene sentido con GS v 0.
+  absolutePosition = true,
 } = {}) {
   if (!logoUrl || !maxWidthDots) return null;
   const strategy = getGraphicsStrategy(graphicsStrategyId);
@@ -121,7 +124,9 @@ export async function fetchLogoRaster(logoUrl, {
     // su vez no está centrada. `bits`/`width` van SIN modificar a la
     // estrategia de gráficos -- el posicionamiento lo aplica ella misma
     // vía `ESC $`, no un padding previo.
-    const xDots = Math.max(0, Math.floor((Math.max(0, effectivePrintableWidthDots) - width) / 2));
+    const xDots = absolutePosition === false
+      ? undefined
+      : Math.max(0, Math.floor((Math.max(0, effectivePrintableWidthDots) - width) / 2));
     return {
       command: strategy.build(bits, width, height, xDots), width, height, xDots,
     };

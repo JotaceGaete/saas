@@ -323,7 +323,16 @@ export async function buildBoletaReceipt({
   // logo no carga, el renderer imprime el nombre en su lugar.
   const nombre = nombreFantasia ? clean(nombreFantasia).toUpperCase() : null;
   if (logoUrl && printLogo !== false) {
-    lines.push({ type: 'logo', url: logoUrl, maxHeightDots: BOLETA_LOGO_MAX_HEIGHT_DOTS, ...(nombre ? { fallbackText: nombre } : {}) });
+    // Si el timbre se imprime con GS v 0 centrado por la impresora (todas las
+    // impresoras salvo la Star TSP100), el logo va igual: centrado por la
+    // impresora y no con ESC $ sobre un ancho calibrado para otro equipo
+    // (en la XP-80C quedaba corrido a la izquierda).
+    const centeredRaster = ['rasterGsV0', 'rasterGsV0Narrow'].includes(timbre.strategyId);
+    lines.push({
+      type: 'logo', url: logoUrl, maxHeightDots: BOLETA_LOGO_MAX_HEIGHT_DOTS,
+      ...(centeredRaster ? { imageMode: 'rasterGsV0', centered: true } : {}),
+      ...(nombre ? { fallbackText: nombre } : {}),
+    });
   } else if (nombre) {
     lines.push({ type: 'text', text: nombre, align: 'center', bold: true, double: true });
   }
