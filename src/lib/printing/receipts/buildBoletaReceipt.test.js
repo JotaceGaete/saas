@@ -30,15 +30,17 @@ describe('buildBoletaReceipt', () => {
       nombreFantasia: 'Artesellos', logoUrl: 'https://x/logo.png', imageMode: 'rasterGsV0',
       telefono: '9 1234 5678', formaPago: 'Efectivo',
     });
-    expect(receipt.lines[0]).toEqual({ type: 'logo', url: 'https://x/logo.png' });
+    expect(receipt.lines[0]).toEqual({ type: 'logo', url: 'https://x/logo.png', maxHeightDots: 120, fallbackText: 'ARTESELLOS' });
+    // Con logo, el nombre no se repite en grande.
+    expect(receipt.lines.some((l) => l.type === 'text' && l.text === 'ARTESELLOS')).toBe(false);
     expect(receipt.imageMode).toBe('rasterGsV0');
     expect(receipt.lines.some((l) => l.type === 'box')).toBe(false);
-    expect(receipt.lines.filter((l) => l.type === 'row').map((r) => r.left)).toEqual(['Neto', 'IVA (19%)', 'Total exento', 'TOTAL']);
+    expect(receipt.lines.filter((l) => l.type === 'row').map((r) => r.left)).toEqual(['Neto', 'IVA (19%)', 'TOTAL']);
     const texts = receipt.lines.filter((l) => l.type === 'text').map((l) => l.text);
     expect(texts).toContain('Res. 80 del 22-08-2014');
     expect(receipt.lines).toEqual(expect.arrayContaining([
       { type: 'field', label: 'Fono:', value: '9 1234 5678' },
-      { type: 'field', label: 'Forma de pago:', value: 'EFECTIVO' },
+      { type: 'field', label: 'Fecha:', value: '01/11/2026 - Pago: EFECTIVO' },
     ]));
     // Sin printLogo no hay logo; sin logoUrl tampoco.
     const off = await buildBoletaReceipt({ ...base, logoUrl: 'https://x/logo.png', printLogo: false });
@@ -55,7 +57,7 @@ describe('buildBoletaReceipt', () => {
     expect(text).toContain('RUT 11.111.111-1');
     expect(text).toContain('CANT ITEM');
     expect(text).toContain('SUBTOTAL');
-    expect(text).toContain('Comuna:    Coronel');
+    expect(text).toContain('Direccion: Calle Falsa 123, Coronel');
   });
 
   it('arma la representación con los datos del XML y las leyendas del timbre', async () => {
@@ -66,15 +68,13 @@ describe('buildBoletaReceipt', () => {
       'Timbre Electronico S.I.I.', 'Res. 80 de 2014', 'Verifique documento: www.sii.cl',
     ]));
     expect(receipt.lines).toEqual(expect.arrayContaining([
-      { type: 'field', label: 'Direccion:', value: 'Calle Falsa 123' },
-      { type: 'field', label: 'Comuna:', value: 'Coronel' },
+      { type: 'field', label: 'Direccion:', value: 'Calle Falsa 123, Coronel' },
       { type: 'field', label: 'Fecha:', value: '01/11/2026' },
     ]));
     expect(texts).toEqual(expect.arrayContaining(['RUT 11.111.111-1', 'BOLETA ELECTRONICA', 'Nro. 1201']));
     expect(receipt.lines).toEqual(expect.arrayContaining([
       { type: 'row', left: 'Neto', amount: 1000 },
       { type: 'row', left: 'IVA (19%)', amount: 190 },
-      { type: 'row', left: 'Total exento', amount: 0 },
       { type: 'row', left: 'TOTAL', amount: 1190, bold: true },
     ]));
     expect(receipt.lines).toEqual(expect.arrayContaining([
@@ -101,16 +101,17 @@ describe('buildBoletaReceipt', () => {
     const { receipt } = await buildBoletaReceipt({ ...base, reprint: true });
     const texts = receipt.lines.filter((l) => l.type === 'text').map((l) => l.text);
     expect(texts.slice(0, 3)).toEqual(['REIMPRESION', 'Documento emitido el 01-11-2026', 'No corresponde a una nueva emision']);
-    expect(texts.at(-1)).toBe('REIMPRESION BOLETA 1201 - NO ES NUEVA EMISION');
+    expect(texts.at(-2)).toBe('REIMPRESION BOLETA 1201 - NO ES NUEVA EMISION');
+    expect(texts.at(-1)).toBe('Gracias por su compra');
     const { receipt: plain } = await buildBoletaReceipt(base);
     expect(plain.lines.some((l) => /REIMPRESION/.test(l.text || ''))).toBe(false);
   });
 
   it('lleva el número interno de la venta al pie, también en la reimpresión', async () => {
     const last = async (extra) => (await buildBoletaReceipt({ ...base, ...extra })).receipt.lines.filter((l) => l.type === 'text').at(-1).text;
-    expect(await last({ saleNumber: 12 })).toBe('Ref. interna NV-0012');
-    expect(await last({ saleNumber: 12, reprint: true })).toBe('Ref. interna NV-0012');
-    expect(await last({ saleNumber: 'NV-0012' })).toBe('Ref. interna NV-0012');
+    expect(await last({ saleNumber: 12 })).toBe('Gracias por su compra - Ref. NV-0012');
+    expect(await last({ saleNumber: 12, reprint: true })).toBe('Gracias por su compra - Ref. NV-0012');
+    expect(await last({ saleNumber: 'NV-0012' })).toBe('Gracias por su compra - Ref. NV-0012');
     const { receipt } = await buildBoletaReceipt(base);
     expect(receipt.lines.some((l) => /Ref\. interna/.test(l.text || ''))).toBe(false);
   });
@@ -185,5 +186,12 @@ describe('buildTimbreDiagnosticReceipt', () => {
     const bytes = await renderEscPosReceipt(receipt);
     expect(bytes.length).toBeLessThan(256 * 1024);
     await expect(buildTimbreDiagnosticReceipt({ dte, tedVerified: false })).rejects.toMatchObject({ code: 'TED_NOT_VERIFIED' });
+  });
+});
+
+describe('boleta corta', () => {
+  it('con exento, la línea Total exento aparece', async () => {
+    const exento = await buildBoletaReceipt({ ...base, dte: { ...dte, totales: { ...dte.totales, exento: 500 } } });
+    expect(exento.receipt.lines).toEqual(expect.arrayContaining([{ type: 'row', left: 'Total exento', amount: 500 }]));
   });
 });

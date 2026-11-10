@@ -73,8 +73,8 @@ describe('flujo TPV completo (simulado) hasta el conector', () => {
     expect(text).toContain('900001');
     expect(text).toContain('Timbre Electronico S.I.I.');
     // Número interno de la venta al pie, sin tocar el folio SII.
-    expect(text).toContain('Ref. interna NV-0001');
-    expect(text.indexOf('Ref. interna NV-0001')).toBeGreaterThan(text.indexOf('Timbre Electronico S.I.I.'));
+    expect(text).toContain('Ref. NV-0001');
+    expect(text.indexOf('Ref. NV-0001')).toBeGreaterThan(text.indexOf('Timbre Electronico S.I.I.'));
     expect(hasSeq(job.bytes, [0x1b, 0x2a, 0x20])).toBe(true); // ESC * 32
     expect(hasSeq(job.bytes, [0x1d, 0x76, 0x30])).toBe(false); // nunca GS v 0 en la Star
     // El conector acepta el trabajo tal cual (copia de EscPosStreamValidator.cs)...
@@ -135,7 +135,7 @@ describe('flujo TPV completo (simulado) hasta el conector', () => {
     const text = ascii(connector.printed[1].bytes);
     expect(text).toContain('REIMPRESION');
     expect(text).toContain('900001');
-    expect(text).toContain('Ref. interna NV-0042');
+    expect(text).toContain('Ref. NV-0042');
     expect(validateLikeConnector(connector.printed[1].bytes)).toBeNull();
     expect(emitter.providerCalls).toBe(1);
   });

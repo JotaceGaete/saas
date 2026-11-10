@@ -351,7 +351,7 @@ export async function renderEscPosReceipt(receipt) {
         // eslint-disable-next-line no-await-in-loop -- el orden de impresión importa, no se puede paralelizar
         const raster = await fetchLogoRaster(line.url, {
           maxWidthDots,
-          maxHeightDots: LOGO_MAX_HEIGHT_DOTS,
+          maxHeightDots: line.maxHeightDots || LOGO_MAX_HEIGHT_DOTS,
           graphicsStrategyId: receipt?.imageMode,
           effectivePrintableWidthDots: layout.effectivePrintableWidthDots,
         });
@@ -359,6 +359,9 @@ export async function renderEscPosReceipt(receipt) {
           bytes.push(...CMD.ALIGN_LEFT);
           bytes.push(...raster.command);
           bytes.push(LF);
+        } else if (line.fallbackText) {
+          // Si el logo no carga, va el nombre del negocio en su lugar.
+          emitWrapped(line.fallbackText, { align: 'center', bold: true, double: true });
         }
         break;
       }

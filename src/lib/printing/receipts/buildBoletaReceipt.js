@@ -18,7 +18,7 @@
 // moneda, el wrap y los comandos ESC/POS son de renderEscPosReceipt.
 
 import { stripDiacritics } from './renderEscPosReceipt';
-import { saleNumberFooterLine } from './saleNumber';
+import { formatSaleNumber } from './saleNumber';
 import {
   buildRasterCommand, buildTiledColumnBitImageCommand, buildDoubleDensity24BitImageCommand, buildStarSafe24DotImageCommand,
 } from './escPosImage';
@@ -139,6 +139,9 @@ export const TIMBRE_STRATEGIES = Object.freeze({
 });
 
 export const DEFAULT_TIMBRE_STRATEGY_ID = 'rasterGsV0';
+
+/** Alto máximo del logo en la boleta (dots): más bajo que en el ticket para acortar el papel. */
+export const BOLETA_LOGO_MAX_HEIGHT_DOTS = 120;
 
 /** Valor de `ESC $` del timbre en la Star: margen izquierdo / zona de silencio. */
 export const STAR_TIMBRE_X_DOTS = 16;
@@ -316,15 +319,21 @@ export async function buildBoletaReceipt({
   // Logo del negocio, igual que en el ticket normal (misma configuración de
   // impresora: printLogo e imageMode). Si no carga, el renderer lo omite y la
   // boleta imprime completa.
-  if (logoUrl && printLogo !== false) lines.push({ type: 'logo', url: logoUrl });
-  if (nombreFantasia) lines.push({ type: 'text', text: clean(nombreFantasia).toUpperCase(), align: 'center', bold: true, double: true });
+  // Con logo no se repite el nombre en grande (el logo ya lo muestra); si el
+  // logo no carga, el renderer imprime el nombre en su lugar.
+  const nombre = nombreFantasia ? clean(nombreFantasia).toUpperCase() : null;
+  if (logoUrl && printLogo !== false) {
+    lines.push({ type: 'logo', url: logoUrl, maxHeightDots: BOLETA_LOGO_MAX_HEIGHT_DOTS, ...(nombre ? { fallbackText: nombre } : {}) });
+  } else if (nombre) {
+    lines.push({ type: 'text', text: nombre, align: 'center', bold: true, double: true });
+  }
 
   // Documento: RUT, tipo y folio, centrados y en negrita. La oficina del SII va debajo.
   lines.push({ type: 'text', text: `RUT ${formatRut(emisor.rut)}`, align: 'center', bold: true });
   lines.push({ type: 'text', text: 'BOLETA ELECTRONICA', align: 'center', bold: true });
   lines.push({ type: 'text', text: `Nro. ${dte.folio}`, align: 'center', bold: true });
   if (unidadSii) lines.push({ type: 'text', text: `S.I.I. - ${clean(unidadSii).toUpperCase()}`, align: 'center', bold: true });
-  lines.push({ type: 'text', text: '' });
+  lines.push({ type: 'divider' });
 
   lines.push({ type: 'text', text: clean(emisor.razonSocial).toUpperCase(), bold: true });
   if (emisor.giro) lines.push({ type: 'text', text: clean(emisor.giro).toUpperCase() });
@@ -332,14 +341,15 @@ export async function buildBoletaReceipt({
     const v = clean(value);
     if (v) lines.push({ type: 'field', label, value: v });
   };
-  field('Direccion:', emisor.direccion);
-  field('Comuna:', emisor.comuna);
-  if (emisor.ciudad && emisor.ciudad !== emisor.comuna) field('Ciudad:', emisor.ciudad);
+  // Dirección, comuna y ciudad en un solo campo.
+  field('Direccion:', [emisor.direccion, emisor.comuna, emisor.ciudad && emisor.ciudad !== emisor.comuna ? emisor.ciudad : null]
+    .map(clean).filter(Boolean).join(', '));
   if (emisor.sucursal) field('Sucursal:', emisor.sucursal);
   field('Fono:', telefono);
   field('Vendedor:', vendedor);
-  field('Fecha:', formatFechaEmision(dte.fechaEmision).replace(/-/g, '/'));
-  if (formaPago) lines.push({ type: 'field', label: 'Forma de pago:', value: clean(formaPago).toUpperCase() });
+  // Fecha y forma de pago en la misma línea.
+  const fecha = formatFechaEmision(dte.fechaEmision).replace(/-/g, '/');
+  field('Fecha:', formaPago ? `${fecha} - Pago: ${clean(formaPago).toUpperCase()}` : fecha);
 
   lines.push({ type: 'divider' });
   lines.push({ type: 'boletaItemsHeader' });
@@ -357,9 +367,8 @@ export async function buildBoletaReceipt({
   // Totales. Todo sale del XML emitido.
   if (totales.neto != null) lines.push({ type: 'row', left: 'Neto', amount: totales.neto });
   if (totales.iva != null) lines.push({ type: 'row', left: 'IVA (19%)', amount: totales.iva });
-  lines.push({ type: 'row', left: 'Total exento', amount: totales.exento || 0 });
+  if (totales.exento) lines.push({ type: 'row', left: 'Total exento', amount: totales.exento });
   lines.push({ type: 'row', left: 'TOTAL', amount: totales.total, bold: true });
-  lines.push({ type: 'text', text: '' });
 
   lines.push({ type: 'rasterBytes', command: timbre.command, align: timbre.align });
   lines.push({ type: 'text', text: 'Timbre Electronico S.I.I.', align: 'center', bold: true });
@@ -368,14 +377,12 @@ export async function buildBoletaReceipt({
   if (hasResolucion) resText = fechaRes ? `Res. ${resNumero} del ${fechaRes}` : `Res. ${resNumero} de ${resAnio}`;
   lines.push({ type: 'text', text: resText, align: 'center' });
   lines.push({ type: 'text', text: 'Verifique documento: www.sii.cl', align: 'center' });
-  lines.push({ type: 'text', text: '' });
-  lines.push({ type: 'text', text: 'Gracias por su compra', align: 'center' });
   if (notice) lines.push(...notice.footer);
   if (simulation) lines.push({ type: 'text', text: '' }, ...SIMULATION_NOTICE);
-  // Número interno de la venta, al pie y discreto. El folio SII sigue siendo
-  // el de arriba ("Nro."); este número no lo reemplaza ni lo modifica.
-  const saleFooter = saleNumberFooterLine(saleNumber);
-  if (saleFooter) lines.push(saleFooter);
+  // Número interno de la venta, al pie y discreto, en la misma línea que el
+  // agradecimiento. El folio SII sigue siendo el de arriba ("Nro.").
+  const saleLabel = formatSaleNumber(saleNumber);
+  lines.push({ type: 'text', text: saleLabel ? `Gracias por su compra - Ref. ${saleLabel}` : 'Gracias por su compra', align: 'center' });
 
   return {
     receipt: {
