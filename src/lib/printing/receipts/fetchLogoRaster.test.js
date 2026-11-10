@@ -322,3 +322,17 @@ describe('computeFitSize', () => {
     expect(height).toBeGreaterThanOrEqual(1);
   });
 });
+
+describe('findContentBox (bordes blancos del logo)', () => {
+  it('devuelve la caja del dibujo, ignorando blanco y transparencia', async () => {
+    const { findContentBox } = await import('./fetchLogoRaster');
+    const w = 10; const h = 4;
+    const rgba = new Uint8ClampedArray(w * h * 4).fill(255);
+    // Transparente en la columna 9 (aunque sea negro): no cuenta.
+    for (let y = 0; y < h; y++) { const i = (y * w + 9) * 4; rgba[i] = 0; rgba[i + 1] = 0; rgba[i + 2] = 0; rgba[i + 3] = 0; }
+    // Dibujo negro en x=1..3, y=1..2.
+    for (let y = 1; y <= 2; y++) for (let x = 1; x <= 3; x++) { const i = (y * w + x) * 4; rgba[i] = 0; rgba[i + 1] = 0; rgba[i + 2] = 0; }
+    expect(findContentBox(rgba, w, h)).toEqual({ x: 1, y: 1, width: 3, height: 2 });
+    expect(findContentBox(new Uint8ClampedArray(w * h * 4).fill(255), w, h)).toBeNull();
+  });
+});

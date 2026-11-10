@@ -25,7 +25,7 @@ function loadImageElement(url) {
   });
 }
 
-function rasterizeImage(img, targetWidth, targetHeight) {
+function rasterizeImage(img, targetWidth, targetHeight, box = null) {
   const canvas = document.createElement('canvas');
   canvas.width = targetWidth;
   canvas.height = targetHeight;
@@ -35,8 +35,48 @@ function rasterizeImage(img, targetWidth, targetHeight) {
   // como si el área transparente fuera negra.
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, targetWidth, targetHeight);
-  ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
+  if (box) ctx.drawImage(img, box.x, box.y, box.width, box.height, 0, 0, targetWidth, targetHeight);
+  else ctx.drawImage(img, 0, 0, targetWidth, targetHeight);
   return ctx.getImageData(0, 0, targetWidth, targetHeight);
+}
+
+/**
+ * Caja del contenido visible de una imagen RGBA: ignora los bordes blancos o
+ * transparentes. Un logo con más blanco a un lado que al otro salía corrido al
+ * centrarlo (boleta 25007, XP-80C). null si la imagen está vacía.
+ */
+export function findContentBox(rgba, width, height, { threshold = 235 } = {}) {
+  let minX = width; let minY = height; let maxX = -1; let maxY = -1;
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const i = (y * width + x) * 4;
+      const a = rgba[i + 3];
+      if (a < 16) continue;
+      const lum = 0.299 * rgba[i] + 0.587 * rgba[i + 1] + 0.114 * rgba[i + 2];
+      // Sobre fondo blanco: un píxel semitransparente se ve más claro.
+      const shown = 255 - (255 - lum) * (a / 255);
+      if (shown >= threshold) continue;
+      if (x < minX) minX = x;
+      if (x > maxX) maxX = x;
+      if (y < minY) minY = y;
+      if (y > maxY) maxY = y;
+    }
+  }
+  if (maxX < 0) return null;
+  return { x: minX, y: minY, width: maxX - minX + 1, height: maxY - minY + 1 };
+}
+
+// Mejor esfuerzo: si el canvas no permite leer la imagen, se usa entera.
+function contentBoxOf(img, naturalWidth, naturalHeight) {
+  try {
+    const data = rasterizeImage(img, naturalWidth, naturalHeight);
+    if (!data) return null;
+    const box = findContentBox(data.data, naturalWidth, naturalHeight);
+    if (!box || (box.width === naturalWidth && box.height === naturalHeight)) return null;
+    return box;
+  } catch {
+    return null;
+  }
 }
 
 // Ajusta manteniendo proporción dentro de una caja máxima -- nunca
@@ -99,7 +139,11 @@ export async function fetchLogoRaster(logoUrl, {
     const naturalHeight = img.naturalHeight || img.height;
     if (!naturalWidth || !naturalHeight) return null;
 
-    const { width, height: fitHeight } = computeFitSize(naturalWidth, naturalHeight, maxWidthDots, maxHeightDots);
+    // Sin bordes blancos: se centra y se escala solo el dibujo.
+    const box = contentBoxOf(img, naturalWidth, naturalHeight);
+    const srcWidth = box ? box.width : naturalWidth;
+    const srcHeight = box ? box.height : naturalHeight;
+    const { width, height: fitHeight } = computeFitSize(srcWidth, srcHeight, maxWidthDots, maxHeightDots);
     // PRINT-4-BUG13 — la conversión a bandas ESC * (buildTiledColumnBitImageCommand)
     // distorsiona verticalmente el resultado físico (ver escPosImage.js#
     // ESC_STAR_VERTICAL_CORRECTION_FACTOR); se compensa acá, ANTES de
@@ -112,7 +156,7 @@ export async function fetchLogoRaster(logoUrl, {
     const height = strategy.id === GRAPHICS_STRATEGIES.bitImageEscStar.id
       ? applyEscStarVerticalCorrection(fitHeight)
       : fitHeight;
-    const imageData = rasterizeImage(img, width, height);
+    const imageData = rasterizeImage(img, width, height, box);
     if (!imageData) return null;
 
     const grayscale = rgbaToGrayscale(imageData.data, width, height);
