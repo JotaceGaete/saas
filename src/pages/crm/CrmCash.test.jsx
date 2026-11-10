@@ -116,6 +116,7 @@ vi.mock('lib/printing/printService', () => ({
 const buildSaleReceiptMock = vi.fn(() => ({ lines: [] }));
 vi.mock('lib/printing/receipts/buildSaleReceipt', () => ({
   buildSaleReceipt: (...a) => buildSaleReceiptMock(...a),
+  PAYMENT_LABELS: { cash: 'Efectivo' },
 }));
 
 const readPrinterConfigMock = vi.fn();

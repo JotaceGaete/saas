@@ -39,6 +39,8 @@ import {
 } from 'services/crmService';
 import { printService } from 'lib/printing/printService';
 import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
+import { reprintBoletaIfIssued } from 'services/fiscalCashReprint';
+import { paymentLabelOf } from './components/TpvFiscalAutoBoleta';
 import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
 import { buildConnectorConfigKey, readConnectorConfig } from 'lib/printing/connectorConfigStorage';
 import { buildPrintTarget } from 'lib/printing/printRouting';
@@ -1999,6 +2001,28 @@ export default function CrmCash() {
       }
       if (invoice.status === 'anulada') {
         throw new Error('Esta venta está anulada; no se puede reimprimir.');
+      }
+
+      // Con boleta electrónica emitida se reimprime la boleta, no el ticket interno.
+      const boleta = await reprintBoletaIfIssued({
+        businessId: business?.id,
+        invoiceId: invoice.id,
+        saleNumber: invoice.invoice_number ?? null,
+        idempotencyKey: target.idempotencyKey,
+        branding: {
+          name: business?.name || null,
+          logoUrl: business?.logoUrl || business?.logo_url || null,
+          phone: business?.whatsapp || null,
+          paymentLabel: paymentLabelOf(summary?.payments),
+        },
+      });
+      if (boleta.handled) {
+        if (!boleta.ok) throw new Error(boleta.message);
+        setReprintFeedback({
+          tone: 'ok',
+          text: `Reimpresión de la boleta N° ${boleta.folio} enviada a «${boleta.printerName}». Si no sale papel, revisa la impresora.`,
+        });
+        return;
       }
 
       const receipt = buildSaleReceipt({
