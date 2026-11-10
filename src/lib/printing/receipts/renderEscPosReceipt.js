@@ -362,11 +362,13 @@ export async function renderEscPosReceipt(receipt) {
         const raster = await fetchLogoRaster(line.url, {
           maxWidthDots,
           maxHeightDots: line.maxHeightDots || LOGO_MAX_HEIGHT_DOTS,
-          graphicsStrategyId: receipt?.imageMode,
+          graphicsStrategyId: line.imageMode || receipt?.imageMode,
           effectivePrintableWidthDots: layout.effectivePrintableWidthDots,
+          absolutePosition: line.centered !== true,
         });
         if (raster?.command?.length) {
-          bytes.push(...CMD.ALIGN_LEFT);
+          // `centered`: la impresora centra la imagen (ESC a 1, sin ESC $).
+          bytes.push(...(line.centered === true ? CMD.ALIGN_CENTER : CMD.ALIGN_LEFT));
           bytes.push(...raster.command);
           bytes.push(LF);
           // La posición absoluta del logo (ESC $) quedaba aplicada al texto

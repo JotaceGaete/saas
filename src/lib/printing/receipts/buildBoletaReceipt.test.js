@@ -30,7 +30,7 @@ describe('buildBoletaReceipt', () => {
       nombreFantasia: 'Artesellos', logoUrl: 'https://x/logo.png', imageMode: 'rasterGsV0',
       telefono: '9 1234 5678', formaPago: 'Efectivo',
     });
-    expect(receipt.lines[0]).toEqual({ type: 'logo', url: 'https://x/logo.png', maxHeightDots: 120, fallbackText: 'ARTESELLOS' });
+    expect(receipt.lines[0]).toEqual({ type: 'logo', url: 'https://x/logo.png', maxHeightDots: 120, imageMode: 'rasterGsV0', centered: true, fallbackText: 'ARTESELLOS' });
     // Con logo, el nombre no se repite en grande.
     expect(receipt.lines.some((l) => l.type === 'text' && l.text === 'ARTESELLOS')).toBe(false);
     expect(receipt.imageMode).toBe('rasterGsV0');
@@ -206,5 +206,12 @@ describe('bloque centrado', () => {
     // Ninguna línea va con ESC a 0 (izquierda).
     const leftAlign = bytes.some((b, i) => b === 0x1b && bytes[i + 1] === 0x61 && bytes[i + 2] === 0x00);
     expect(leftAlign).toBe(false);
+  });
+});
+
+describe('logo de la boleta', () => {
+  it('en la Star (timbre con ESC $) el logo conserva su posicionamiento de siempre', async () => {
+    const { receipt } = await buildBoletaReceipt({ ...base, logoUrl: 'https://x/l.png', timbreStrategyId: 'starTsp100' });
+    expect(receipt.lines[0]).toEqual({ type: 'logo', url: 'https://x/l.png', maxHeightDots: 120 });
   });
 });
