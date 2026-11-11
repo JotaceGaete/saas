@@ -26,6 +26,11 @@ import {
 } from '../../lib/posTerminalDraftStorage';
 import { isStaleSaleReplay } from '../../lib/posSaleReplay';
 import { formatSaleNumber } from '../../lib/printing/receipts/saleNumber';
+import { POINT_TIMEOUTS_MS, withPointTimeout } from '../../lib/point/pointTimeout';
+import {
+  listParkedPointOperations, parkPointOperation, POINT_TERMINAL_NO_SALE,
+  removeParkedPointOperation, updateParkedPointOperation,
+} from '../../lib/point/parkedPointOperations';
 import { printService } from 'lib/printing/printService';
 import { buildSaleReceipt } from 'lib/printing/receipts/buildSaleReceipt';
 import { buildPrinterConfigKey, readPrinterConfig } from 'lib/printing/printerConfigStorage';
@@ -54,6 +59,11 @@ const PAYMENT_METHODS = [
 const REAL_PAYMENT_METHODS = PAYMENT_METHODS.filter((method) => method.value !== 'credit');
 
 const fmt = (n, currency) => formatMoney(n, currency);
+// "1:05" -- tiempo que lleva esperando un cobro Point.
+const formatElapsed = (ms) => {
+  const total = Math.max(0, Math.floor((Number(ms) || 0) / 1000));
+  return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')}`;
+};
 
 function getProductImageSrc(product) {
   if (product.thumbnail_url) return product.thumbnail_url;
@@ -281,6 +291,14 @@ function CrmTerminalUI() {
   const [pointCanceling, setPointCanceling] = useState(false);
   const pointPollRef = useRef(null);
   const pointCreateKeyRef = useRef(null);
+  // Operación Point que la pantalla está siguiendo. Una respuesta que llega
+  // después de dejar el cobro pendiente (o de cambiar de operación) se ignora.
+  const activePointOpRef = useRef(null);
+  activePointOpRef.current = pointOperation?.operation_id || null;
+  // Cobros dejados «pendientes de verificación» para seguir atendiendo.
+  const [parkedPoint, setParkedPoint] = useState([]);
+  const [pointNotice, setPointNotice] = useState(null);
+  const [pointNow, setPointNow] = useState(() => Date.now());
   const pointStorageKey = useMemo(() => business?.id ? `walinka:point-active:${business.id}` : null, [business?.id]);
 
 
@@ -1242,9 +1260,43 @@ function CrmTerminalUI() {
     if (!pointStorageKey || pointOperation) return;
     try {
       const operationId = localStorage.getItem(pointStorageKey);
-      if (operationId) setPointOperation({ operation_id: operationId, status: 'recovering' });
+      if (operationId) setPointOperation({ operation_id: operationId, status: 'recovering', startedAt: Date.now() });
     } catch { /* localStorage no es autoridad */ }
   }, [pointStorageKey, pointOperation]);
+
+  // Cobros pendientes de verificación: se recuperan al volver al TPV o al
+  // recargar, y se consultan en segundo plano (uno a la vez, sin solaparse).
+  useEffect(() => {
+    if (business?.id) setParkedPoint(listParkedPointOperations(business.id));
+  }, [business?.id]);
+
+  const parkedPointRef = useRef([]);
+  parkedPointRef.current = parkedPoint;
+  const checkParkedPointRef = useRef(null);
+  const hasParkedPoint = parkedPoint.length > 0;
+  useEffect(() => {
+    if (!hasParkedPoint) return undefined;
+    let cancelled = false;
+    let timer = null;
+    const run = async () => {
+      for (const entry of parkedPointRef.current) {
+        if (cancelled) return;
+        // eslint-disable-next-line no-await-in-loop -- una consulta a la vez
+        await checkParkedPointRef.current?.(entry);
+      }
+      if (!cancelled) timer = window.setTimeout(run, 15000);
+    };
+    timer = window.setTimeout(run, 1000);
+    return () => { cancelled = true; if (timer) window.clearTimeout(timer); };
+  }, [hasParkedPoint]);
+
+  // Reloj del cobro en curso: el cajero ve cuánto lleva esperando.
+  const pointWaiting = Boolean(pointOperation?.operation_id);
+  useEffect(() => {
+    if (!pointWaiting) return undefined;
+    const id = window.setInterval(() => setPointNow(Date.now()), 1000);
+    return () => window.clearInterval(id);
+  }, [pointWaiting]);
 
   const finishPointUi = useCallback(async (data) => {
     if (!data?.invoice_id) return;
@@ -1274,7 +1326,10 @@ function CrmTerminalUI() {
   const pollPointOnce = useCallback(async () => {
     const operationId = pointOperation?.operation_id;
     if (!operationId) return;
-    const { data, error } = await pointClient.getPointOrder(operationId);
+    const { data, error } = await withPointTimeout(pointClient.getPointOrder(operationId), POINT_TIMEOUTS_MS.get,
+      'Mercado Pago no respondió. Walinka seguirá consultando este cobro.');
+    // Respuesta tardía de una operación que la pantalla ya no sigue.
+    if (activePointOpRef.current !== operationId) return;
     if (error && !data) { setPointError(error.message); return; }
     const next = data || {};
     setPointOperation(prev => ({ ...prev, ...next }));
@@ -1407,14 +1462,17 @@ function CrmTerminalUI() {
         pointCreateKeyRef.current = crypto.randomUUID();
         saleIdempotencyKeyRef.current = crypto.randomUUID();
       }
-      const { data, error } = await pointClient.createPointOrder({
+      // Límite de espera: si vence, la creación queda ambigua. Se conservan
+      // ambas claves, así un nuevo intento recupera la MISMA order (nunca otra).
+      const { data, error } = await withPointTimeout(pointClient.createPointOrder({
         terminalId: pointTerminalId, items: cart, customerId: customerId || null,
         discount: discountAmount, notes: notes || null,
         createIdempotencyKey: pointCreateKeyRef.current,
         saleIdempotencyKey: saleIdempotencyKeyRef.current,
-      });
+      }), POINT_TIMEOUTS_MS.create,
+      'Mercado Pago no confirmó el envío a la Point. Pulsa de nuevo para recuperar el mismo cobro (no se cobra dos veces).');
       if (data?.operation_id) {
-        setPointOperation(data);
+        setPointOperation({ ...data, startedAt: Date.now() });
         if (pointStorageKey) localStorage.setItem(pointStorageKey, data.operation_id);
       }
       if (error) setPointError(error.message);
@@ -1431,7 +1489,9 @@ function CrmTerminalUI() {
     // consulta se solapa, el cajero igual debe poder solicitar la cancelación.
     setPointCanceling(true); setPointError(null);
     try {
-      const { data, error } = await pointClient.cancelPointOrder(operationId);
+      const { data, error } = await withPointTimeout(pointClient.cancelPointOrder(operationId), POINT_TIMEOUTS_MS.cancel,
+        'Mercado Pago no respondió a la cancelación. El cobro sigue sin confirmar: Walinka seguirá consultándolo. Puedes dejarlo pendiente y seguir atendiendo.');
+      if (activePointOpRef.current !== operationId) return;
       if (error) {
         setPointError(error.message || 'No pudimos confirmar la cancelación. Walinka seguirá consultando el mismo cobro.');
         return;
@@ -1463,6 +1523,94 @@ function CrmTerminalUI() {
       setPointCanceling(false);
     }
   };
+
+  // Dejar el cobro Point «pendiente de verificación» y seguir atendiendo.
+  // No lo cancela ni lo da por cancelado: la operación sigue en el servidor y
+  // se resuelve con el estado real de Mercado Pago (aquí en segundo plano y en
+  // mp-point-reconcile). El carrito se vacía con una clave nueva: si el pago
+  // se aprobó, el servidor registra ESA venta desde su propia copia, así que
+  // volver a cobrar el mismo carrito la duplicaría.
+  const handleParkPoint = () => {
+    const op = pointOperation;
+    if (!op?.operation_id || !business?.id) return;
+    const ok = window.confirm(
+      `El cobro Point de ${fmt(total, business?.currency)} quedará pendiente de verificación.\n\n`
+      + 'Si el cliente pagó en la Point, Walinka registrará la venta sola. No vuelvas a cobrar esta venta.\n\n¿Seguir atendiendo?',
+    );
+    if (!ok) return;
+    const snapshot = {
+      items: [...cart], customer: selectedCustomer, paymentMethod: 'mercado_pago',
+      payments: [{ method: 'mercado_pago', amount: total }],
+      discountAmount, subtotal, total, amountReceived: null, change: null,
+      initialPaymentAmount: null, initialPaymentMethod: null, pendingBalance: 0,
+      paymentStatus: 'Pagada', notes: notes || null,
+    };
+    setParkedPoint(parkPointOperation(business.id, {
+      operation_id: op.operation_id, amount: total, currency: business?.currency || 'CLP',
+      status: op.status || 'unknown', startedAt: op.startedAt || Date.now(), snapshot,
+    }));
+    try { if (pointStorageKey) localStorage.removeItem(pointStorageKey); } catch { /* sin almacenamiento */ }
+    setPointOperation(null);
+    setPointCanceling(false);
+    setPointError(null);
+    setPointErrorReason(null);
+    pointCreateKeyRef.current = null;
+    resetForm();
+    setPointNotice({ tone: 'warn', text: `Cobro Point de ${fmt(total, business?.currency)} pendiente de verificación. Puedes seguir atendiendo; Walinka avisará el resultado.` });
+  };
+
+  const checkParkedPoint = useCallback(async (entry) => {
+    if (!business?.id || !entry?.operation_id) return;
+    const { data, error } = await withPointTimeout(pointClient.getPointOrder(entry.operation_id), POINT_TIMEOUTS_MS.get,
+      'Mercado Pago no respondió.');
+    const next = data || {};
+    const amount = fmt(entry.amount, entry.currency);
+    if (next.invoice_id) {
+      // Pago aprobado: la venta ya la registró el servidor (una sola vez).
+      let sale = next.sale || { id: next.invoice_id };
+      if (sale.invoice_number == null) {
+        const invoiceNumber = await getSaleNumber(business.id, sale.id);
+        if (invoiceNumber != null) sale = { ...sale, invoice_number: invoiceNumber };
+      }
+      if (FISCAL_AUTO_MODE !== 'off' && entry.snapshot) {
+        // La boleta se emite e imprime desde «Boleta pendiente» (mismo flujo fiscal).
+        savePendingFiscalSale(business.id, { sale, ...entry.snapshot, createdAt: new Date().toISOString() });
+        setPendingFiscal(listPendingFiscalSales(business.id));
+      }
+      setParkedPoint(removeParkedPointOperation(business.id, entry.operation_id));
+      const label = formatSaleNumber(sale.invoice_number);
+      setPointNotice({
+        tone: 'ok',
+        text: `Cobro Point de ${amount} aprobado: venta ${label || 'registrada'} registrada.${FISCAL_AUTO_MODE !== 'off' ? ' Emite su boleta con «Recuperar boleta».' : ''}`,
+      });
+      refreshProducts();
+      return;
+    }
+    if (!error && POINT_TERMINAL_NO_SALE.has(next.status)) {
+      setParkedPoint(removeParkedPointOperation(business.id, entry.operation_id));
+      setPointNotice({ tone: 'info', text: `Cobro Point de ${amount} no se realizó (${next.status}). No hubo venta.` });
+      refreshProducts();
+      return;
+    }
+    setParkedPoint(updateParkedPointOperation(business.id, entry.operation_id, {
+      status: next.status || entry.status || 'unknown',
+      lastCheckedAt: new Date().toISOString(),
+      lastError: error ? (error.message || 'Sin respuesta') : null,
+    }));
+  }, [business?.id, business?.currency]);
+  checkParkedPointRef.current = checkParkedPoint;
+
+  const handleCancelParkedPoint = useCallback(async (entry) => {
+    if (!business?.id) return;
+    setParkedPoint(updateParkedPointOperation(business.id, entry.operation_id, { canceling: true }));
+    const { error } = await withPointTimeout(pointClient.cancelPointOrder(entry.operation_id), POINT_TIMEOUTS_MS.cancel,
+      'Mercado Pago no respondió a la cancelación.');
+    setParkedPoint(updateParkedPointOperation(business.id, entry.operation_id, {
+      canceling: false, lastError: error ? (error.message || 'No se pudo cancelar') : null,
+    }));
+    // El resultado solo cuenta si Mercado Pago lo confirma al consultar.
+    await checkParkedPoint(entry);
+  }, [business?.id, checkParkedPoint]);
 
   const handleRegister = async () => {
     // Lock síncrono -- ver comentario junto a la declaración de
@@ -2610,12 +2758,23 @@ function CrmTerminalUI() {
                                       : pointOperation.status === 'processed' ? 'Pago aprobado · registrando venta…'
                                       : 'Enviando cobro a la Point…'}
                                   </p>
-                                  <p className="text-[10px] text-gray-500">Estado: {pointOperation.status || 'consultando'}</p>
+                                  <p className="text-[10px] text-gray-500" data-testid="point-wait-status">
+                                    Estado: {pointOperation.status || 'consultando'}
+                                    {pointOperation.startedAt ? ` · ${formatElapsed(pointNow - pointOperation.startedAt)}` : ''}
+                                  </p>
                                 </div>
                               </div>
+                              {pointCanceling && (
+                                <p className="text-[10px] font-semibold text-gray-600">Cancelando en la Point… esperando la confirmación de Mercado Pago.</p>
+                              )}
                               <button type="button" onClick={handleCancelPoint} disabled={pointCanceling || pointOperation.status === 'processed'}
                                 className="w-full rounded-lg border border-gray-200 px-2 py-2 text-xs font-bold text-gray-600 hover:bg-gray-50 disabled:opacity-40">
                                 {pointCanceling ? 'Cancelando…' : 'Cancelar cobro'}
+                              </button>
+                              {/* Siempre disponible: ninguna falla de la Point bloquea la caja. */}
+                              <button type="button" data-testid="point-park" onClick={handleParkPoint}
+                                className="w-full rounded-lg border border-amber-300 bg-amber-50 px-2 py-2 text-xs font-bold text-amber-800 hover:bg-amber-100">
+                                Dejar pendiente y seguir atendiendo
                               </button>
                             </div>
                           )}
@@ -3180,6 +3339,43 @@ function CrmTerminalUI() {
           onInternalReceipt={handlePrintInternalReceipt}
           onFiscalSettled={handleFiscalSettled}
         />
+      )}
+
+      {(parkedPoint.length > 0 || pointNotice) && (
+        <div role="status" data-testid="point-parked-banner"
+          className="fixed bottom-4 right-4 z-40 w-80 max-w-[calc(100vw-2rem)] rounded-xl border border-amber-300 bg-white p-3 text-xs text-gray-800 shadow-lg">
+          {pointNotice && (
+            <div className={`mb-2 flex items-start justify-between gap-2 rounded-lg px-2 py-1.5 ${pointNotice.tone === 'ok' ? 'bg-emerald-50 text-emerald-900' : pointNotice.tone === 'info' ? 'bg-gray-50 text-gray-700' : 'bg-amber-50 text-amber-900'}`}>
+              <p data-testid="point-notice">{pointNotice.text}</p>
+              <button type="button" onClick={() => setPointNotice(null)} className="shrink-0 font-bold" aria-label="Ocultar aviso">×</button>
+            </div>
+          )}
+          {parkedPoint.length > 0 && (
+            <>
+              <p className="font-black text-amber-900">Cobros Point por verificar</p>
+              <p className="mt-0.5 text-[11px] text-gray-600">No los vuelvas a cobrar. Walinka consulta Mercado Pago y registra la venta si se aprobó.</p>
+              <ul className="mt-2 space-y-1.5">
+                {parkedPoint.map((e) => (
+                  <li key={e.operation_id} data-testid="point-parked-item" className="rounded-lg border border-amber-200 bg-amber-50/60 px-2 py-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-bold">{fmt(e.amount, e.currency)}</span>
+                      <span className="text-[10px] text-gray-500">Estado: {e.status || 'sin confirmar'}</span>
+                    </div>
+                    {e.lastError && <p className="mt-0.5 text-[10px] text-red-700">{e.lastError}</p>}
+                    <div className="mt-1 flex gap-1.5">
+                      <button type="button" onClick={() => checkParkedPoint(e)}
+                        className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-bold hover:bg-gray-50">Consultar estado</button>
+                      <button type="button" onClick={() => handleCancelParkedPoint(e)} disabled={e.canceling || e.status === 'processed'}
+                        className="rounded border border-gray-300 bg-white px-2 py-0.5 text-[10px] font-bold hover:bg-gray-50 disabled:opacity-40">
+                        {e.canceling ? 'Cancelando…' : 'Cancelar en la Point'}
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </div>
       )}
 
       {!ticketData && pendingFiscal.length > 0 && (
