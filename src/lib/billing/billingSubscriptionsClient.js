@@ -1,3 +1,4 @@
+import { fetchOwnBusinessBilling } from '../../services/businessBillingService';
 import { supabase } from '../supabase';
 
 /**
@@ -67,11 +68,7 @@ export async function fetchBillingSubscriptionWithLegacyFallback(businessId) {
     return { ...fromBilling, _displaySource: 'billing_subscriptions' };
   }
 
-  const { data: biz, error } = await supabase
-    .from('wa_businesses')
-    .select('plan_slug, plan_started_at, trial_expires_at, plan_expires_at')
-    .eq('id', id)
-    .maybeSingle();
+  const { data: biz, error } = await fetchOwnBusinessBilling(id);
 
   if (error) {
     console.warn('[billing_subscriptions] legacy wa_businesses read failed', error.message);

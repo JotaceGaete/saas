@@ -47,9 +47,15 @@ beforeEach(() => {
 const BUSINESS_ID = 'biz-1';
 const ORDER_ID = 'order-generated-by-rpc';
 
+// La pre-consulta de plan usa wa_get_business_effective_plan; sin negocio devuelve null
+// (el chequeo se omite, igual que antes). Las demás RPC son la creación del pedido.
+const mockOrderRpc = (result) => rpcMock.mockImplementation((name) =>
+  Promise.resolve(name === 'wa_get_business_effective_plan' ? { data: null, error: null } : result));
+const orderCalls = () => rpcMock.mock.calls.filter((c) => c[0] === 'wa_create_order_with_items');
+
 describe('createOrder — SEGURIDAD-WALINKA-1E: RPC atómica, nunca INSERT directo', () => {
   it('flujo legítimo: llama a wa_create_order_with_items con business_id, datos del pedido e items', async () => {
-    rpcMock.mockResolvedValue({ data: ORDER_ID, error: null });
+    mockOrderRpc({ data: ORDER_ID, error: null });
 
     const items = [
       { productId: 'p1', productName: 'Producto 1', productPrice: 1000, quantity: 2, subtotal: 2000, selectedOptions: [{ name: 'Talla', value: 'M' }] },
@@ -64,8 +70,8 @@ describe('createOrder — SEGURIDAD-WALINKA-1E: RPC atómica, nunca INSERT direc
     expect(error).toBeNull();
     expect(data).toMatchObject({ id: ORDER_ID, businessId: BUSINESS_ID, totalAmount: 2000 });
 
-    expect(rpcMock).toHaveBeenCalledTimes(1);
-    const [fnName, params] = rpcMock.mock.calls[0];
+    expect(orderCalls()).toHaveLength(1);
+    const [fnName, params] = orderCalls()[0];
     expect(fnName).toBe('wa_create_order_with_items');
     expect(params).toMatchObject({
       p_business_id: BUSINESS_ID,
@@ -80,13 +86,13 @@ describe('createOrder — SEGURIDAD-WALINKA-1E: RPC atómica, nunca INSERT direc
   });
 
   it('pedido sin items: p_items es un array vacío (no null, no undefined)', async () => {
-    rpcMock.mockResolvedValue({ data: ORDER_ID, error: null });
+    mockOrderRpc({ data: ORDER_ID, error: null });
     await createOrder(BUSINESS_ID, { customerName: 'Cliente', totalAmount: 0 }, []);
-    expect(rpcMock.mock.calls[0][1].p_items).toEqual([]);
+    expect(orderCalls()[0][1].p_items).toEqual([]);
   });
 
   it('NUNCA llama a supabase.from(\'wa_orders\').insert(...) ni supabase.from(\'wa_order_items\').insert(...) -- esa era la vía insegura', async () => {
-    rpcMock.mockResolvedValue({ data: ORDER_ID, error: null });
+    mockOrderRpc({ data: ORDER_ID, error: null });
     await createOrder(BUSINESS_ID, { customerName: 'Cliente', totalAmount: 1000 }, [
       { productId: 'p1', productName: 'X', productPrice: 1000, quantity: 1, subtotal: 1000 },
     ]);
@@ -99,7 +105,7 @@ describe('createOrder — SEGURIDAD-WALINKA-1E: RPC atómica, nunca INSERT direc
   });
 
   it('PLAN_LIMIT_EXCEEDED devuelto por la RPC (trigger wa_orders_enforce_limit) se traduce al mensaje amigable', async () => {
-    rpcMock.mockResolvedValue({ data: null, error: { message: 'PLAN_LIMIT_EXCEEDED:Tu plan permite 50 pedidos por mes.' } });
+    mockOrderRpc({ data: null, error: { message: 'PLAN_LIMIT_EXCEEDED:Tu plan permite 50 pedidos por mes.' } });
     const { data, error } = await createOrder(BUSINESS_ID, { customerName: 'Cliente', totalAmount: 1000 }, []);
     expect(data).toBeNull();
     expect(error.code).toBe('PLAN_LIMIT_EXCEEDED');
@@ -108,7 +114,7 @@ describe('createOrder — SEGURIDAD-WALINKA-1E: RPC atómica, nunca INSERT direc
 
   it('otro error de la RPC (no PLAN_LIMIT_EXCEEDED) se propaga tal cual', async () => {
     const original = { message: 'some other db error', code: '500' };
-    rpcMock.mockResolvedValue({ data: null, error: original });
+    mockOrderRpc({ data: null, error: original });
     const { data, error } = await createOrder(BUSINESS_ID, { customerName: 'Cliente', totalAmount: 1000 }, []);
     expect(data).toBeNull();
     expect(error).toBe(original);
