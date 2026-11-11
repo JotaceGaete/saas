@@ -2,10 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Icon from 'components/AppIcon';
 import Image from 'components/AppImage';
-import { SUPPORT_WHATSAPP_NUMBER } from 'config/support';
-import { buildWhatsAppUrl } from 'utils/whatsapp';
-
-const SUPPORT_WHATSAPP_CONTACT_HREF = buildWhatsAppUrl('Hola', SUPPORT_WHATSAPP_NUMBER);
+import { SUPPORT_EMAIL } from 'config/support';
 
 export default function PublicHeader({
   businessName = 'Mi Negocio',
@@ -111,21 +108,19 @@ export default function PublicHeader({
           </button>
         )}
 
-        {/* WhatsApp CTA */}
+        {/* Support CTA */}
         <a
-          href={SUPPORT_WHATSAPP_CONTACT_HREF}
-          target="_blank"
-          rel="noopener noreferrer"
+          href={`mailto:${SUPPORT_EMAIL}`}
           className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium text-secondary-foreground transition-all duration-250 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring hover:opacity-90 active:scale-95"
           style={{
             backgroundColor: 'var(--color-secondary)',
             fontFamily: 'var(--font-caption)',
             transition: 'all var(--transition-base)',
           }}
-          aria-label="Contactar por WhatsApp"
+          aria-label="Enviar correo a soporte"
         >
-          <Icon name="MessageCircle" size={15} color="#FFFFFF" />
-          <span>WhatsApp</span>
+          <Icon name="Mail" size={15} color="#FFFFFF" />
+          <span>Soporte</span>
         </a>
       </div>
     </header>
