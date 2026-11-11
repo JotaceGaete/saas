@@ -113,8 +113,11 @@ export default function Dashboard() {
   // Guards: timestamps de la última carga de cada sección.
   // Evitan re-fetches redundantes en visibilitychange y eventos Realtime.
   const lastDashboardFetchAt = useRef(0);
+  const dashboardInFlight = useRef(false);
   const lastAnalyticsFetchAt = useRef(0);
+  const analyticsInFlight = useRef(false);
   const lastPlanUsageFetchAt = useRef(0);
+  const planUsageInFlight = useRef(false);
   const lastAiInsightFetchAt = useRef(0);
   // Debounce timer para eventos Realtime frecuentes (INSERT/UPDATE ráfaga)
   const realtimeDebounceTimer = useRef(null);
@@ -160,7 +163,8 @@ export default function Dashboard() {
   }, [user, business, businessLoading, refreshBusiness]);
 
   const loadDashboardData = useCallback(async () => {
-    if (!business?.id) return;
+    if (!business?.id || dashboardInFlight.current) return;
+    dashboardInFlight.current = true;
     setDataLoading(true);
     try {
       await expireDeliveredOrders(business?.id);
@@ -170,25 +174,27 @@ export default function Dashboard() {
         getPendingOrdersCount(business?.id),
         getWeeklyOrdersCount(business?.id),
       ]);
-      setProducts(productsResponse?.data || []);
+      if (!productsResponse?.error) setProducts(productsResponse?.data || []);
       if (ordersResponse?.error) {
         console.error('[Dashboard] getOrders error:', ordersResponse?.error?.message || ordersResponse?.error);
-        setOrders([]);
+        // Preserve last valid orders when the backend times out.
       } else {
         setOrders(ordersResponse?.data || []);
       }
-      setPendingOrdersCount(pendingRes?.data ?? 0);
-      setWeeklyOrdersCount(weeklyRes?.data ?? 0);
+      if (!pendingRes?.error) setPendingOrdersCount(pendingRes?.data ?? 0);
+      if (!weeklyRes?.error) setWeeklyOrdersCount(weeklyRes?.data ?? 0);
       lastDashboardFetchAt.current = Date.now();
     } catch (err) {
       console.error('Dashboard load error:', err);
     } finally {
+      dashboardInFlight.current = false;
       setDataLoading(false);
     }
   }, [business?.id]);
 
   const loadAnalytics = useCallback(async () => {
-    if (!business?.id) return;
+    if (!business?.id || analyticsInFlight.current) return;
+    analyticsInFlight.current = true;
     setAnalyticsLoading(true);
     try {
       const [dayRes, topRes, revRes, visitRes, funnelRes] = await Promise.all([
@@ -198,17 +204,18 @@ export default function Dashboard() {
         getBusinessVisitStats(business?.id),
         getConversionFunnelStats(business?.id, funnelRange),
       ]);
-      setOrdersByDay(dayRes?.data || []);
-      setTopProducts(topRes?.data || []);
+      if (!dayRes?.error) setOrdersByDay(dayRes?.data || []);
+      if (!topRes?.error) setTopProducts(topRes?.data || []);
       if (revRes?.error) console.error('[Dashboard] getMonthlyRevenue:', revRes.error?.message || revRes.error);
       if (funnelRes?.error) console.error('[Dashboard] getConversionFunnelStats:', funnelRes.error?.message || funnelRes.error);
-      setMonthlyRevenue(revRes?.data || null);
-      setVisitStats(visitRes?.data ?? null);
-      setConversionFunnel(funnelRes?.data ?? null);
+      if (!revRes?.error) setMonthlyRevenue(revRes?.data || null);
+      if (!visitRes?.error) setVisitStats(visitRes?.data ?? null);
+      if (!funnelRes?.error) setConversionFunnel(funnelRes?.data ?? null);
       lastAnalyticsFetchAt.current = Date.now();
     } catch (err) {
       console.error('Analytics load error:', err);
     } finally {
+      analyticsInFlight.current = false;
       setAnalyticsLoading(false);
     }
   }, [business?.id, funnelRange]);
@@ -245,15 +252,17 @@ export default function Dashboard() {
   }, [business?.id, sessionReady, user?.id]);
 
   const loadPlanUsage = useCallback(async () => {
-    if (!business?.id) return;
+    if (!business?.id || planUsageInFlight.current) return;
+    planUsageInFlight.current = true;
     setPlanUsageLoading(true);
     try {
       const res = await getPlanUsage(business?.id);
-      setPlanUsage(res?.data ?? null);
+      if (!res?.error) setPlanUsage(res?.data ?? null);
       lastPlanUsageFetchAt.current = Date.now();
     } catch (err) {
       console.error('[PlanUsage] error:', err);
     } finally {
+      planUsageInFlight.current = false;
       setPlanUsageLoading(false);
     }
   }, [business?.id]);
@@ -334,12 +343,13 @@ export default function Dashboard() {
 
     const onOrderUpdated = async () => {
       await expireDeliveredOrders(business?.id);
-      const [{ data: ordersData }, pendingRes] = await Promise.all([
+      const [ordersRes, pendingRes] = await Promise.all([
         getOrders(business?.id),
         getPendingOrdersCount(business?.id),
       ]);
-      if (ordersData) setOrders(ordersData);
-      setPendingOrdersCount(pendingRes?.data ?? 0);
+      // A failed request must never reset the live order counter to zero.
+      if (!ordersRes?.error && ordersRes?.data) setOrders(ordersRes.data);
+      if (!pendingRes?.error) setPendingOrdersCount(pendingRes?.data ?? 0);
       scheduleDebouncedRefresh();
     };
 
