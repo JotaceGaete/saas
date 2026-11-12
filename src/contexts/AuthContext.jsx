@@ -67,11 +67,22 @@ export const AuthProvider = ({ children }) => {
   const trackingSessionIdRef = useRef(null)
   const trackingCleanupRef = useRef(null)
   const trackingStartedRef = useRef(false)
+  // Usuario para el cual ya tenemos un resultado definitivo del negocio
+  // ('loaded' o 'not_found'). Permite que las recargas disparadas por eventos
+  // de sesión (TOKEN_REFRESHED / SIGNED_IN al volver a la pestaña) ocurran en
+  // segundo plano, sin pasar por 'loading'. Si pasáramos por 'loading', los
+  // guards (RequireCrm, etc.) desmontan la página y se pierde lo que el usuario
+  // estaba escribiendo (ej. una nota de venta o un presupuesto a medio cargar).
+  const resolvedBusinessUserIdRef = useRef(null)
 
   const businessOperations = {
-    async load(userId) {
+    async load(userId, { background = false } = {}) {
       if (!userId) return
-      setBusinessStatus('loading')
+      const silent = background && resolvedBusinessUserIdRef.current === userId
+      if (!silent) {
+        resolvedBusinessUserIdRef.current = null
+        setBusinessStatus('loading')
+      }
       setBusinessLoadError(null)
       try {
         const { data, error } = await getMyBusiness()
@@ -100,11 +111,13 @@ export const AuthProvider = ({ children }) => {
               console.error('Business reload after downgrade failed:', reloadError)
               setBusiness(data)
               setBusinessStatus('loaded')
+              resolvedBusinessUserIdRef.current = userId
               startSessionTracking(data?.id).catch(() => {})
               return
             }
             setBusiness(updated || data)
             setBusinessStatus('loaded')
+            resolvedBusinessUserIdRef.current = userId
             startSessionTracking((updated || data)?.id).catch(() => {})
             if (typeof sessionStorage !== 'undefined') {
               sessionStorage.setItem(trialExpired ? 'showTrialExpiredBanner' : 'showPlanExpiredBanner', '1')
@@ -112,12 +125,14 @@ export const AuthProvider = ({ children }) => {
           } else {
             setBusiness(data)
             setBusinessStatus('loaded')
+            resolvedBusinessUserIdRef.current = userId
             startSessionTracking(data?.id).catch(() => {})
           }
         } else {
           // Consulta exitosa y sin error: el usuario genuinamente no tiene negocio.
           setBusiness(null)
           setBusinessStatus('not_found')
+          resolvedBusinessUserIdRef.current = userId
         }
       } catch (err) {
         console.error('Business load error:', err)
@@ -126,6 +141,7 @@ export const AuthProvider = ({ children }) => {
       }
     },
     clear() {
+      resolvedBusinessUserIdRef.current = null
       setBusiness(null)
       setBusinessStatus('idle')
       setBusinessLoadError(null)
@@ -234,7 +250,9 @@ export const AuthProvider = ({ children }) => {
       setSessionReady(true)
       setLoading(false)
       if (session?.user) {
-        businessOperations?.load(session?.user?.id)
+        // background: si ya teníamos el negocio de este mismo usuario, refrescar
+        // sin desmontar la UI (ver resolvedBusinessUserIdRef).
+        businessOperations?.load(session?.user?.id, { background: true })
       } else {
         businessOperations?.clear()
       }
@@ -467,6 +485,7 @@ export const AuthProvider = ({ children }) => {
     if (data) {
       setBusiness(data)
       setBusinessStatus('loaded')
+      if (user?.id) resolvedBusinessUserIdRef.current = user.id
     }
   }
 

@@ -170,6 +170,32 @@ describe('AuthContext — businessStatus', () => {
     await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('loaded'));
   });
 
+  it('8. TOKEN_REFRESHED/SIGNED_IN con el negocio ya cargado refresca en segundo plano (nunca vuelve a loading)', async () => {
+    getMyBusiness.mockResolvedValueOnce({
+      data: { id: 'b1', name: 'Mi Negocio', planSlug: 'starter', planExpiresAt: null, trialExpiresAt: null },
+      error: null,
+    });
+    const { getOnChange } = await renderWithSession();
+    await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('loaded'));
+
+    let resolveRefresh;
+    getMyBusiness.mockImplementationOnce(() => new Promise((r) => { resolveRefresh = r; }));
+    await act(async () => {
+      getOnChange()('SIGNED_IN', MOCK_SESSION);
+    });
+    // Mientras se refresca, la UI sigue montada (status no pasa a 'loading').
+    expect(screen.getByTestId('status').textContent).toBe('loaded');
+
+    await act(async () => {
+      resolveRefresh({
+        data: { id: 'b1', name: 'Mi Negocio v2', planSlug: 'starter', planExpiresAt: null, trialExpiresAt: null },
+        error: null,
+      });
+    });
+    await waitFor(() => expect(screen.getByTestId('business-name').textContent).toBe('Mi Negocio v2'));
+    expect(screen.getByTestId('status').textContent).toBe('loaded');
+  });
+
   it('7. (defensivo) trial vencido: la reconciliación sigue resolviendo a loaded', async () => {
     const expired = new Date(Date.now() - 60_000).toISOString();
     getMyBusiness

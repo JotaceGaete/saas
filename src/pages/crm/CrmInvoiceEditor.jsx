@@ -31,6 +31,8 @@ import { formatMoney } from '../../utils/formatMoney';
 import { CrmProductSearchModal } from './components/CrmProductSearchModal';
 import { ChileanDateInput } from './components/ChileanDateInput';
 import { QuickCustomerModal } from './components/QuickCustomerModal';
+import { DraftStatusBanner } from './components/DraftStatusBanner';
+import { useDocumentDraft } from '../../hooks/useDocumentDraft';
 
 const STATUS_STYLES = {
   pendiente: 'bg-yellow-100 text-yellow-700',
@@ -110,6 +112,27 @@ export default function CrmInvoiceEditor() {
   const [deliveryDays, setDeliveryDays] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState('');
   const [commercialNotes, setCommercialNotes] = useState('');
+
+  // Borrador local: autoguarda una nota de venta nueva en este navegador y
+  // avisa antes de cerrar/recargar la pestaña con cambios sin guardar.
+  const draft = useDocumentDraft({
+    storageKey: isNew && business?.id
+      ? `crm-draft:invoice:${business.id}:nueva${sourceQuoteId ? `:quote-${sourceQuoteId}` : ''}`
+      : null,
+    ready: !pageLoading && !!business?.id,
+    value: { customerId, issueDate, dueDate, notes, items, paymentTerms, deliveryDays, deliveryMethod, commercialNotes },
+    onRestore: (d) => {
+      setCustomerId(d.customerId || '');
+      setIssueDate(d.issueDate || new Date().toISOString().slice(0, 10));
+      setDueDate(d.dueDate || '');
+      setNotes(d.notes || '');
+      setItems(Array.isArray(d.items) ? d.items : []);
+      setPaymentTerms(d.paymentTerms || '');
+      setDeliveryDays(d.deliveryDays || '');
+      setDeliveryMethod(d.deliveryMethod || '');
+      setCommercialNotes(d.commercialNotes || '');
+    },
+  });
 
   useEffect(() => {
     if (!business?.id) return;
@@ -320,6 +343,7 @@ export default function CrmInvoiceEditor() {
       : await updateCrmInvoice(id, payload);
     setSaving(false);
     if (error) { setSaveError(error.message || 'Error al guardar.'); return; }
+    draft.markSaved();
     if (isNew) {
       navigate(`/crm/facturas/${data.id}`, { replace: true });
     } else {
@@ -543,6 +567,14 @@ export default function CrmInvoiceEditor() {
 
       <DashboardLayoutContent>
         <div className="max-w-3xl space-y-6">
+          {canEdit && (
+            <DraftStatusBanner
+              restoredAt={draft.restoredAt}
+              isDirty={draft.isDirty}
+              persisted={isNew}
+              onDiscard={draft.discardDraft}
+            />
+          )}
           {saveError && (
             <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
               <Icon name="AlertCircle" size={16} />{saveError}

@@ -28,6 +28,8 @@ import { formatMoney } from '../../utils/formatMoney';
 import { CrmProductSearchModal } from './components/CrmProductSearchModal';
 import { QuickCustomerModal } from './components/QuickCustomerModal';
 import { ChileanDateInput } from './components/ChileanDateInput';
+import { DraftStatusBanner } from './components/DraftStatusBanner';
+import { useDocumentDraft } from '../../hooks/useDocumentDraft';
 
 const MANUAL_CHARGES = [
   { name: 'Flete', icon: 'Truck' },
@@ -72,6 +74,24 @@ export default function CrmQuoteEditor() {
   const [deliveryDays, setDeliveryDays] = useState('');
   const [deliveryMethod, setDeliveryMethod] = useState('');
   const [commercialNotes, setCommercialNotes] = useState('');
+
+  // Borrador local: autoguarda un presupuesto nuevo en este navegador y avisa
+  // antes de cerrar/recargar la pestaña con cambios sin guardar.
+  const draft = useDocumentDraft({
+    storageKey: isNew && business?.id ? `crm-draft:quote:${business.id}:nuevo` : null,
+    ready: !pageLoading && !!business?.id,
+    value: { customerId, validUntil, notes, items, paymentTerms, deliveryDays, deliveryMethod, commercialNotes },
+    onRestore: (d) => {
+      setCustomerId(d.customerId || '');
+      setValidUntil(d.validUntil || '');
+      setNotes(d.notes || '');
+      setItems(Array.isArray(d.items) ? d.items : []);
+      setPaymentTerms(d.paymentTerms || '');
+      setDeliveryDays(d.deliveryDays || '');
+      setDeliveryMethod(d.deliveryMethod || '');
+      setCommercialNotes(d.commercialNotes || '');
+    },
+  });
 
   useEffect(() => {
     if (!business?.id) return;
@@ -205,11 +225,13 @@ export default function CrmQuoteEditor() {
       const { data, error } = await createCrmQuote(business.id, payload);
       setSaving(false);
       if (error) { setSaveError(error.message || 'Error al guardar.'); return; }
+      draft.markSaved();
       navigate(`/crm/presupuestos/${data.id}`, { replace: true });
     } else {
       const { data, error } = await updateCrmQuote(id, payload);
       setSaving(false);
       if (error) { setSaveError(error.message || 'Error al guardar.'); return; }
+      draft.markSaved();
       setSaved(data);
     }
   };
@@ -423,6 +445,14 @@ export default function CrmQuoteEditor() {
 
       <DashboardLayoutContent>
         <div className="max-w-3xl space-y-6">
+          {canEdit && (
+            <DraftStatusBanner
+              restoredAt={draft.restoredAt}
+              isDirty={draft.isDirty}
+              persisted={isNew}
+              onDiscard={draft.discardDraft}
+            />
+          )}
           {saveError && (
             <div className="flex items-center gap-2 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
               <Icon name="AlertCircle" size={16} />{saveError}
