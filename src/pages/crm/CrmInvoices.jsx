@@ -9,11 +9,12 @@ import { useAuth } from '../../contexts/AuthContext';
 import { getCrmInvoices, updateCrmInvoiceStatus, formatInvoiceNumber } from '../../services/crmService';
 import { formatMoney } from '../../utils/formatMoney';
 
+// El estado va como texto con un punto de color: sin pastillas de colores compitiendo entre sí.
 const STATUS_STYLES = {
-  pendiente: 'bg-yellow-100 text-yellow-700',
-  parcial:   'bg-amber-100 text-amber-700',
-  pagada:    'bg-green-100 text-green-700',
-  anulada:   'bg-red-100 text-red-600',
+  pendiente: 'text-amber-700',
+  parcial:   'text-amber-700',
+  pagada:    'text-green-700',
+  anulada:   'text-red-600',
 };
 
 export default function CrmInvoices() {
@@ -58,7 +59,7 @@ export default function CrmInvoices() {
   return (
     <DashboardAppShell>
       <PanelHeader
-        title={<><CrmBreadcrumb section="Notas de venta" /><h1 className="text-base font-bold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Facturas internas</h1></>}
+        title={<><CrmBreadcrumb section="Notas de venta" /><h1 className="text-lg font-semibold" style={{ fontFamily: 'var(--font-heading)', color: 'var(--color-foreground)', letterSpacing: '-0.02em' }}>Facturas internas</h1></>}
         subtitle={<p className="text-xs" style={{ color: 'var(--color-muted-foreground)' }}>{loading ? 'Cargando…' : `${invoices.length} factura${invoices.length !== 1 ? 's' : ''}`}</p>}
         mobileActions={
           <button
@@ -123,25 +124,26 @@ export default function CrmInvoices() {
               const fullPaid = saldo <= 0 && pagado > 0;
               const partial  = saldo > 0 && pagado > 0;
               return (
-                <div key={inv.id} className="bg-white border border-gray-200 rounded-xl px-4 py-3 hover:shadow-sm transition-shadow">
+                <div key={inv.id} className={`bg-white border border-gray-200 rounded-xl p-4 ${inv.status === 'anulada' ? 'opacity-60' : ''}`}>
                   <div className="flex items-start justify-between gap-3 min-w-0">
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                        <span className="font-bold text-gray-900 text-sm whitespace-nowrap">{formatInvoiceNumber(inv.invoice_number)}</span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_STYLES[inv.status] || 'bg-gray-100 text-gray-600'}`}>
+                        <span className="font-semibold text-gray-900 text-sm whitespace-nowrap">{formatInvoiceNumber(inv.invoice_number)}</span>
+                        <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${STATUS_STYLES[inv.status] || 'text-gray-600'}`}>
+                          <span className="w-1.5 h-1.5 rounded-full bg-current" aria-hidden="true" />
                           {inv.status.charAt(0).toUpperCase() + inv.status.slice(1)}
                         </span>
                         {fullPaid && inv.status !== 'pagada' && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 font-medium">Completamente pagada</span>
+                          <span className="text-xs font-medium text-green-700">· Completamente pagada</span>
                         )}
                         {partial && (
-                          <span className="text-xs px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 font-medium">Pago parcial</span>
+                          <span className="text-xs font-medium text-amber-700">· Pago parcial</span>
                         )}
                       </div>
                       <p className="text-sm text-gray-500 truncate">{inv.wa_customers?.name || <em className="text-gray-400">Sin cliente</em>}</p>
                     </div>
                     <div className="text-right shrink-0">
-                      <p className="font-bold text-gray-900 text-sm">{fmt(inv.total)}</p>
+                      <p className="font-semibold text-gray-900 text-sm tabular-nums">{fmt(inv.total)}</p>
                       <p className="text-xs text-gray-400">{new Date(inv.issue_date).toLocaleDateString('es-CL')}</p>
                     </div>
                   </div>
@@ -155,42 +157,42 @@ export default function CrmInvoices() {
                     </div>
                   )}
 
-                  <div className="flex flex-wrap items-center gap-2 mt-2.5">
+                  <div className="flex flex-wrap items-center gap-2 mt-3">
                     {inv.status === 'pendiente' && (
                       <button
-                        onClick={() => navigate(`/crm/facturas/${inv.id}`)}
-                        className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 font-medium"
+                        onClick={() => handleStatus(inv.id, 'pagada')}
+                        disabled={!!busy}
+                        className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 font-medium disabled:opacity-50"
                       >
-                        <Icon name="Pencil" size={13} />Editar
+                        <Icon name="CheckCircle2" size={13} />Marcar pagada
                       </button>
                     )}
                     <button
                       onClick={() => navigate(`/crm/facturas/${inv.id}`)}
-                      className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1.5 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
+                      className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-700 hover:bg-gray-50"
                     >
                       <Icon name="Eye" size={13} />Ver / PDF
                     </button>
                     {inv.status === 'pendiente' && (
-                      <>
-                        <button
-                          onClick={() => handleStatus(inv.id, 'pagada')}
-                          disabled={!!busy}
-                          className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 font-medium disabled:opacity-50"
-                        >
-                          <Icon name="CheckCircle2" size={13} />Marcar pagada
-                        </button>
-                        <button
-                          onClick={() => handleStatus(inv.id, 'anulada')}
-                          disabled={!!busy}
-                          className="inline-flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 disabled:opacity-50"
-                        >
-                          <Icon name="XCircle" size={13} />Anular
-                        </button>
-                      </>
+                      <button
+                        onClick={() => navigate(`/crm/facturas/${inv.id}`)}
+                        className="inline-flex items-center gap-1.5 text-xs px-2 py-2 rounded-lg text-gray-500 hover:text-gray-800"
+                      >
+                        <Icon name="Pencil" size={13} />Editar
+                      </button>
+                    )}
+                    {inv.status === 'pendiente' && (
+                      <button
+                        onClick={() => handleStatus(inv.id, 'anulada')}
+                        disabled={!!busy}
+                        className="inline-flex items-center gap-1.5 text-xs px-2 py-2 rounded-lg text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        <Icon name="XCircle" size={13} />Anular
+                      </button>
                     )}
                     {inv.status === 'pagada' && (
-                      <span className="inline-flex items-center gap-1.5 text-xs px-2 py-1.5 text-green-600">
-                        <Icon name="CheckCircle2" size={13} />Pagada {inv.paid_at ? `el ${new Date(inv.paid_at).toLocaleDateString('es-CL')}` : ''}
+                      <span className="text-xs text-gray-500">
+                        Pagada {inv.paid_at ? `el ${new Date(inv.paid_at).toLocaleDateString('es-CL')}` : ''}
                       </span>
                     )}
                   </div>
