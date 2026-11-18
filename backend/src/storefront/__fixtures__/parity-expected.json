@@ -1,0 +1,4228 @@
+{
+  "cafe-demo": {
+    "store": {
+      "slug": "cafe-demo",
+      "name": "Café Demo (rubro: cafetería)",
+      "isDemo": true,
+      "contact": {
+        "whatsapp": null,
+        "email": null
+      },
+      "hoursText": "Lun–Sáb 08:00–20:00",
+      "address": null,
+      "socials": {
+        "instagram": null,
+        "tiktok": null,
+        "facebook": null
+      },
+      "images": {
+        "logoUrl": null,
+        "coverUrl": null
+      },
+      "design": {
+        "primaryColor": "#7a4a2b",
+        "backgroundColor": "#fffaf5",
+        "footerText": "Café Demo · Pedidos por WhatsApp"
+      },
+      "currency": "CLP"
+    },
+    "categories": [
+      {
+        "slug": "cafe",
+        "name": "Café",
+        "sortOrder": 1,
+        "productCount": 2
+      },
+      {
+        "slug": "pasteleria",
+        "name": "Pastelería",
+        "sortOrder": 3,
+        "productCount": 1
+      },
+      {
+        "slug": "infusiones",
+        "name": "Infusiones",
+        "sortOrder": 4,
+        "productCount": 1
+      }
+    ],
+    "listings": {
+      "manual|*|*": [
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        },
+        {
+          "id": "c2",
+          "slug": "cafe-latte",
+          "name": "Latte",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 2800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        },
+        {
+          "id": "c4",
+          "slug": "cafe-te",
+          "name": "Té de hierbas",
+          "publicCode": null,
+          "category": {
+            "slug": "infusiones",
+            "name": "Infusiones"
+          },
+          "price": 1500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 4
+        }
+      ],
+      "manual|*|cafe": [
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        },
+        {
+          "id": "c2",
+          "slug": "cafe-latte",
+          "name": "Latte",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 2800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "manual|*|pasteleria": [
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "manual|*|infusiones": [
+        {
+          "id": "c4",
+          "slug": "cafe-te",
+          "name": "Té de hierbas",
+          "publicCode": null,
+          "category": {
+            "slug": "infusiones",
+            "name": "Infusiones"
+          },
+          "price": 1500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 4
+        }
+      ],
+      "manual|featured|*": [
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        }
+      ],
+      "manual|featured|cafe": [
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        }
+      ],
+      "manual|featured|pasteleria": [],
+      "manual|featured|infusiones": [],
+      "manual|on_sale|*": [
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "manual|on_sale|cafe": [],
+      "manual|on_sale|pasteleria": [
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "manual|on_sale|infusiones": [],
+      "price_asc|*|*": [
+        {
+          "id": "c4",
+          "slug": "cafe-te",
+          "name": "Té de hierbas",
+          "publicCode": null,
+          "category": {
+            "slug": "infusiones",
+            "name": "Infusiones"
+          },
+          "price": 1500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 4
+        },
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        },
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        },
+        {
+          "id": "c2",
+          "slug": "cafe-latte",
+          "name": "Latte",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 2800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_asc|*|cafe": [
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        },
+        {
+          "id": "c2",
+          "slug": "cafe-latte",
+          "name": "Latte",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 2800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_asc|*|pasteleria": [
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "price_asc|*|infusiones": [
+        {
+          "id": "c4",
+          "slug": "cafe-te",
+          "name": "Té de hierbas",
+          "publicCode": null,
+          "category": {
+            "slug": "infusiones",
+            "name": "Infusiones"
+          },
+          "price": 1500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 4
+        }
+      ],
+      "price_asc|featured|*": [
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        }
+      ],
+      "price_asc|featured|cafe": [
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        }
+      ],
+      "price_asc|featured|pasteleria": [],
+      "price_asc|featured|infusiones": [],
+      "price_asc|on_sale|*": [
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "price_asc|on_sale|cafe": [],
+      "price_asc|on_sale|pasteleria": [
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "price_asc|on_sale|infusiones": [],
+      "price_desc|*|*": [
+        {
+          "id": "c2",
+          "slug": "cafe-latte",
+          "name": "Latte",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 2800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        },
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        },
+        {
+          "id": "c4",
+          "slug": "cafe-te",
+          "name": "Té de hierbas",
+          "publicCode": null,
+          "category": {
+            "slug": "infusiones",
+            "name": "Infusiones"
+          },
+          "price": 1500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 4
+        }
+      ],
+      "price_desc|*|cafe": [
+        {
+          "id": "c2",
+          "slug": "cafe-latte",
+          "name": "Latte",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 2800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        }
+      ],
+      "price_desc|*|pasteleria": [
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "price_desc|*|infusiones": [
+        {
+          "id": "c4",
+          "slug": "cafe-te",
+          "name": "Té de hierbas",
+          "publicCode": null,
+          "category": {
+            "slug": "infusiones",
+            "name": "Infusiones"
+          },
+          "price": 1500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 4
+        }
+      ],
+      "price_desc|featured|*": [
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        }
+      ],
+      "price_desc|featured|cafe": [
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        }
+      ],
+      "price_desc|featured|pasteleria": [],
+      "price_desc|featured|infusiones": [],
+      "price_desc|on_sale|*": [
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "price_desc|on_sale|cafe": [],
+      "price_desc|on_sale|pasteleria": [
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "price_desc|on_sale|infusiones": [],
+      "name_asc|*|*": [
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        },
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        },
+        {
+          "id": "c2",
+          "slug": "cafe-latte",
+          "name": "Latte",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 2800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "c4",
+          "slug": "cafe-te",
+          "name": "Té de hierbas",
+          "publicCode": null,
+          "category": {
+            "slug": "infusiones",
+            "name": "Infusiones"
+          },
+          "price": 1500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 4
+        }
+      ],
+      "name_asc|*|cafe": [
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        },
+        {
+          "id": "c2",
+          "slug": "cafe-latte",
+          "name": "Latte",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 2800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "name_asc|*|pasteleria": [
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "name_asc|*|infusiones": [
+        {
+          "id": "c4",
+          "slug": "cafe-te",
+          "name": "Té de hierbas",
+          "publicCode": null,
+          "category": {
+            "slug": "infusiones",
+            "name": "Infusiones"
+          },
+          "price": 1500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 4
+        }
+      ],
+      "name_asc|featured|*": [
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        }
+      ],
+      "name_asc|featured|cafe": [
+        {
+          "id": "c1",
+          "slug": "cafe-espresso",
+          "name": "Espresso",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 1800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": "Doble shot.",
+          "sortOrder": 1
+        }
+      ],
+      "name_asc|featured|pasteleria": [],
+      "name_asc|featured|infusiones": [],
+      "name_asc|on_sale|*": [
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "name_asc|on_sale|cafe": [],
+      "name_asc|on_sale|pasteleria": [
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "name_asc|on_sale|infusiones": []
+    },
+    "searches": {
+      "": [],
+      "a": [
+        {
+          "id": "c3",
+          "slug": "cafe-croissant",
+          "name": "Croissant",
+          "publicCode": null,
+          "category": {
+            "slug": "pasteleria",
+            "name": "Pastelería"
+          },
+          "price": 2200,
+          "compareAtPrice": 2600,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        },
+        {
+          "id": "c2",
+          "slug": "cafe-latte",
+          "name": "Latte",
+          "publicCode": null,
+          "category": {
+            "slug": "cafe",
+            "name": "Café"
+          },
+          "price": 2800,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "c4",
+          "slug": "cafe-te",
+          "name": "Té de hierbas",
+          "publicCode": null,
+          "category": {
+            "slug": "infusiones",
+            "name": "Infusiones"
+          },
+          "price": 1500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "sold_out",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 4
+        }
+      ],
+      "ca": [],
+      "PO": [],
+      "zzz": [],
+      "CAFE": [],
+      "pastel": []
+    },
+    "details": {
+      "cafe-espresso": {
+        "id": "c1",
+        "slug": "cafe-espresso",
+        "name": "Espresso",
+        "publicCode": null,
+        "category": {
+          "slug": "cafe",
+          "name": "Café"
+        },
+        "price": 1800,
+        "compareAtPrice": null,
+        "showPrice": true,
+        "onSale": false,
+        "featured": true,
+        "isMainFeatured": false,
+        "availability": "available",
+        "inventoryControlled": true,
+        "image": null,
+        "shortDescription": "Doble shot.",
+        "sortOrder": 1,
+        "longDescription": null,
+        "gallery": [],
+        "optionsDescription": null,
+        "addOns": [],
+        "combo": null,
+        "video": null
+      },
+      "cafe-latte": {
+        "id": "c2",
+        "slug": "cafe-latte",
+        "name": "Latte",
+        "publicCode": null,
+        "category": {
+          "slug": "cafe",
+          "name": "Café"
+        },
+        "price": 2800,
+        "compareAtPrice": null,
+        "showPrice": true,
+        "onSale": false,
+        "featured": false,
+        "isMainFeatured": false,
+        "availability": "low_stock",
+        "inventoryControlled": true,
+        "image": null,
+        "shortDescription": null,
+        "sortOrder": 2,
+        "longDescription": null,
+        "gallery": [],
+        "optionsDescription": null,
+        "addOns": [],
+        "combo": null,
+        "video": null
+      },
+      "cafe-croissant": {
+        "id": "c3",
+        "slug": "cafe-croissant",
+        "name": "Croissant",
+        "publicCode": null,
+        "category": {
+          "slug": "pasteleria",
+          "name": "Pastelería"
+        },
+        "price": 2200,
+        "compareAtPrice": 2600,
+        "showPrice": true,
+        "onSale": true,
+        "featured": false,
+        "isMainFeatured": false,
+        "availability": "sold_out",
+        "inventoryControlled": true,
+        "image": null,
+        "shortDescription": null,
+        "sortOrder": 3,
+        "longDescription": null,
+        "gallery": [],
+        "optionsDescription": null,
+        "addOns": [],
+        "combo": null,
+        "video": null
+      },
+      "cafe-te": {
+        "id": "c4",
+        "slug": "cafe-te",
+        "name": "Té de hierbas",
+        "publicCode": null,
+        "category": {
+          "slug": "infusiones",
+          "name": "Infusiones"
+        },
+        "price": 1500,
+        "compareAtPrice": null,
+        "showPrice": true,
+        "onSale": false,
+        "featured": false,
+        "isMainFeatured": false,
+        "availability": "sold_out",
+        "inventoryControlled": false,
+        "image": null,
+        "shortDescription": null,
+        "sortOrder": 4,
+        "longDescription": null,
+        "gallery": [],
+        "optionsDescription": null,
+        "addOns": [],
+        "combo": null,
+        "video": null
+      },
+      "cafe-inactivo": null,
+      "cafe-borrador": null
+    }
+  },
+  "ropa-demo": {
+    "store": {
+      "slug": "ropa-demo",
+      "name": "Ropa Demo (rubro: indumentaria)",
+      "isDemo": true,
+      "contact": {
+        "whatsapp": null,
+        "email": null
+      },
+      "hoursText": null,
+      "address": null,
+      "socials": {
+        "instagram": null,
+        "tiktok": null,
+        "facebook": null
+      },
+      "images": {
+        "logoUrl": null,
+        "coverUrl": null
+      },
+      "design": {
+        "primaryColor": "#111111",
+        "backgroundColor": "#ffffff",
+        "footerText": null
+      },
+      "currency": "CLP"
+    },
+    "categories": [
+      {
+        "slug": "poleras",
+        "name": "Poleras",
+        "sortOrder": 1,
+        "productCount": 1
+      },
+      {
+        "slug": "chaquetas",
+        "name": "Chaquetas",
+        "sortOrder": 2,
+        "productCount": 1
+      },
+      {
+        "slug": "pantalones",
+        "name": "Pantalones",
+        "sortOrder": 3,
+        "productCount": 1
+      }
+    ],
+    "listings": {
+      "manual|*|*": [
+        {
+          "id": "r1",
+          "slug": "polera-basica",
+          "name": "Polera básica",
+          "publicCode": null,
+          "category": {
+            "slug": "poleras",
+            "name": "Poleras"
+          },
+          "price": 12990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://images.unsplash.com/photo-demo-1",
+          "shortDescription": null,
+          "sortOrder": 1
+        },
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "r3",
+          "slug": "jeans-recto",
+          "name": "Jeans recto",
+          "publicCode": null,
+          "category": {
+            "slug": "pantalones",
+            "name": "Pantalones"
+          },
+          "price": 29990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "manual|*|poleras": [
+        {
+          "id": "r1",
+          "slug": "polera-basica",
+          "name": "Polera básica",
+          "publicCode": null,
+          "category": {
+            "slug": "poleras",
+            "name": "Poleras"
+          },
+          "price": 12990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://images.unsplash.com/photo-demo-1",
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "manual|*|chaquetas": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "manual|*|pantalones": [
+        {
+          "id": "r3",
+          "slug": "jeans-recto",
+          "name": "Jeans recto",
+          "publicCode": null,
+          "category": {
+            "slug": "pantalones",
+            "name": "Pantalones"
+          },
+          "price": 29990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "manual|featured|*": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "manual|featured|poleras": [],
+      "manual|featured|chaquetas": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "manual|featured|pantalones": [],
+      "manual|on_sale|*": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "manual|on_sale|poleras": [],
+      "manual|on_sale|chaquetas": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "manual|on_sale|pantalones": [],
+      "price_asc|*|*": [
+        {
+          "id": "r1",
+          "slug": "polera-basica",
+          "name": "Polera básica",
+          "publicCode": null,
+          "category": {
+            "slug": "poleras",
+            "name": "Poleras"
+          },
+          "price": 12990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://images.unsplash.com/photo-demo-1",
+          "shortDescription": null,
+          "sortOrder": 1
+        },
+        {
+          "id": "r3",
+          "slug": "jeans-recto",
+          "name": "Jeans recto",
+          "publicCode": null,
+          "category": {
+            "slug": "pantalones",
+            "name": "Pantalones"
+          },
+          "price": 29990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        },
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_asc|*|poleras": [
+        {
+          "id": "r1",
+          "slug": "polera-basica",
+          "name": "Polera básica",
+          "publicCode": null,
+          "category": {
+            "slug": "poleras",
+            "name": "Poleras"
+          },
+          "price": 12990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://images.unsplash.com/photo-demo-1",
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_asc|*|chaquetas": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_asc|*|pantalones": [
+        {
+          "id": "r3",
+          "slug": "jeans-recto",
+          "name": "Jeans recto",
+          "publicCode": null,
+          "category": {
+            "slug": "pantalones",
+            "name": "Pantalones"
+          },
+          "price": 29990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "price_asc|featured|*": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_asc|featured|poleras": [],
+      "price_asc|featured|chaquetas": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_asc|featured|pantalones": [],
+      "price_asc|on_sale|*": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_asc|on_sale|poleras": [],
+      "price_asc|on_sale|chaquetas": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_asc|on_sale|pantalones": [],
+      "price_desc|*|*": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "r3",
+          "slug": "jeans-recto",
+          "name": "Jeans recto",
+          "publicCode": null,
+          "category": {
+            "slug": "pantalones",
+            "name": "Pantalones"
+          },
+          "price": 29990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        },
+        {
+          "id": "r1",
+          "slug": "polera-basica",
+          "name": "Polera básica",
+          "publicCode": null,
+          "category": {
+            "slug": "poleras",
+            "name": "Poleras"
+          },
+          "price": 12990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://images.unsplash.com/photo-demo-1",
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_desc|*|poleras": [
+        {
+          "id": "r1",
+          "slug": "polera-basica",
+          "name": "Polera básica",
+          "publicCode": null,
+          "category": {
+            "slug": "poleras",
+            "name": "Poleras"
+          },
+          "price": 12990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://images.unsplash.com/photo-demo-1",
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_desc|*|chaquetas": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_desc|*|pantalones": [
+        {
+          "id": "r3",
+          "slug": "jeans-recto",
+          "name": "Jeans recto",
+          "publicCode": null,
+          "category": {
+            "slug": "pantalones",
+            "name": "Pantalones"
+          },
+          "price": 29990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "price_desc|featured|*": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_desc|featured|poleras": [],
+      "price_desc|featured|chaquetas": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_desc|featured|pantalones": [],
+      "price_desc|on_sale|*": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_desc|on_sale|poleras": [],
+      "price_desc|on_sale|chaquetas": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_desc|on_sale|pantalones": [],
+      "name_asc|*|*": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "r3",
+          "slug": "jeans-recto",
+          "name": "Jeans recto",
+          "publicCode": null,
+          "category": {
+            "slug": "pantalones",
+            "name": "Pantalones"
+          },
+          "price": 29990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        },
+        {
+          "id": "r1",
+          "slug": "polera-basica",
+          "name": "Polera básica",
+          "publicCode": null,
+          "category": {
+            "slug": "poleras",
+            "name": "Poleras"
+          },
+          "price": 12990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://images.unsplash.com/photo-demo-1",
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "name_asc|*|poleras": [
+        {
+          "id": "r1",
+          "slug": "polera-basica",
+          "name": "Polera básica",
+          "publicCode": null,
+          "category": {
+            "slug": "poleras",
+            "name": "Poleras"
+          },
+          "price": 12990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://images.unsplash.com/photo-demo-1",
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "name_asc|*|chaquetas": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "name_asc|*|pantalones": [
+        {
+          "id": "r3",
+          "slug": "jeans-recto",
+          "name": "Jeans recto",
+          "publicCode": null,
+          "category": {
+            "slug": "pantalones",
+            "name": "Pantalones"
+          },
+          "price": 29990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "name_asc|featured|*": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "name_asc|featured|poleras": [],
+      "name_asc|featured|chaquetas": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "name_asc|featured|pantalones": [],
+      "name_asc|on_sale|*": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "name_asc|on_sale|poleras": [],
+      "name_asc|on_sale|chaquetas": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "name_asc|on_sale|pantalones": []
+    },
+    "searches": {
+      "": [],
+      "a": [
+        {
+          "id": "r2",
+          "slug": "chaqueta-denim",
+          "name": "Chaqueta denim",
+          "publicCode": null,
+          "category": {
+            "slug": "chaquetas",
+            "name": "Chaquetas"
+          },
+          "price": 39990,
+          "compareAtPrice": 49990,
+          "showPrice": true,
+          "onSale": true,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "r3",
+          "slug": "jeans-recto",
+          "name": "Jeans recto",
+          "publicCode": null,
+          "category": {
+            "slug": "pantalones",
+            "name": "Pantalones"
+          },
+          "price": 29990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "low_stock",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        },
+        {
+          "id": "r1",
+          "slug": "polera-basica",
+          "name": "Polera básica",
+          "publicCode": null,
+          "category": {
+            "slug": "poleras",
+            "name": "Poleras"
+          },
+          "price": 12990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://images.unsplash.com/photo-demo-1",
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "ca": [
+        {
+          "id": "r1",
+          "slug": "polera-basica",
+          "name": "Polera básica",
+          "publicCode": null,
+          "category": {
+            "slug": "poleras",
+            "name": "Poleras"
+          },
+          "price": 12990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://images.unsplash.com/photo-demo-1",
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "PO": [
+        {
+          "id": "r1",
+          "slug": "polera-basica",
+          "name": "Polera básica",
+          "publicCode": null,
+          "category": {
+            "slug": "poleras",
+            "name": "Poleras"
+          },
+          "price": 12990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": "https://images.unsplash.com/photo-demo-1",
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "zzz": [],
+      "CAFE": [],
+      "pastel": []
+    },
+    "details": {
+      "polera-basica": {
+        "id": "r1",
+        "slug": "polera-basica",
+        "name": "Polera básica",
+        "publicCode": null,
+        "category": {
+          "slug": "poleras",
+          "name": "Poleras"
+        },
+        "price": 12990,
+        "compareAtPrice": null,
+        "showPrice": true,
+        "onSale": false,
+        "featured": false,
+        "isMainFeatured": false,
+        "availability": "available",
+        "inventoryControlled": false,
+        "image": "https://images.unsplash.com/photo-demo-1",
+        "shortDescription": null,
+        "sortOrder": 1,
+        "longDescription": null,
+        "gallery": [
+          "https://images.unsplash.com/photo-demo-1"
+        ],
+        "optionsDescription": null,
+        "addOns": [],
+        "combo": null,
+        "video": null
+      },
+      "chaqueta-denim": {
+        "id": "r2",
+        "slug": "chaqueta-denim",
+        "name": "Chaqueta denim",
+        "publicCode": null,
+        "category": {
+          "slug": "chaquetas",
+          "name": "Chaquetas"
+        },
+        "price": 39990,
+        "compareAtPrice": 49990,
+        "showPrice": true,
+        "onSale": true,
+        "featured": false,
+        "isMainFeatured": true,
+        "availability": "available",
+        "inventoryControlled": false,
+        "image": "https://media.gong.cl/demo/chaqueta-card.jpg",
+        "shortDescription": null,
+        "sortOrder": 2,
+        "longDescription": null,
+        "gallery": [],
+        "optionsDescription": null,
+        "addOns": [],
+        "combo": null,
+        "video": null
+      },
+      "jeans-recto": {
+        "id": "r3",
+        "slug": "jeans-recto",
+        "name": "Jeans recto",
+        "publicCode": null,
+        "category": {
+          "slug": "pantalones",
+          "name": "Pantalones"
+        },
+        "price": 29990,
+        "compareAtPrice": null,
+        "showPrice": true,
+        "onSale": false,
+        "featured": false,
+        "isMainFeatured": false,
+        "availability": "low_stock",
+        "inventoryControlled": true,
+        "image": null,
+        "shortDescription": null,
+        "sortOrder": 3,
+        "longDescription": null,
+        "gallery": [],
+        "optionsDescription": null,
+        "addOns": [],
+        "combo": null,
+        "video": null
+      }
+    }
+  },
+  "ferreteria-demo": {
+    "store": {
+      "slug": "ferreteria-demo",
+      "name": "Ferretería Demo (rubro: ferretería)",
+      "isDemo": true,
+      "contact": {
+        "whatsapp": null,
+        "email": null
+      },
+      "hoursText": null,
+      "address": null,
+      "socials": {
+        "instagram": null,
+        "tiktok": null,
+        "facebook": null
+      },
+      "images": {
+        "logoUrl": null,
+        "coverUrl": null
+      },
+      "design": {
+        "primaryColor": "#b45309",
+        "backgroundColor": "#fafaf9",
+        "footerText": null
+      },
+      "currency": "CLP"
+    },
+    "categories": [
+      {
+        "slug": "herramientas",
+        "name": "Herramientas",
+        "sortOrder": 1,
+        "productCount": 1
+      },
+      {
+        "slug": "fijaciones",
+        "name": "Fijaciones",
+        "sortOrder": 2,
+        "productCount": 1
+      },
+      {
+        "slug": "pinturas",
+        "name": "Pinturas",
+        "sortOrder": 3,
+        "productCount": 1
+      }
+    ],
+    "listings": {
+      "manual|*|*": [
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        },
+        {
+          "id": "f2",
+          "slug": "tornillos-caja",
+          "name": "Caja de tornillos",
+          "publicCode": null,
+          "category": {
+            "slug": "fijaciones",
+            "name": "Fijaciones"
+          },
+          "price": 3500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "f3",
+          "slug": "pintura-blanca",
+          "name": "Pintura blanca 4L",
+          "publicCode": null,
+          "category": {
+            "slug": "pinturas",
+            "name": "Pinturas"
+          },
+          "price": 15990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "manual|*|herramientas": [
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "manual|*|fijaciones": [
+        {
+          "id": "f2",
+          "slug": "tornillos-caja",
+          "name": "Caja de tornillos",
+          "publicCode": null,
+          "category": {
+            "slug": "fijaciones",
+            "name": "Fijaciones"
+          },
+          "price": 3500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "manual|*|pinturas": [
+        {
+          "id": "f3",
+          "slug": "pintura-blanca",
+          "name": "Pintura blanca 4L",
+          "publicCode": null,
+          "category": {
+            "slug": "pinturas",
+            "name": "Pinturas"
+          },
+          "price": 15990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "manual|featured|*": [
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "manual|featured|herramientas": [
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "manual|featured|fijaciones": [],
+      "manual|featured|pinturas": [],
+      "manual|on_sale|*": [],
+      "manual|on_sale|herramientas": [],
+      "manual|on_sale|fijaciones": [],
+      "manual|on_sale|pinturas": [],
+      "price_asc|*|*": [
+        {
+          "id": "f2",
+          "slug": "tornillos-caja",
+          "name": "Caja de tornillos",
+          "publicCode": null,
+          "category": {
+            "slug": "fijaciones",
+            "name": "Fijaciones"
+          },
+          "price": 3500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "f3",
+          "slug": "pintura-blanca",
+          "name": "Pintura blanca 4L",
+          "publicCode": null,
+          "category": {
+            "slug": "pinturas",
+            "name": "Pinturas"
+          },
+          "price": 15990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        },
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_asc|*|herramientas": [
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_asc|*|fijaciones": [
+        {
+          "id": "f2",
+          "slug": "tornillos-caja",
+          "name": "Caja de tornillos",
+          "publicCode": null,
+          "category": {
+            "slug": "fijaciones",
+            "name": "Fijaciones"
+          },
+          "price": 3500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_asc|*|pinturas": [
+        {
+          "id": "f3",
+          "slug": "pintura-blanca",
+          "name": "Pintura blanca 4L",
+          "publicCode": null,
+          "category": {
+            "slug": "pinturas",
+            "name": "Pinturas"
+          },
+          "price": 15990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "price_asc|featured|*": [
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_asc|featured|herramientas": [
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_asc|featured|fijaciones": [],
+      "price_asc|featured|pinturas": [],
+      "price_asc|on_sale|*": [],
+      "price_asc|on_sale|herramientas": [],
+      "price_asc|on_sale|fijaciones": [],
+      "price_asc|on_sale|pinturas": [],
+      "price_desc|*|*": [
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        },
+        {
+          "id": "f3",
+          "slug": "pintura-blanca",
+          "name": "Pintura blanca 4L",
+          "publicCode": null,
+          "category": {
+            "slug": "pinturas",
+            "name": "Pinturas"
+          },
+          "price": 15990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        },
+        {
+          "id": "f2",
+          "slug": "tornillos-caja",
+          "name": "Caja de tornillos",
+          "publicCode": null,
+          "category": {
+            "slug": "fijaciones",
+            "name": "Fijaciones"
+          },
+          "price": 3500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_desc|*|herramientas": [
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_desc|*|fijaciones": [
+        {
+          "id": "f2",
+          "slug": "tornillos-caja",
+          "name": "Caja de tornillos",
+          "publicCode": null,
+          "category": {
+            "slug": "fijaciones",
+            "name": "Fijaciones"
+          },
+          "price": 3500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_desc|*|pinturas": [
+        {
+          "id": "f3",
+          "slug": "pintura-blanca",
+          "name": "Pintura blanca 4L",
+          "publicCode": null,
+          "category": {
+            "slug": "pinturas",
+            "name": "Pinturas"
+          },
+          "price": 15990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "price_desc|featured|*": [
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_desc|featured|herramientas": [
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_desc|featured|fijaciones": [],
+      "price_desc|featured|pinturas": [],
+      "price_desc|on_sale|*": [],
+      "price_desc|on_sale|herramientas": [],
+      "price_desc|on_sale|fijaciones": [],
+      "price_desc|on_sale|pinturas": [],
+      "name_asc|*|*": [
+        {
+          "id": "f2",
+          "slug": "tornillos-caja",
+          "name": "Caja de tornillos",
+          "publicCode": null,
+          "category": {
+            "slug": "fijaciones",
+            "name": "Fijaciones"
+          },
+          "price": 3500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "f3",
+          "slug": "pintura-blanca",
+          "name": "Pintura blanca 4L",
+          "publicCode": null,
+          "category": {
+            "slug": "pinturas",
+            "name": "Pinturas"
+          },
+          "price": 15990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        },
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "name_asc|*|herramientas": [
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "name_asc|*|fijaciones": [
+        {
+          "id": "f2",
+          "slug": "tornillos-caja",
+          "name": "Caja de tornillos",
+          "publicCode": null,
+          "category": {
+            "slug": "fijaciones",
+            "name": "Fijaciones"
+          },
+          "price": 3500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "name_asc|*|pinturas": [
+        {
+          "id": "f3",
+          "slug": "pintura-blanca",
+          "name": "Pintura blanca 4L",
+          "publicCode": null,
+          "category": {
+            "slug": "pinturas",
+            "name": "Pinturas"
+          },
+          "price": 15990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "name_asc|featured|*": [
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "name_asc|featured|herramientas": [
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "name_asc|featured|fijaciones": [],
+      "name_asc|featured|pinturas": [],
+      "name_asc|on_sale|*": [],
+      "name_asc|on_sale|herramientas": [],
+      "name_asc|on_sale|fijaciones": [],
+      "name_asc|on_sale|pinturas": []
+    },
+    "searches": {
+      "": [],
+      "a": [
+        {
+          "id": "f2",
+          "slug": "tornillos-caja",
+          "name": "Caja de tornillos",
+          "publicCode": null,
+          "category": {
+            "slug": "fijaciones",
+            "name": "Fijaciones"
+          },
+          "price": 3500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "f3",
+          "slug": "pintura-blanca",
+          "name": "Pintura blanca 4L",
+          "publicCode": null,
+          "category": {
+            "slug": "pinturas",
+            "name": "Pinturas"
+          },
+          "price": 15990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        },
+        {
+          "id": "f1",
+          "slug": "taladro-18v",
+          "name": "Taladro 18V",
+          "publicCode": null,
+          "category": {
+            "slug": "herramientas",
+            "name": "Herramientas"
+          },
+          "price": 89990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": true,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": true,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "ca": [
+        {
+          "id": "f2",
+          "slug": "tornillos-caja",
+          "name": "Caja de tornillos",
+          "publicCode": null,
+          "category": {
+            "slug": "fijaciones",
+            "name": "Fijaciones"
+          },
+          "price": 3500,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "f3",
+          "slug": "pintura-blanca",
+          "name": "Pintura blanca 4L",
+          "publicCode": null,
+          "category": {
+            "slug": "pinturas",
+            "name": "Pinturas"
+          },
+          "price": 15990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 3
+        }
+      ],
+      "PO": [],
+      "zzz": [],
+      "CAFE": [],
+      "pastel": []
+    },
+    "details": {
+      "taladro-18v": {
+        "id": "f1",
+        "slug": "taladro-18v",
+        "name": "Taladro 18V",
+        "publicCode": null,
+        "category": {
+          "slug": "herramientas",
+          "name": "Herramientas"
+        },
+        "price": 89990,
+        "compareAtPrice": null,
+        "showPrice": true,
+        "onSale": false,
+        "featured": true,
+        "isMainFeatured": false,
+        "availability": "available",
+        "inventoryControlled": true,
+        "image": null,
+        "shortDescription": null,
+        "sortOrder": 1,
+        "longDescription": null,
+        "gallery": [],
+        "optionsDescription": null,
+        "addOns": [],
+        "combo": null,
+        "video": null
+      },
+      "tornillos-caja": {
+        "id": "f2",
+        "slug": "tornillos-caja",
+        "name": "Caja de tornillos",
+        "publicCode": null,
+        "category": {
+          "slug": "fijaciones",
+          "name": "Fijaciones"
+        },
+        "price": 3500,
+        "compareAtPrice": null,
+        "showPrice": true,
+        "onSale": false,
+        "featured": false,
+        "isMainFeatured": false,
+        "availability": "available",
+        "inventoryControlled": false,
+        "image": null,
+        "shortDescription": null,
+        "sortOrder": 2,
+        "longDescription": null,
+        "gallery": [],
+        "optionsDescription": null,
+        "addOns": [],
+        "combo": null,
+        "video": null
+      },
+      "pintura-blanca": {
+        "id": "f3",
+        "slug": "pintura-blanca",
+        "name": "Pintura blanca 4L",
+        "publicCode": null,
+        "category": {
+          "slug": "pinturas",
+          "name": "Pinturas"
+        },
+        "price": 15990,
+        "compareAtPrice": null,
+        "showPrice": true,
+        "onSale": false,
+        "featured": false,
+        "isMainFeatured": false,
+        "availability": "available",
+        "inventoryControlled": false,
+        "image": null,
+        "shortDescription": null,
+        "sortOrder": 3,
+        "longDescription": null,
+        "gallery": [],
+        "optionsDescription": null,
+        "addOns": [
+          {
+            "type": "manual",
+            "label": "Rodillo incluido",
+            "price": null
+          }
+        ],
+        "combo": null,
+        "video": null
+      }
+    }
+  },
+  "floreria-demo": {
+    "store": {
+      "slug": "floreria-demo",
+      "name": "Florería Demo (rubro: floristería)",
+      "isDemo": true,
+      "contact": {
+        "whatsapp": null,
+        "email": null
+      },
+      "hoursText": null,
+      "address": null,
+      "socials": {
+        "instagram": null,
+        "tiktok": null,
+        "facebook": null
+      },
+      "images": {
+        "logoUrl": null,
+        "coverUrl": null
+      },
+      "design": {
+        "primaryColor": "#be185d",
+        "backgroundColor": "#fff7fb",
+        "footerText": null
+      },
+      "currency": "CLP"
+    },
+    "categories": [
+      {
+        "slug": "ramos",
+        "name": "Ramos",
+        "sortOrder": 1,
+        "productCount": 1
+      },
+      {
+        "slug": "plantas",
+        "name": "Plantas",
+        "sortOrder": 2,
+        "productCount": 1
+      }
+    ],
+    "listings": {
+      "manual|*|*": [
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        },
+        {
+          "id": "l2",
+          "slug": "maceta-suculenta",
+          "name": "Maceta suculenta",
+          "publicCode": null,
+          "category": {
+            "slug": "plantas",
+            "name": "Plantas"
+          },
+          "price": 6990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "manual|*|ramos": [
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "manual|*|plantas": [
+        {
+          "id": "l2",
+          "slug": "maceta-suculenta",
+          "name": "Maceta suculenta",
+          "publicCode": null,
+          "category": {
+            "slug": "plantas",
+            "name": "Plantas"
+          },
+          "price": 6990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "manual|featured|*": [
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "manual|featured|ramos": [
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "manual|featured|plantas": [],
+      "manual|on_sale|*": [],
+      "manual|on_sale|ramos": [],
+      "manual|on_sale|plantas": [],
+      "price_asc|*|*": [
+        {
+          "id": "l2",
+          "slug": "maceta-suculenta",
+          "name": "Maceta suculenta",
+          "publicCode": null,
+          "category": {
+            "slug": "plantas",
+            "name": "Plantas"
+          },
+          "price": 6990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_asc|*|ramos": [
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_asc|*|plantas": [
+        {
+          "id": "l2",
+          "slug": "maceta-suculenta",
+          "name": "Maceta suculenta",
+          "publicCode": null,
+          "category": {
+            "slug": "plantas",
+            "name": "Plantas"
+          },
+          "price": 6990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_asc|featured|*": [
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_asc|featured|ramos": [
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_asc|featured|plantas": [],
+      "price_asc|on_sale|*": [],
+      "price_asc|on_sale|ramos": [],
+      "price_asc|on_sale|plantas": [],
+      "price_desc|*|*": [
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        },
+        {
+          "id": "l2",
+          "slug": "maceta-suculenta",
+          "name": "Maceta suculenta",
+          "publicCode": null,
+          "category": {
+            "slug": "plantas",
+            "name": "Plantas"
+          },
+          "price": 6990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_desc|*|ramos": [
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_desc|*|plantas": [
+        {
+          "id": "l2",
+          "slug": "maceta-suculenta",
+          "name": "Maceta suculenta",
+          "publicCode": null,
+          "category": {
+            "slug": "plantas",
+            "name": "Plantas"
+          },
+          "price": 6990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "price_desc|featured|*": [
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_desc|featured|ramos": [
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "price_desc|featured|plantas": [],
+      "price_desc|on_sale|*": [],
+      "price_desc|on_sale|ramos": [],
+      "price_desc|on_sale|plantas": [],
+      "name_asc|*|*": [
+        {
+          "id": "l2",
+          "slug": "maceta-suculenta",
+          "name": "Maceta suculenta",
+          "publicCode": null,
+          "category": {
+            "slug": "plantas",
+            "name": "Plantas"
+          },
+          "price": 6990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "name_asc|*|ramos": [
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "name_asc|*|plantas": [
+        {
+          "id": "l2",
+          "slug": "maceta-suculenta",
+          "name": "Maceta suculenta",
+          "publicCode": null,
+          "category": {
+            "slug": "plantas",
+            "name": "Plantas"
+          },
+          "price": 6990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        }
+      ],
+      "name_asc|featured|*": [
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "name_asc|featured|ramos": [
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "name_asc|featured|plantas": [],
+      "name_asc|on_sale|*": [],
+      "name_asc|on_sale|ramos": [],
+      "name_asc|on_sale|plantas": []
+    },
+    "searches": {
+      "": [],
+      "a": [
+        {
+          "id": "l2",
+          "slug": "maceta-suculenta",
+          "name": "Maceta suculenta",
+          "publicCode": null,
+          "category": {
+            "slug": "plantas",
+            "name": "Plantas"
+          },
+          "price": 6990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": false,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 2
+        },
+        {
+          "id": "l1",
+          "slug": "ramo-primavera",
+          "name": "Ramo primavera",
+          "publicCode": null,
+          "category": {
+            "slug": "ramos",
+            "name": "Ramos"
+          },
+          "price": 24990,
+          "compareAtPrice": null,
+          "showPrice": true,
+          "onSale": false,
+          "featured": false,
+          "isMainFeatured": true,
+          "availability": "available",
+          "inventoryControlled": false,
+          "image": null,
+          "shortDescription": null,
+          "sortOrder": 1
+        }
+      ],
+      "ca": [],
+      "PO": [],
+      "zzz": [],
+      "CAFE": [],
+      "pastel": []
+    },
+    "details": {
+      "ramo-primavera": {
+        "id": "l1",
+        "slug": "ramo-primavera",
+        "name": "Ramo primavera",
+        "publicCode": null,
+        "category": {
+          "slug": "ramos",
+          "name": "Ramos"
+        },
+        "price": 24990,
+        "compareAtPrice": null,
+        "showPrice": true,
+        "onSale": false,
+        "featured": false,
+        "isMainFeatured": true,
+        "availability": "available",
+        "inventoryControlled": false,
+        "image": null,
+        "shortDescription": null,
+        "sortOrder": 1,
+        "longDescription": null,
+        "gallery": [],
+        "optionsDescription": null,
+        "addOns": [],
+        "combo": [
+          {
+            "id": "g1",
+            "label": "Tamaño",
+            "items": [
+              {
+                "id": "i1",
+                "label": "Chico",
+                "price": null
+              },
+              {
+                "id": "i2",
+                "label": "Grande",
+                "price": 8000
+              }
+            ]
+          }
+        ],
+        "video": null
+      },
+      "maceta-suculenta": {
+        "id": "l2",
+        "slug": "maceta-suculenta",
+        "name": "Maceta suculenta",
+        "publicCode": null,
+        "category": {
+          "slug": "plantas",
+          "name": "Plantas"
+        },
+        "price": 6990,
+        "compareAtPrice": null,
+        "showPrice": true,
+        "onSale": false,
+        "featured": false,
+        "isMainFeatured": false,
+        "availability": "available",
+        "inventoryControlled": false,
+        "image": null,
+        "shortDescription": null,
+        "sortOrder": 2,
+        "longDescription": null,
+        "gallery": [],
+        "optionsDescription": null,
+        "addOns": [],
+        "combo": null,
+        "video": {
+          "url": "https://media.gong.cl/demo/suculenta.mp4",
+          "thumbnailUrl": null
+        }
+      }
+    }
+  }
+}

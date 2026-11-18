@@ -51,6 +51,7 @@
     "build": "vite build --sourcemap",
     "serve": "vite preview",
     "test:billing-pricing": "vitest run src/lib/billing/markets.test.js",
+    "test:storefront": "node --test backend/src/storefront/*.test.js",
     "test:plan-preview": "vitest run supabase/functions/plan-change-preview/lib.test.ts",
     "migrate:images-r2": "node scripts/migrate-images-to-r2.mjs",
     "backfill:product-thumbnails": "node scripts/backfill-product-thumbnails.mjs",
