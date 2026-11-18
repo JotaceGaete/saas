@@ -1,0 +1,9 @@
+{
+  "name": "storefront-ci",
+  "private": true,
+  "type": "module",
+  "description": "Arnés de verificación de base de datos de la Storefront API (solo CI y pruebas locales).",
+  "dependencies": {
+    "pg": "^8.13.1"
+  }
+}

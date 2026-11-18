@@ -10,6 +10,20 @@
 -- =============================================================================
 begin;
 
+-- Salvaguarda: si hay banners, el rollback se niega salvo confirmación explícita de la sesión:
+--   set walinka.allow_banner_data_loss = 'on';
+do $$
+declare
+  n bigint;
+begin
+  if to_regclass('public.wa_storefront_banners') is not null then
+    execute 'select count(*) from public.wa_storefront_banners' into n;
+    if n > 0 and coalesce(current_setting('walinka.allow_banner_data_loss', true), '') <> 'on' then
+      raise exception 'wa_storefront_banners tiene % filas: exportarlas o confirmar la pérdida con set walinka.allow_banner_data_loss = ''on''', n;
+    end if;
+  end if;
+end $$;
+
 drop function if exists public.storefront_banners(uuid, text);
 drop function if exists public.storefront_business(text);
 drop function if exists public.storefront_products_by_ids(uuid, uuid[]);

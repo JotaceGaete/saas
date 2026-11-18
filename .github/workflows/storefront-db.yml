@@ -1,0 +1,73 @@
+name: storefront-db
+
+# Verificación de las migraciones Storefront (0001 y 0002) sobre PostgreSQL 17.
+# No despliega nada ni toca Supabase: usa un contenedor postgres:17 efímero.
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'backend/src/storefront/**'
+      - '.github/workflows/storefront-db.yml'
+  pull_request:
+    paths:
+      - 'backend/src/storefront/**'
+      - '.github/workflows/storefront-db.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  storefront-db:
+    name: Migraciones y pruebas sobre PostgreSQL 17
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+      PGPASSWORD: postgres
+
+    steps:
+      - name: Código
+        uses: actions/checkout@v4
+
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Versión del servidor
+        run: |
+          psql -X -At -c "show server_version"
+          psql -X -At -c "select collname from pg_collation where collname = 'es-CL-x-icu'"
+
+      - name: Dependencias del arnés (pg)
+        working-directory: backend/src/storefront/ci
+        run: npm install --no-package-lock
+
+      - name: Migraciones, independencia, rollback y aserciones
+        run: bash backend/src/storefront/ci/run-db-checks.sh
+
+      - name: Pruebas de paridad, integración de base de datos y colación
+        env:
+          PGDATABASE: walinka_ci_order_a
+        run: |
+          node --import ./backend/src/storefront/ci/preload-pg.mjs --test \
+            backend/src/storefront/parity.test.js \
+            backend/src/storefront/db.integration.test.js \
+            backend/src/storefront/ci/collation.test.js

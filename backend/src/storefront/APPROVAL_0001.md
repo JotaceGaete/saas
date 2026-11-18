@@ -108,6 +108,7 @@ Orden:
 1. Desactivar o aceptar 500 en el montaje de la API (`/api/v1/storefront`). La API no debe quedar en servicio apuntando a funciones que no existen.
 2. Exportar `wa_storefront_banners` si tiene filas (el script la elimina).
 3. Ejecutar el script: funciones → tabla de banners → vista → `storefront_fold`.
+   El script **se niega** si `wa_storefront_banners` tiene filas, salvo que la sesión confirme la pérdida con `set walinka.allow_banner_data_loss = 'on';`. Verificado en réplica: sin confirmación falla; con confirmación elimina el banner de prueba y el esquema vuelve exactamente al base.
 4. **No eliminar `unaccent`**: existía antes de 0001.
 
 Ningún objeto existente se modifica, por lo que el rollback no restaura nada más.
