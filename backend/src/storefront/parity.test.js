@@ -1,7 +1,7 @@
 /**
- * Paridad: la API, alimentada con las filas reales de la semilla, debe devolver lo mismo
- * que el adaptador demo del starter para las mismas tiendas.
- * Única diferencia permitida: isDemo (live nunca es demo).
+ * Paridad: el read model en PostgreSQL, alimentado con la semilla real, debe devolver lo mismo
+ * que el adaptador demo del starter. Única diferencia permitida: isDemo (live nunca es demo).
+ * Requiere la réplica local: node --import /home/claude/storefront-integration/preload.mjs --test ...
  */
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,32 +9,20 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { createStorefrontHandlerFromEnv } from './handler.js';
-import { createPgSelect } from './sqlSelect.js';
+import { createPgRpc } from './sqlSelect.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
-const seed = JSON.parse(readFileSync(join(here, '__fixtures__/parity-seed.json'), 'utf8'));
 const expected = JSON.parse(readFileSync(join(here, '__fixtures__/parity-expected.json'), 'utf8'));
-
-const TABLES = { wa_businesses: 'businesses', wa_business_categories: 'categories', wa_products: 'products' };
-
-/** Adaptador select en memoria con la misma semántica de eq/limit que supabase-js. */
-function memorySelect(data) {
-  return async ({ table, columns, eq = {}, limit }) => {
-    const rows = data[TABLES[table]].filter((r) => Object.entries(eq).every(([k, v]) => r[k] === v));
-    const picked = rows.map((r) => Object.fromEntries(columns.map((c) => [c, r[c]])));
-    return limit ? picked.slice(0, limit) : picked;
-  };
-}
-
-// Con WALINKA_PG (preload que define __WALINKA_PG_QUERY__) la prueba corre contra PostgreSQL real.
-const usingDb = typeof globalThis.__WALINKA_PG_QUERY__ === 'function';
-console.log(`[paridad] fuente de datos: ${usingDb ? 'PostgreSQL (réplica de esquema real)' : 'memoria'}`);
+const hasDb = typeof globalThis.__WALINKA_PG_QUERY__ === 'function';
+const SKIP = hasDb ? false : 'requiere PostgreSQL (preload de la réplica)';
 after(() => globalThis.__WALINKA_PG_POOL_END__?.());
 
-const handler = createStorefrontHandlerFromEnv({
-  select: usingDb ? createPgSelect(globalThis.__WALINKA_PG_QUERY__) : memorySelect(seed),
-  env: { WALINKA_CURSOR_SECRET: 'parity-test-secret-0123456789' },
-});
+const handler = hasDb
+  ? createStorefrontHandlerFromEnv({
+    rpc: createPgRpc(globalThis.__WALINKA_PG_QUERY__),
+    env: { WALINKA_CURSOR_SECRET: 'parity-test-secret-0123456789' },
+  })
+  : null;
 
 const call = async (path) => {
   const res = await handler(new Request(`http://localhost${path}`));
@@ -49,14 +37,13 @@ async function collectAll(path) {
     assert.equal(status, 200, `${path} → ${status}`);
     out.push(...body.data);
     if (!body.meta.nextCursor) return out;
-    const sep = path.includes('?') ? '&' : '?';
-    url = `${path}${sep}cursor=${encodeURIComponent(body.meta.nextCursor)}`;
+    url = `${path}&cursor=${encodeURIComponent(body.meta.nextCursor)}`;
   }
   throw new Error('paginación sin fin');
 }
 
 for (const slug of Object.keys(expected)) {
-  test(`paridad tienda ${slug}`, async (t) => {
+  test(`paridad tienda ${slug}`, { skip: SKIP }, async (t) => {
     const exp = expected[slug];
 
     await t.test('perfil de tienda', async () => {
@@ -86,7 +73,7 @@ for (const slug of Object.keys(expected)) {
       }
     });
 
-    await t.test('búsquedas', async () => {
+    await t.test('búsquedas (insensibles a tildes)', async () => {
       for (const [q, expectedRows] of Object.entries(exp.searches)) {
         const got = await collectAll(`/v1/stores/${slug}/search?q=${encodeURIComponent(q)}&sort=name_asc&limit=60`);
         assert.deepEqual(got, expectedRows, `búsqueda "${q}"`);
@@ -97,7 +84,6 @@ for (const slug of Object.keys(expected)) {
       for (const [productSlug, expectedDetail] of Object.entries(exp.details)) {
         const { status, body } = await call(`/v1/stores/${slug}/products/${productSlug}`);
         if (expectedDetail === null) {
-          // Inactivo, archivado o borrador: el demo devuelve null y la API responde 404.
           assert.equal(status, 404, `${productSlug} no debe ser público`);
           continue;
         }
@@ -108,7 +94,7 @@ for (const slug of Object.keys(expected)) {
   });
 }
 
-test('paginación con límite pequeño recorre el mismo orden que el listado completo', async () => {
+test('paginación con límite 1 recorre el mismo orden que el listado completo', { skip: SKIP }, async () => {
   const slug = Object.keys(expected)[0];
   const full = expected[slug].listings['manual|*|*'];
   const walked = [];

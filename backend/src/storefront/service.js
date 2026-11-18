@@ -1,16 +1,20 @@
+import { InvalidCursorError } from './cursor.js';
 import {
-  deriveCategories,
   isPubliclyVisible,
+  mapBanner,
+  mapCategory,
   mapProductDetail,
   mapProductSummary,
   mapStoreProfile,
   toInternalProductRow,
 } from './mapping.js';
-import { compareProducts, isAfterPosition, sortKeyOf, SORT_MODES } from './sort.js';
+import { SORT_MODES, sortKeyOf } from './sort.js';
 
 export const DEFAULT_PAGE_SIZE = 24;
 export const MAX_PAGE_SIZE = 60;
 export const FILTERS = Object.freeze(['featured', 'on_sale']);
+export const PLACEMENTS = Object.freeze(['home_hero', 'home_secondary', 'catalog_top']);
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export class ParamError extends Error {
   constructor(param) {
@@ -21,15 +25,7 @@ export class ParamError extends Error {
 }
 
 /**
- * Normaliza texto para búsqueda: minúsculas y sin tildes/diacríticos (decisión del dueño).
- * El demo del starter aplica la misma regla, así que la paridad se mantiene.
- */
-export function normalizeText(s) {
-  return String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLocaleLowerCase('es');
-}
-
-/**
- * Lee query params de listados. sort y filter inválidos → ParamError (400).
+ * Lee query params de listados. sort, filter y category inválidos → ParamError (400).
  * limit: no numérico o 0 → valor por defecto; fuera de rango → se acota a [1, 60].
  */
 export function parseListParams(searchParams, defaultSort = 'manual') {
@@ -51,107 +47,106 @@ export function parseListParams(searchParams, defaultSort = 'manual') {
   return { sort, filter, category, limit, cursor };
 }
 
+/** Valida la clave del cursor según el orden. Un tipo incorrecto es un cursor inválido. */
+function validKeyFor(sort, key) {
+  if (sort === 'manual') return Number.isInteger(key);
+  if (sort === 'name_asc') return typeof key === 'string';
+  return typeof key === 'number' && Number.isFinite(key);
+}
+
 export function createStorefrontService({ repository, cursorCodec }) {
   if (!repository || !cursorCodec) throw new Error('createStorefrontService requiere repository y cursorCodec');
 
-  async function loadStore(slug) {
-    const business = await repository.findBusinessBySlug(slug);
-    return business ?? null;
-  }
-
-  /** Productos públicos de la tienda ya mapeados a fila interna. */
-  async function loadVisible(business) {
-    const [catRows, prodRows] = await Promise.all([
-      repository.listCategoryRows(business.id),
-      repository.listProductRows(business.id),
-    ]);
-    const categorySlugByName = new Map(
-      catRows
-        .filter((c) => typeof c.name === 'string' && c.name.trim())
-        .map((c) => [c.name.trim(), c.slug]),
-    );
-    const rows = prodRows
-      .map((r) => toInternalProductRow(r, categorySlugByName))
-      .filter((r) => isPubliclyVisible(r));
-    const visibleById = new Map(rows.map((r) => [r.id, r]));
-    return { rows, visibleById };
-  }
-
-  function paginate(rows, { sort, limit, cursor, scope }) {
-    const sorted = [...rows].sort(compareProducts(sort));
-    let pool = sorted;
-    if (cursor) {
-      const pos = cursorCodec.decode(cursor, { sort, scope });
-      pool = sorted.filter((p) => isAfterPosition(sort, p, pos.key, pos.id));
-    }
-    const page = pool.slice(0, limit);
-    const last = page[page.length - 1];
-    const hasMore = pool.length > limit;
-    const nextCursor = hasMore && last
-      ? cursorCodec.encode({ sort, key: sortKeyOf(sort, last), id: last.id, scope })
-      : null;
-    return { data: page.map(mapProductSummary), meta: { nextCursor, limit } };
+  async function loadBusiness(slug) {
+    return (await repository.findBusinessBySlug(slug)) ?? null;
   }
 
   function scopeOf(slug, kind, { category, filter, q }) {
     return [slug, kind, category ?? '*', filter ?? '*', q ?? ''].join('|');
   }
 
-  function applyFilters(rows, { category, filter, q }) {
-    let out = rows;
-    if (category) out = out.filter((r) => r.category_slug === category);
-    if (filter === 'featured') out = out.filter((r) => r.featured || r.is_main_featured);
-    if (filter === 'on_sale') out = out.filter((r) => r.on_sale);
-    if (q) {
-      const needle = normalizeText(q.trim());
-      if (needle) out = out.filter((r) => normalizeText(r.name).includes(needle));
+  /** Una página de productos. El filtro, la búsqueda y el keyset se resuelven en PostgreSQL. */
+  async function listPage(business, slug, kind, params) {
+    const { sort, limit, cursor } = params;
+    const scope = scopeOf(slug, kind, params);
+    let afterKey = null;
+    let afterId = null;
+    if (cursor) {
+      const pos = cursorCodec.decode(cursor, { sort, scope });
+      if (!UUID_RE.test(pos.id) || !validKeyFor(sort, pos.key)) throw new InvalidCursorError();
+      afterKey = pos.key;
+      afterId = pos.id;
     }
-    return out;
+    const rows = await repository.listProductPage(business.id, {
+      sort,
+      filter: params.filter,
+      category: params.category,
+      q: params.q,
+      afterKey,
+      afterId,
+      limit: limit + 1,
+    });
+    const hasMore = rows.length > limit;
+    const internal = rows.slice(0, limit).map((r) => toInternalProductRow(r)).filter(isPubliclyVisible);
+    const last = internal[internal.length - 1];
+    const nextCursor = hasMore && last
+      ? cursorCodec.encode({ sort, key: sortKeyOf(sort, last), id: last.id, scope })
+      : null;
+    return { data: internal.map(mapProductSummary), meta: { nextCursor, limit } };
   }
 
   return {
     async getStore(slug) {
-      const business = await loadStore(slug);
+      const business = await loadBusiness(slug);
       if (!business) return null;
       return { data: mapStoreProfile(business), meta: { nextCursor: null, limit: 1 } };
     },
 
     async listCategories(slug) {
-      const business = await loadStore(slug);
+      const business = await loadBusiness(slug);
       if (!business) return null;
-      const { rows } = await loadVisible(business);
-      const data = deriveCategories(rows);
+      const data = (await repository.listCategories(business.id)).map(mapCategory);
       return { data, meta: { nextCursor: null, limit: data.length } };
     },
 
     async listProducts(slug, params) {
-      const business = await loadStore(slug);
+      const business = await loadBusiness(slug);
       if (!business) return null;
-      const { rows } = await loadVisible(business);
-      const scope = scopeOf(slug, 'products', params);
-      const filtered = applyFilters(rows, params);
-      return paginate(filtered, { ...params, scope });
+      return listPage(business, slug, 'products', params);
     },
 
     async searchProducts(slug, params) {
-      const business = await loadStore(slug);
+      const business = await loadBusiness(slug);
       if (!business) return null;
       // Igual que el demo: sin texto de búsqueda no hay resultados.
       if (!String(params.q ?? '').trim()) return { data: [], meta: { nextCursor: null, limit: params.limit } };
-      const { rows } = await loadVisible(business);
-      const scope = scopeOf(slug, 'search', params);
-      const filtered = applyFilters(rows, params);
-      return paginate(filtered, { ...params, scope });
+      return listPage(business, slug, 'search', { ...params, q: params.q.trim() });
     },
 
     async getProduct(slug, productSlug) {
-      const business = await loadStore(slug);
+      const business = await loadBusiness(slug);
       if (!business) return null;
-      const { rows, visibleById } = await loadVisible(business);
-      const row = rows.find((r) => r.slug === productSlug);
-      if (!row) return null;
+      const dbRow = await repository.findProduct(business.id, productSlug);
+      if (!dbRow) return null;
+      const row = toInternalProductRow(dbRow);
+      if (!isPubliclyVisible(row)) return null;
+      const relatedIds = row.add_ons_raw
+        .filter((a) => a && a.type === 'product' && typeof a.productId === 'string')
+        .map((a) => a.productId);
+      const related = (await repository.findProductsByIds(business.id, relatedIds))
+        .map((r) => toInternalProductRow(r))
+        .filter(isPubliclyVisible);
+      const visibleById = new Map(related.map((r) => [r.id, r]));
       return { data: mapProductDetail(row, visibleById), meta: { nextCursor: null, limit: 1 } };
+    },
+
+    async listBanners(slug, placement) {
+      const business = await loadBusiness(slug);
+      if (!business) return null;
+      const data = (await repository.listBanners(business.id, placement))
+        .map(mapBanner)
+        .filter((b) => b.desktopImageUrl);
+      return { data, meta: { nextCursor: null, limit: data.length } };
     },
   };
 }
-

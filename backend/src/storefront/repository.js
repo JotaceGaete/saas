@@ -1,54 +1,47 @@
-import { BUSINESS_COLUMNS, CATEGORY_COLUMNS, PRODUCT_COLUMNS } from './mapping.js';
-
 /**
- * Repositorio de solo lectura sobre las tablas reales de Walinka.
- * `select(spec)` es inyectado: en producción usa supabase-js con clave de servicio; en pruebas,
- * un adaptador SQL contra PostgreSQL. Como la clave de servicio omite RLS, cada consulta
- * filtra explícitamente por business_id, is_active, status e is_draft.
- *
- * spec: { table, columns: string[], eq: {col: value}, order?: [{column, ascending}], limit? }
+ * Repositorio de solo lectura sobre el read model (funciones storefront_* de la migración 0001).
+ * Todo el filtrado, la búsqueda, el orden y la paginación ocurren en PostgreSQL.
+ * `rpc(fn, args)` es inyectado: createSupabaseRpc en producción, createPgRpc en pruebas.
  */
-export function createStorefrontRepository({ select }) {
-  if (typeof select !== 'function') throw new Error('createStorefrontRepository requiere select()');
+export function createStorefrontRepository({ rpc }) {
+  if (typeof rpc !== 'function') throw new Error('createStorefrontRepository requiere rpc()');
 
   return {
     async findBusinessBySlug(slug) {
-      const rows = await select({
-        table: 'wa_businesses',
-        columns: BUSINESS_COLUMNS,
-        eq: { slug, is_active: true },
-        limit: 1,
-      });
+      const rows = await rpc('storefront_business', { p_slug: slug });
       return rows[0] ?? null;
     },
 
-    async listCategoryRows(businessId) {
-      return select({
-        table: 'wa_business_categories',
-        columns: CATEGORY_COLUMNS,
-        eq: { business_id: businessId },
+    listCategories(businessId) {
+      return rpc('storefront_categories', { p_business_id: businessId });
+    },
+
+    /** Una página: limit ya incluye +1 para detectar página siguiente. */
+    listProductPage(businessId, { sort, filter, category, q, afterKey, afterId, limit }) {
+      return rpc('storefront_list_products', {
+        p_business_id: businessId,
+        p_sort: sort,
+        p_filter: filter ?? null,
+        p_category: category ?? null,
+        p_q: q ?? null,
+        p_after_key: afterKey === undefined || afterKey === null ? null : String(afterKey),
+        p_after_id: afterId ?? null,
+        p_limit: limit,
       });
     },
 
-    async listProductRows(businessId) {
-      return select({
-        table: 'wa_products',
-        columns: PRODUCT_COLUMNS,
-        eq: { business_id: businessId, is_active: true, status: 'active', is_draft: false },
-      });
+    async findProduct(businessId, productSlug) {
+      const rows = await rpc('storefront_product', { p_business_id: businessId, p_slug: productSlug });
+      return rows[0] ?? null;
     },
-  };
-}
 
-/** Adaptador supabase-js (producción). Solo SELECT; sin joins. */
-export function createSupabaseSelect(client) {
-  return async function select({ table, columns, eq = {}, order = [], limit }) {
-    let q = client.from(table).select(columns.join(','));
-    for (const [column, value] of Object.entries(eq)) q = q.eq(column, value);
-    for (const o of order) q = q.order(o.column, { ascending: o.ascending !== false });
-    if (limit) q = q.limit(limit);
-    const { data, error } = await q;
-    if (error) throw new Error(`storefront: lectura de ${table} falló: ${error.message}`);
-    return data ?? [];
+    findProductsByIds(businessId, ids) {
+      if (ids.length === 0) return Promise.resolve([]);
+      return rpc('storefront_products_by_ids', { p_business_id: businessId, p_ids: ids.slice(0, 100) });
+    },
+
+    listBanners(businessId, placement) {
+      return rpc('storefront_banners', { p_business_id: businessId, p_placement: placement });
+    },
   };
 }

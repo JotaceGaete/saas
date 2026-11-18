@@ -1,7 +1,7 @@
 {
   "businesses": [
     {
-      "id": "biz-cafe-demo",
+      "id": "cd4057f1-e49d-5c0c-b11b-8cfe44828428",
       "slug": "cafe-demo",
       "name": "Café Demo (rubro: cafetería)",
       "whatsapp": null,
@@ -21,7 +21,7 @@
       }
     },
     {
-      "id": "biz-ropa-demo",
+      "id": "a71727a9-b9e9-5723-a2a7-7a6f07cdf399",
       "slug": "ropa-demo",
       "name": "Ropa Demo (rubro: indumentaria)",
       "whatsapp": null,
@@ -41,7 +41,7 @@
       }
     },
     {
-      "id": "biz-ferreteria-demo",
+      "id": "9292577e-8f29-52ad-87fe-d8a95cc96048",
       "slug": "ferreteria-demo",
       "name": "Ferretería Demo (rubro: ferretería)",
       "whatsapp": null,
@@ -61,7 +61,7 @@
       }
     },
     {
-      "id": "biz-floreria-demo",
+      "id": "2945ce59-75f7-53c1-854b-ff557f1feefc",
       "slug": "floreria-demo",
       "name": "Florería Demo (rubro: floristería)",
       "whatsapp": null,
@@ -83,76 +83,76 @@
   ],
   "categories": [
     {
-      "id": "cat-cafe-demo-cafe",
-      "business_id": "biz-cafe-demo",
+      "id": "2cf6dfb7-cd47-51f7-909f-4622e39f6637",
+      "business_id": "cd4057f1-e49d-5c0c-b11b-8cfe44828428",
       "name": "Café",
       "slug": "cafe"
     },
     {
-      "id": "cat-cafe-demo-pasteleria",
-      "business_id": "biz-cafe-demo",
+      "id": "6c40567c-399e-54ab-a735-0f19328ed9e1",
+      "business_id": "cd4057f1-e49d-5c0c-b11b-8cfe44828428",
       "name": "Pastelería",
       "slug": "pasteleria"
     },
     {
-      "id": "cat-cafe-demo-infusiones",
-      "business_id": "biz-cafe-demo",
+      "id": "76a72b89-87cb-5576-b16d-add896a6d58e",
+      "business_id": "cd4057f1-e49d-5c0c-b11b-8cfe44828428",
       "name": "Infusiones",
       "slug": "infusiones"
     },
     {
-      "id": "cat-ropa-demo-poleras",
-      "business_id": "biz-ropa-demo",
+      "id": "8c3dc3b9-0ebc-5b3a-af3a-9f6b3c0809bf",
+      "business_id": "a71727a9-b9e9-5723-a2a7-7a6f07cdf399",
       "name": "Poleras",
       "slug": "poleras"
     },
     {
-      "id": "cat-ropa-demo-chaquetas",
-      "business_id": "biz-ropa-demo",
+      "id": "61f178fc-5c88-5b4e-a4b5-a0da40e55cf7",
+      "business_id": "a71727a9-b9e9-5723-a2a7-7a6f07cdf399",
       "name": "Chaquetas",
       "slug": "chaquetas"
     },
     {
-      "id": "cat-ropa-demo-pantalones",
-      "business_id": "biz-ropa-demo",
+      "id": "4bcc4470-2966-5744-81bd-4424b589af9a",
+      "business_id": "a71727a9-b9e9-5723-a2a7-7a6f07cdf399",
       "name": "Pantalones",
       "slug": "pantalones"
     },
     {
-      "id": "cat-ferreteria-demo-herramientas",
-      "business_id": "biz-ferreteria-demo",
+      "id": "df048fd8-e3f3-5ae0-b309-b25a348045be",
+      "business_id": "9292577e-8f29-52ad-87fe-d8a95cc96048",
       "name": "Herramientas",
       "slug": "herramientas"
     },
     {
-      "id": "cat-ferreteria-demo-fijaciones",
-      "business_id": "biz-ferreteria-demo",
+      "id": "4c6e079e-46ab-5684-b5ac-58b99f65d573",
+      "business_id": "9292577e-8f29-52ad-87fe-d8a95cc96048",
       "name": "Fijaciones",
       "slug": "fijaciones"
     },
     {
-      "id": "cat-ferreteria-demo-pinturas",
-      "business_id": "biz-ferreteria-demo",
+      "id": "20047092-7c33-51c5-a1c8-9651418ec280",
+      "business_id": "9292577e-8f29-52ad-87fe-d8a95cc96048",
       "name": "Pinturas",
       "slug": "pinturas"
     },
     {
-      "id": "cat-floreria-demo-ramos",
-      "business_id": "biz-floreria-demo",
+      "id": "c399917b-d4fc-577f-8daa-6cb055855a5a",
+      "business_id": "2945ce59-75f7-53c1-854b-ff557f1feefc",
       "name": "Ramos",
       "slug": "ramos"
     },
     {
-      "id": "cat-floreria-demo-plantas",
-      "business_id": "biz-floreria-demo",
+      "id": "ce8f5324-1c8c-5e63-8983-27601c8aef25",
+      "business_id": "2945ce59-75f7-53c1-854b-ff557f1feefc",
       "name": "Plantas",
       "slug": "plantas"
     }
   ],
   "products": [
     {
-      "id": "c1",
-      "business_id": "biz-cafe-demo",
+      "id": "ad3a1132-e821-5131-85af-953e06ff5ebf",
+      "business_id": "cd4057f1-e49d-5c0c-b11b-8cfe44828428",
       "slug": "cafe-espresso",
       "name": "Espresso",
       "public_code": null,
@@ -183,8 +183,8 @@
       "video_thumbnail_url": null
     },
     {
-      "id": "c2",
-      "business_id": "biz-cafe-demo",
+      "id": "3d0b5160-7d3e-5c49-9d0c-3788720d0d92",
+      "business_id": "cd4057f1-e49d-5c0c-b11b-8cfe44828428",
       "slug": "cafe-latte",
       "name": "Latte",
       "public_code": null,
@@ -215,8 +215,8 @@
       "video_thumbnail_url": null
     },
     {
-      "id": "c3",
-      "business_id": "biz-cafe-demo",
+      "id": "920f8a40-0e3f-53cf-9252-8e18c1c31514",
+      "business_id": "cd4057f1-e49d-5c0c-b11b-8cfe44828428",
       "slug": "cafe-croissant",
       "name": "Croissant",
       "public_code": null,
@@ -247,8 +247,8 @@
       "video_thumbnail_url": null
     },
     {
-      "id": "c4",
-      "business_id": "biz-cafe-demo",
+      "id": "c36992a0-0f40-513d-9842-8e2bedcd661c",
+      "business_id": "cd4057f1-e49d-5c0c-b11b-8cfe44828428",
       "slug": "cafe-te",
       "name": "Té de hierbas",
       "public_code": null,
@@ -279,8 +279,8 @@
       "video_thumbnail_url": null
     },
     {
-      "id": "c5",
-      "business_id": "biz-cafe-demo",
+      "id": "5893494a-30ac-561c-a420-6e05c5de3c04",
+      "business_id": "cd4057f1-e49d-5c0c-b11b-8cfe44828428",
       "slug": "cafe-inactivo",
       "name": "Producto inactivo",
       "public_code": null,
@@ -311,8 +311,8 @@
       "video_thumbnail_url": null
     },
     {
-      "id": "c6",
-      "business_id": "biz-cafe-demo",
+      "id": "9f104697-25a7-559d-8c0b-fdfcf919f549",
+      "business_id": "cd4057f1-e49d-5c0c-b11b-8cfe44828428",
       "slug": "cafe-borrador",
       "name": "Borrador",
       "public_code": null,
@@ -343,8 +343,8 @@
       "video_thumbnail_url": null
     },
     {
-      "id": "r1",
-      "business_id": "biz-ropa-demo",
+      "id": "c171d015-d299-534d-b0f1-403b146ef7bd",
+      "business_id": "a71727a9-b9e9-5723-a2a7-7a6f07cdf399",
       "slug": "polera-basica",
       "name": "Polera básica",
       "public_code": null,
@@ -377,8 +377,8 @@
       "video_thumbnail_url": null
     },
     {
-      "id": "r2",
-      "business_id": "biz-ropa-demo",
+      "id": "1e54aaf8-72db-5343-abde-9ceab49c7b0d",
+      "business_id": "a71727a9-b9e9-5723-a2a7-7a6f07cdf399",
       "slug": "chaqueta-denim",
       "name": "Chaqueta denim",
       "public_code": null,
@@ -409,8 +409,8 @@
       "video_thumbnail_url": null
     },
     {
-      "id": "r3",
-      "business_id": "biz-ropa-demo",
+      "id": "4a4efa9a-b7ad-569e-bff5-8473d8c4cdb9",
+      "business_id": "a71727a9-b9e9-5723-a2a7-7a6f07cdf399",
       "slug": "jeans-recto",
       "name": "Jeans recto",
       "public_code": null,
@@ -441,8 +441,8 @@
       "video_thumbnail_url": null
     },
     {
-      "id": "f1",
-      "business_id": "biz-ferreteria-demo",
+      "id": "0d7b2f7a-2729-56dd-ae60-7d2dfcd39f94",
+      "business_id": "9292577e-8f29-52ad-87fe-d8a95cc96048",
       "slug": "taladro-18v",
       "name": "Taladro 18V",
       "public_code": null,
@@ -473,8 +473,8 @@
       "video_thumbnail_url": null
     },
     {
-      "id": "f2",
-      "business_id": "biz-ferreteria-demo",
+      "id": "ba374dfd-6186-563c-964d-acc2f2ecf977",
+      "business_id": "9292577e-8f29-52ad-87fe-d8a95cc96048",
       "slug": "tornillos-caja",
       "name": "Caja de tornillos",
       "public_code": null,
@@ -505,8 +505,8 @@
       "video_thumbnail_url": null
     },
     {
-      "id": "f3",
-      "business_id": "biz-ferreteria-demo",
+      "id": "55630627-16a2-5a5b-b74f-5178a825c513",
+      "business_id": "9292577e-8f29-52ad-87fe-d8a95cc96048",
       "slug": "pintura-blanca",
       "name": "Pintura blanca 4L",
       "public_code": null,
@@ -545,8 +545,8 @@
       "video_thumbnail_url": null
     },
     {
-      "id": "l1",
-      "business_id": "biz-floreria-demo",
+      "id": "f3d15576-9cb4-5266-8b13-d315a2a44d9e",
+      "business_id": "2945ce59-75f7-53c1-854b-ff557f1feefc",
       "slug": "ramo-primavera",
       "name": "Ramo primavera",
       "public_code": null,
@@ -599,8 +599,8 @@
       "video_thumbnail_url": null
     },
     {
-      "id": "l2",
-      "business_id": "biz-floreria-demo",
+      "id": "d6fb1287-bee6-5a65-91e0-ddcbb23e36e7",
+      "business_id": "2945ce59-75f7-53c1-854b-ff557f1feefc",
       "slug": "maceta-suculenta",
       "name": "Maceta suculenta",
       "public_code": null,

@@ -5,9 +5,8 @@ import { pickProductImage } from './images.js';
 import { createCursorCodec, cursorSecretFromEnv, InvalidCursorError } from './cursor.js';
 import { canUseCustomDomain, assertCustomDomainAllowed } from './domainPolicy.js';
 import { mapAddOns, mapCombo, toInternalProductRow, isPubliclyVisible } from './mapping.js';
-import { parseListParams, ParamError, createStorefrontService, normalizeText } from './service.js';
+import { parseListParams, ParamError } from './service.js';
 import { createStorefrontHandler } from './handler.js';
-import { createStorefrontRepository } from './repository.js';
 
 const SECRET = 'unit-test-secret-0123456789';
 
@@ -112,34 +111,19 @@ test('parámetros de listado: inválidos → error; límite acotado', () => {
   assert.equal(parseListParams(new URLSearchParams(''), 'name_asc').sort, 'name_asc');
 });
 
-test('búsqueda: insensible a tildes y mayúsculas', () => {
-  assert.equal(normalizeText('CAFÉ'), 'cafe');
-  assert.equal(normalizeText('Pastelería'), normalizeText('pasteleria'));
-  assert.equal(normalizeText('Ñandú'), 'nandu');
-});
-
-// --- Handler sobre datos mínimos ---
-const businesses = [
-  { id: 'b1', slug: 'tienda', name: 'Tienda', is_active: true, design_settings: {} },
-  { id: 'b2', slug: 'otra', name: 'Otra', is_active: true, design_settings: {} },
-];
-const products = [
-  { id: 'p1', business_id: 'b1', slug: 'uno', name: 'Uno', category: 'Cat', price: 100, sort_order: 1, status: 'active', is_active: true, is_draft: false, stock_actual: 2, stock_minimo: 5 },
-  { id: 'p2', business_id: 'b1', slug: 'dos', name: 'Dos', category: 'Cat', price: 200, sort_order: 2, status: 'active', is_active: true, is_draft: false },
-  { id: 'p3', business_id: 'b1', slug: 'oculto', name: 'Oculto', category: 'Cat', price: 300, sort_order: 3, status: 'archived', is_active: true, is_draft: false },
-];
-const fakeSelect = async ({ table, columns, eq = {}, limit }) => {
-  const src = { wa_businesses: businesses, wa_products: products, wa_business_categories: [] }[table];
-  const rows = src.filter((r) => Object.entries(eq).every(([k, v]) => r[k] === v));
-  const picked = rows.map((r) => Object.fromEntries(columns.map((c) => [c, r[c]])));
-  return limit ? picked.slice(0, limit) : picked;
+// --- Handler con servicio simulado (la lógica SQL se prueba en db.integration.test.js) ---
+const stubService = {
+  getStore: async (slug) => (slug === 'tienda' ? { data: { slug }, meta: { nextCursor: null, limit: 1 } } : null),
+  listCategories: async () => ({ data: [], meta: { nextCursor: null, limit: 0 } }),
+  listProducts: async (slug, params) => {
+    if (slug !== 'tienda') return null;
+    return { data: [{ slug: 'uno', availability: 'low_stock' }], meta: { nextCursor: null, limit: params.limit } };
+  },
+  searchProducts: async (slug, params) => ({ data: [], meta: { nextCursor: null, limit: params.limit } }),
+  getProduct: async (slug, p) => (slug === 'tienda' && p === 'uno' ? { data: { slug: 'uno' }, meta: { nextCursor: null, limit: 1 } } : null),
+  listBanners: async (slug, placement) => (slug === 'tienda' ? { data: [], meta: { nextCursor: null, limit: 0 }, placement } : null),
 };
-const handler = createStorefrontHandler({
-  service: createStorefrontService({
-    repository: createStorefrontRepository({ select: fakeSelect }),
-    cursorCodec: createCursorCodec({ secret: SECRET }),
-  }),
-});
+const handler = createStorefrontHandler({ service: stubService });
 const get = (path, init) => handler(new Request(`http://localhost${path}`, init));
 
 test('rutas: GET únicamente, 405 con Allow', async () => {
@@ -148,41 +132,25 @@ test('rutas: GET únicamente, 405 con Allow', async () => {
   assert.equal(r.headers.get('allow'), 'GET');
 });
 
-test('rutas: tienda inexistente o inactiva → 404; ruta desconocida → 404', async () => {
+test('rutas: tienda inexistente → 404; rutas no expuestas → 404', async () => {
   assert.equal((await get('/v1/stores/nadie')).status, 404);
   assert.equal((await get('/v1/stores/..%2Fx')).status, 404);
-  assert.equal((await get('/v1/stores/tienda/banners')).status, 404, 'banners no expuestos');
   assert.equal((await get('/v1/stores/tienda/pages/menu')).status, 404, 'páginas no expuestas');
+  assert.equal((await get('/v1/stores/tienda/texts')).status, 404, 'textos no expuestos hasta v1.3 con tabla');
+  assert.equal((await get('/v1/stores/tienda/banners/x')).status, 404);
 });
 
-test('producto oculto o archivado no es público', async () => {
-  assert.equal((await get('/v1/stores/tienda/products/oculto')).status, 404);
-  assert.equal((await get('/v1/stores/tienda/products/uno')).status, 200);
+test('banners: placement obligatorio y de lista permitida', async () => {
+  assert.equal((await get('/v1/stores/tienda/banners')).status, 400);
+  assert.equal((await get('/v1/stores/tienda/banners?placement=footer')).status, 400);
+  assert.equal((await get('/v1/stores/tienda/banners?placement=home_hero')).status, 200);
 });
 
-test('la API nunca expone stock numérico ni sku', async () => {
-  const body = await (await get('/v1/stores/tienda/products')).json();
-  const text = JSON.stringify(body);
-  assert.ok(!/"(stock_|stockActual|stockMinimo|stock_actual|stock_minimo)/.test(text), 'sin stock numérico');
-  assert.ok(!text.includes('sku'), 'sin sku');
-  assert.equal(body.data.find((p) => p.slug === 'uno').availability, 'low_stock');
-});
-
-test('cursor de otra tienda o alterado → 400 INVALID_CURSOR', async () => {
-  const first = await (await get('/v1/stores/tienda/products?limit=1')).json();
-  const tok = first.meta.nextCursor;
-  assert.ok(tok, 'hay página siguiente');
-  const r = await get(`/v1/stores/otra/products?limit=1&cursor=${encodeURIComponent(tok)}`);
-  assert.equal(r.status, 400);
-  assert.equal((await r.json()).error.code, 'INVALID_CURSOR');
-});
-
-test('parámetro inválido → 400 INVALID_PARAM; búsqueda vacía → lista vacía', async () => {
+test('parámetros inválidos → 400 INVALID_PARAM', async () => {
   const r = await get('/v1/stores/tienda/products?sort=nope');
   assert.equal(r.status, 400);
   assert.equal((await r.json()).error.code, 'INVALID_PARAM');
-  const s = await (await get('/v1/stores/tienda/search?q=')).json();
-  assert.deepEqual(s.data, []);
+  assert.equal((await get('/v1/stores/tienda/products?filter=x')).status, 400);
 });
 
 test('error interno → 500 genérico sin detalle', async () => {
@@ -194,8 +162,7 @@ test('error interno → 500 genérico sin detalle', async () => {
   try {
     const r = await failing(new Request('http://localhost/v1/stores/tienda'));
     assert.equal(r.status, 500);
-    const text = await r.text();
-    assert.ok(!text.includes('secreto'));
+    assert.ok(!(await r.text()).includes('secreto'));
   } finally {
     console.error = origErr;
   }

@@ -1,0 +1,339 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "outputDirectory": "dist",
+  "headers": [
+    {
+      "source": "/",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        },
+        {
+          "key": "Pragma",
+          "value": "no-cache"
+        },
+        {
+          "key": "Expires",
+          "value": "0"
+        }
+      ]
+    },
+    {
+      "source": "/catalogo/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/catalog/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/p/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/dashboard",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/plans",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/index.html",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/sw.js",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/manifest.json",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/manifest.webmanifest",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, no-cache, must-revalidate, proxy-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ],
+  "redirects": [
+    {
+      "source": "/(dashboard|elegir-pais|business-registration|register|complete-business-setup|business-configuration|product-management|product-editor|orders|design|ayuda|login|verify-email|auth|reset-password|planes|plan-y-facturacion|billing|admin|landing-page|crm|proveedores|customers)(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "ventalink.app"
+        }
+      ],
+      "destination": "https://go.ventalink.app/$1$2",
+      "permanent": false
+    },
+    {
+      "source": "/(dashboard|elegir-pais|business-registration|register|complete-business-setup|business-configuration|product-management|product-editor|orders|design|ayuda|login|verify-email|auth|reset-password|planes|plan-y-facturacion|billing|admin|landing-page|crm|proveedores|customers)(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.ventalink.app"
+        }
+      ],
+      "destination": "https://go.ventalink.app/$1$2",
+      "permanent": false
+    },
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.ventalink.app"
+        }
+      ],
+      "destination": "https://ventalink.app/$1",
+      "permanent": false
+    },
+    {
+      "source": "/(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "www.miralatienda.de"
+        }
+      ],
+      "destination": "https://miralatienda.de/$1",
+      "permanent": true
+    },
+    {
+      "source": "/(dashboard|elegir-pais|business-registration|register|complete-business-setup|business-configuration|product-management|product-editor|orders|design|ayuda|login|verify-email|auth|reset-password|planes|plan-y-facturacion|billing|admin|landing-page|crm|proveedores|customers)(.*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "miralatienda.de"
+        }
+      ],
+      "destination": "https://go.ventalink.app/$1$2",
+      "permanent": false
+    },
+    {
+      "source": "/catalog/:slug",
+      "has": [
+        {
+          "type": "host",
+          "value": "miralatienda.de"
+        }
+      ],
+      "destination": "https://miralatienda.de/catalogo/:slug",
+      "permanent": true
+    }
+  ],
+  "crons": [
+    {
+      "path": "/api/cron/process-admin-alert-queue",
+      "schedule": "10 8 * * *"
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/api/v1/storefront/:path*",
+      "destination": "/api/storefront?p=:path*"
+    },
+    {
+      "source": "/api/sii/boleta-readiness",
+      "destination": "/api/sii/boleta-readiness"
+    },
+    {
+      "source": "/api/sii/boleta-preflight",
+      "destination": "/api/sii/boleta-preflight"
+    },
+    {
+      "source": "/api/sii/boleta-verify-tax",
+      "destination": "/api/sii/boleta-verify-tax"
+    },
+    {
+      "source": "/api/sii/boleta-prepare",
+      "destination": "/api/sii/boleta-prepare"
+    },
+    {
+      "source": "/api/v1/billing/paypal/subscriptions",
+      "destination": "/api/paypal"
+    },
+    {
+      "source": "/api/v1/billing/paypal/subscriptions/cancel",
+      "destination": "/api/paypal"
+    },
+    {
+      "source": "/api/v1/billing/paypal/confirm",
+      "destination": "/api/paypal"
+    },
+    {
+      "source": "/api/v1/billing/subscriptions/create",
+      "destination": "/api/billing"
+    },
+    {
+      "source": "/api/v1/billing/subscriptions/confirm",
+      "destination": "/api/billing"
+    },
+    {
+      "source": "/api/v1/billing/subscription-state",
+      "destination": "/api/billing"
+    },
+    {
+      "source": "/api/v1/billing/current-subscription",
+      "destination": "/api/billing"
+    },
+    {
+      "source": "/api/v1/billing/current-subscription/",
+      "destination": "/api/billing"
+    },
+    {
+      "source": "/api/v1/billing/webhooks/dlocal",
+      "destination": "/api/billing"
+    },
+    {
+      "source": "/api/v1/billing/dlocal/test-payment",
+      "destination": "/api/billing"
+    },
+    {
+      "source": "/api/v1/billing/dlocal/checkout",
+      "destination": "/api/billing"
+    },
+    {
+      "source": "/api/v1/ai/generate-product-description",
+      "destination": "/api/ai"
+    },
+    {
+      "source": "/api/v1/billing/dlocal/callback",
+      "destination": "/api/billing"
+    },
+    {
+      "source": "/webhooks/paypal",
+      "destination": "/api/paypal-webhook"
+    },
+    {
+      "source": "/sitemap.xml",
+      "destination": "/api/seo?mode=sitemap"
+    },
+    {
+      "source": "/",
+      "has": [
+        {
+          "type": "host",
+          "value": "go.ventalink.app"
+        }
+      ],
+      "destination": "/api/seo?mode=go"
+    },
+    {
+      "source": "/(.*)",
+      "missing": [
+        {
+          "type": "host",
+          "value": "ventalink.app"
+        },
+        {
+          "type": "host",
+          "value": "go.ventalink.app"
+        },
+        {
+          "type": "host",
+          "value": "cl.ventalink.app"
+        },
+        {
+          "type": "host",
+          "value": "miralatienda.de"
+        }
+      ],
+      "destination": "/index.html"
+    },
+    {
+      "source": "/catalogo/:slug",
+      "has": [
+        {
+          "type": "host",
+          "value": "miralatienda.de"
+        }
+      ],
+      "destination": "/api/seo?slug=:slug&publicPath=catalogo"
+    },
+    {
+      "source": "/catalogo/:slug",
+      "destination": "/api/seo?slug=:slug&publicPath=catalogo"
+    },
+    {
+      "source": "/catalog/:slug",
+      "destination": "/api/seo?slug=:slug&publicPath=catalog"
+    },
+    {
+      "source": "/p/:businessSlug/:productSlug",
+      "destination": "/api/seo?publicPath=product&businessSlug=:businessSlug&productSlug=:productSlug"
+    },
+    {
+      "source": "/(crm|proveedores|customers|dashboard|elegir-pais|business-registration|register|complete-business-setup|business-configuration|product-management|product-editor|orders|design|ayuda|login|verify-email|auth|reset-password|planes|plan-y-facturacion|billing|admin|landing-page|plans|terms|privacy|refunds)(.*)",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/p/:businessSlug/:productSlug",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/:slug",
+      "destination": "/api/seo?slug=:slug&publicPath=short"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}

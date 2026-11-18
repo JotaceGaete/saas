@@ -50,17 +50,19 @@ const nonEmptyString = (v) => (typeof v === 'string' && v.trim().length > 0 ? v 
  * Fila real de wa_products → fila interna. `categorySlugByName` viene de wa_business_categories;
  * si la categoría no existe ahí, el slug se deriva del nombre. No se crean categorías.
  */
-export function toInternalProductRow(db, categorySlugByName) {
+export function toInternalProductRow(db, categorySlugByName = new Map()) {
   const categoryName = nonEmptyString(db.category)?.trim() ?? null;
+  // La vista ya trae category_slug; el mapa solo se usa como respaldo.
+  const slugFromView = nonEmptyString(db.category_slug);
   return {
     id: String(db.id),
     slug: String(db.slug),
     name: String(db.name),
     public_code: nonEmptyString(db.public_code),
     category_name: categoryName,
-    category_slug: categoryName
+    category_slug: slugFromView ?? (categoryName
       ? (categorySlugByName.get(categoryName) ?? slugify(categoryName))
-      : null,
+      : null),
     price: Number(db.price) || 0,
     compare_at_price: toNumberOrNull(db.compare_at_price),
     show_price: db.show_price !== false,
@@ -187,19 +189,36 @@ export function mapProductDetail(row, visibleById) {
   };
 }
 
-/** Categorías derivadas de productos visibles (mismo criterio que el demo del starter). */
-export function deriveCategories(visibleRows) {
-  const map = new Map();
-  for (const r of visibleRows) {
-    if (!r.category_slug || !r.category_name) continue;
-    const cur = map.get(r.category_slug) ?? { name: r.category_name, count: 0, sortOrder: Number.MAX_SAFE_INTEGER };
-    cur.count += 1;
-    cur.sortOrder = Math.min(cur.sortOrder, r.sort_order);
-    map.set(r.category_slug, cur);
-  }
-  return [...map.entries()]
-    .map(([slug, v]) => ({ slug, name: v.name, sortOrder: v.sortOrder, productCount: v.count }))
-    .sort((a, b) => a.sortOrder - b.sortOrder || a.slug.localeCompare(b.slug));
+/** Fila de storefront_categories → StorefrontCategory. bigint llega como texto desde pg. */
+export function mapCategory(row) {
+  return {
+    slug: String(row.slug),
+    name: String(row.name),
+    sortOrder: Number(row.sort_order) || 0,
+    productCount: Number(row.product_count) || 0,
+  };
+}
+
+/** Enlace de banner: solo https absoluto o ruta relativa; cualquier otro esquema se descarta. */
+export function safeLinkUrl(url) {
+  const u = nonEmptyString(url)?.trim();
+  if (!u) return null;
+  if (/^https:\/\//.test(u)) return u;
+  if (/^\/[^/]/.test(u)) return u;
+  return null;
+}
+
+/** Fila de wa_storefront_banners → BannerSummary (contrato v1.2 §banners). */
+export function mapBanner(row) {
+  const desktop = nonEmptyString(row.desktop_image_url);
+  return {
+    id: String(row.id),
+    placement: row.placement,
+    desktopImageUrl: desktop,
+    mobileImageUrl: nonEmptyString(row.mobile_image_url),
+    linkUrl: safeLinkUrl(row.link_url),
+    altText: String(row.alt_text ?? '').trim(),
+  };
 }
 
 /**

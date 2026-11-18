@@ -1,9 +1,9 @@
 import { cursorSecretFromEnv, createCursorCodec, InvalidCursorError } from './cursor.js';
-import { createStorefrontService, parseListParams, ParamError } from './service.js';
+import { createStorefrontService, parseListParams, ParamError, PLACEMENTS } from './service.js';
 import { createStorefrontRepository } from './repository.js';
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]{0,79}$/;
-const ROUTE_RE = /(?:^|\/)v1\/stores\/([^/]+)(?:\/(categories|products|search)(?:\/([^/]+))?)?\/?$/;
+const ROUTE_RE = /(?:^|\/)v1\/stores\/([^/]+)(?:\/(categories|products|search|banners)(?:\/([^/]+))?)?\/?$/;
 const CACHE_OK = 'public, s-maxage=60, stale-while-revalidate=300';
 
 function json(status, body, extra = {}) {
@@ -25,7 +25,8 @@ function fail(status, code, message, extra) {
  *   /v1/stores/{slug}/products?sort&filter&category&limit&cursor
  *   /v1/stores/{slug}/search?q&sort&limit&cursor
  *   /v1/stores/{slug}/products/{productSlug}
- * Banners y páginas institucionales no están expuestos: no existen tablas que los respalden.
+ *   /v1/stores/{slug}/banners?placement=home_hero|home_secondary|catalog_top
+ * Textos, páginas y bloques editoriales no están expuestos hasta que existan sus tablas (v1.3 pendiente).
  */
 export function createStorefrontHandler({ service }) {
   if (!service) throw new Error('createStorefrontHandler requiere service');
@@ -56,6 +57,10 @@ export function createStorefrontHandler({ service }) {
         result = await service.listProducts(slug, parseListParams(url.searchParams));
       } else if (resource === 'products' && sub !== undefined) {
         result = await service.getProduct(slug, sub);
+      } else if (resource === 'banners' && sub === undefined) {
+        const placement = url.searchParams.get('placement');
+        if (!PLACEMENTS.includes(placement)) throw new ParamError('placement');
+        result = await service.listBanners(slug, placement);
       } else if (resource === 'search' && sub === undefined) {
         const q = (url.searchParams.get('q') ?? '').slice(0, 120);
         result = await service.searchProducts(slug, { ...parseListParams(url.searchParams, 'name_asc'), q });
@@ -75,12 +80,12 @@ export function createStorefrontHandler({ service }) {
 }
 
 /**
- * Composición para producción: secreto del cursor desde el entorno (fail-closed en producción).
- * select debe ser un adaptador de solo lectura (createSupabaseSelect en producción).
+ * Composición: secreto del cursor desde el entorno (fail-closed en producción).
+ * rpc debe ser createSupabaseRpc (producción) o createPgRpc (pruebas).
  */
-export function createStorefrontHandlerFromEnv({ select, env = process.env, repositoryFactory = createStorefrontRepository }) {
+export function createStorefrontHandlerFromEnv({ rpc, env = process.env, repositoryFactory = createStorefrontRepository }) {
   const codec = createCursorCodec({ secret: cursorSecretFromEnv(env) });
-  const repository = repositoryFactory({ select });
+  const repository = repositoryFactory({ rpc });
   const service = createStorefrontService({ repository, cursorCodec: codec });
   return createStorefrontHandler({ service });
 }
