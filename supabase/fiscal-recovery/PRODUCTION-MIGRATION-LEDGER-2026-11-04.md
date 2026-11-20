@@ -119,6 +119,19 @@ La huella de D corresponde al bloque de verificación `DO $verify$ ...`, **no** 
 - **No es parte de la estructura:** no va en `localdb/build.sh` ni en reconstrucciones. Volver a ejecutarlo
   falla en `create schema fiscal_backup` y la transacción completa se revierte.
 
+## Migraciones pendientes (NO aplicadas en producción)
+
+Esta sección registra trabajo preparado en el repositorio que todavía no existe en producción. No es un
+historial de aplicación: no hay filas en `supabase_migrations.schema_migrations` para estas entradas, y no se
+modifica ninguna fila histórica de la tabla anterior.
+
+| Archivo en el repositorio | md5 del archivo | Rama / PR | Estado |
+|---|---|---|---|
+| `supabase/migrations/20261120100000_wa_site_content.sql` (Walinka Websites, fase 1: `wa_site_content`, RPC de borrador y publicación, RLS) | `87eb12e505ec2a44e4c7bdea0dc39895` | `feature/website-content-editor` / PR #143 (borrador) | **Pendiente.** Validada solo en PostgreSQL 16 local. No aplicada en producción ni en una rama de Supabase. |
+
+Cuando se autorice y se aplique en producción, se agregará una fila nueva con la versión real que devuelva el
+servidor y el md5 verificado después de aplicar. Hasta entonces, esta fila sigue como pendiente.
+
 ## Reglas para futuros despliegues
 
 1. **No volver a ejecutar A–I ni el Respaldo en producción** (en particular D y G) ni editar, borrar o renumerar las filas históricas para hacerlas parecer uniformes.
