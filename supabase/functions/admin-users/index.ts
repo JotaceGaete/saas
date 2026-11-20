@@ -1,6 +1,6 @@
 // admin-users — Panel admin: listar, ver, crear, editar, suspender, habilitar, eliminar usuarios y asignar rol admin.
 // Solo usuarios con app_metadata.role === 'admin'. Usa Auth Admin API con service_role.
-// debugVersion: "admin-users-search-v3-2026-06-02"
+// debugVersion: "admin-users-search-v4-2026-11-20"
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { getSupabaseAdminKeyOrEmpty } from '../_shared/supabaseAdminKey.ts';
@@ -123,14 +123,28 @@ Deno.serve(async (req) => {
         } catch (_) { /* getUserByEmail puede no estar disponible */ }
       }
 
-      const list = (authUsers as Array<{
+      const foundUsers = authUsers as Array<{
         id: string;
         email?: string;
         created_at?: string;
         banned_until?: string | null;
         app_metadata?: Record<string, unknown>;
         user_metadata?: Record<string, unknown>;
-      }>).map((u) => ({
+      }>;
+
+      // Si el usuario fue encontrado por UUID o email directo y no trae negocios de la búsqueda,
+      // consultar sus negocios aquí: el await debe estar en este contexto async, no dentro del map.
+      const extraBizByUserId: Record<string, unknown[]> = {};
+      for (const u of foundUsers) {
+        if ((bizByUserId[u.id] ?? []).length > 0) continue;
+        const { data } = await adminClient
+          .from('wa_businesses')
+          .select('id, user_id, name, slug, email, plan_slug, plan_expires_at, trial_expires_at, is_active')
+          .eq('user_id', u.id);
+        extraBizByUserId[u.id] = data ?? [];
+      }
+
+      const list = foundUsers.map((u) => ({
         id: u.id,
         email: u.email,
         created_at: u.created_at,
@@ -138,18 +152,11 @@ Deno.serve(async (req) => {
         role: (u.app_metadata?.role as string) ?? (u.user_metadata?.role as string) ?? null,
         businesses: (bizByUserId[u.id] ?? []).length > 0
           ? bizByUserId[u.id]
-          // Si el usuario fue encontrado por UUID directo, traer sus negocios
-          : await (async () => {
-              const { data } = await adminClient
-                .from('wa_businesses')
-                .select('id, user_id, name, slug, email, plan_slug, plan_expires_at, trial_expires_at, is_active')
-                .eq('user_id', u.id);
-              return data ?? [];
-            })(),
+          : (extraBizByUserId[u.id] ?? []),
       }));
 
       console.log('[admin-users] search:', { search, bizMatches: (matchedBiz ?? []).length, userIds: [...userIdsFromBiz], authUsersFound: authUsers.length });
-      return jsonResponse({ users: list, total: list.length, page: 1, per_page: list.length, search, debugVersion: 'admin-users-search-v3-2026-06-02' }, 200);
+      return jsonResponse({ users: list, total: list.length, page: 1, per_page: list.length, search, debugVersion: 'admin-users-search-v4-2026-11-20' }, 200);
     }
 
     // ── Lista paginada sin búsqueda ───────────────────────────────────────
@@ -191,7 +198,7 @@ Deno.serve(async (req) => {
       total: list.length,
       page,
       per_page: perPage,
-      debugVersion: 'admin-users-search-v3-2026-06-02',
+      debugVersion: 'admin-users-search-v4-2026-11-20',
     }, 200);
   }
 

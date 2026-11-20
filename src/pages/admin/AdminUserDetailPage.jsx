@@ -83,17 +83,24 @@ export default function AdminUserDetailPage() {
     if (!userId) return;
     setLoading(true);
     setError(null);
-    const [userResult, sessionsResult] = await Promise.all([
-      getAdminUser(userId),
-      getAdminUserSessionDetail(userId),
-    ]);
-    if (userResult.error) setError(userResult.error.message);
-    else if (userResult.data) {
-      setUser(userResult.data.user);
-      setBusinesses(userResult.data.businesses ?? []);
+    try {
+      // Las sesiones son secundarias: si fallan, la ficha del usuario igual se muestra.
+      const [userResult, sessionsResult] = await Promise.all([
+        getAdminUser(userId),
+        getAdminUserSessionDetail(userId).catch((err) => ({ data: null, error: err })),
+      ]);
+      if (userResult.error) setError(userResult.error.message);
+      else if (userResult.data) {
+        setUser(userResult.data.user);
+        setBusinesses(userResult.data.businesses ?? []);
+      }
+      if (sessionsResult.data) setSessions(sessionsResult.data);
+    } catch (err) {
+      // Red caída o excepción inesperada: no dejar la pantalla cargando indefinidamente.
+      setError(err?.message || 'No se pudo cargar el usuario. Revisa la conexión e intenta de nuevo.');
+    } finally {
+      setLoading(false);
     }
-    if (sessionsResult.data) setSessions(sessionsResult.data);
-    setLoading(false);
   }, [userId]);
 
   const sessionStats = useMemo(() => {
@@ -197,7 +204,16 @@ export default function AdminUserDetailPage() {
     return (
       <div className="panel-root min-h-screen flex items-center justify-center" style={{ backgroundColor: 'var(--color-background)' }}>
         <div className="text-center">
-          <p className="text-sm mb-4" style={{ color: 'var(--color-muted-foreground)' }}>Usuario no encontrado</p>
+          {error ? (
+            <p className="text-sm mb-4" style={{ color: 'var(--color-error)' }} role="alert">{error}</p>
+          ) : (
+            <p className="text-sm mb-4" style={{ color: 'var(--color-muted-foreground)' }}>Usuario no encontrado</p>
+          )}
+          {error && (
+            <button type="button" onClick={load} className="px-4 py-2 mr-2 rounded-lg text-sm font-medium border" style={{ borderColor: 'var(--color-border)' }}>
+              Reintentar
+            </button>
+          )}
           <button type="button" onClick={() => navigate('/admin/users')} className="px-4 py-2 rounded-lg text-sm font-medium" style={{ backgroundColor: 'var(--color-primary)', color: '#fff' }}>
             Volver a usuarios
           </button>
@@ -229,6 +245,9 @@ export default function AdminUserDetailPage() {
             <div className="mb-4 px-4 py-3 rounded-xl border flex items-center gap-2" style={{ borderColor: 'var(--color-error)', backgroundColor: 'rgba(239,68,68,0.08)', color: 'var(--color-error)' }}>
               <Icon name="AlertCircle" size={16} />
               <span className="text-sm" style={{ fontFamily: 'var(--font-caption)' }}>{error}</span>
+              <button type="button" onClick={load} className="ml-auto text-sm font-medium underline" style={{ color: 'var(--color-error)' }}>
+                Reintentar
+              </button>
             </div>
           )}
           {message && (
