@@ -11,7 +11,7 @@ import AuthStep from './components/AuthStep';
 import ConfirmEmailStep from './components/ConfirmEmailStep';
 import StoreCreationStep from './components/StoreCreationStep';
 import RestrictedAccessScreen from '../../components/RestrictedAccessScreen';
-import { isRestrictedAccessEnabled } from '../../config/restrictedAccess';
+import { isRestrictedAccessEnabled, isRestrictedAccessAllowedUser } from '../../config/restrictedAccess';
 import PremiumLoader from 'components/ui/PremiumLoader';
 import Icon from 'components/AppIcon';
 
@@ -307,7 +307,7 @@ export default function BusinessRegistration() {
   // Modo de acceso restringido (temporal, ver src/config/restrictedAccess.js):
   // un usuario autenticado sin negocio no puede crear uno nuevo si no es admin
   // -- cubre también una cuenta Google recién creada que haya logrado autenticarse.
-  if (isRestrictedAccessEnabled() && !isAdmin) {
+  if (isRestrictedAccessEnabled() && !isAdmin && !isRestrictedAccessAllowedUser(user)) {
     return <RestrictedAccessScreen />;
   }
 
