@@ -82,7 +82,11 @@ jobs:
       - name: Vitest (contra la línea base de fallas)
         run: |
           set -uo pipefail
-          scripts/ci/sin-red.sh npx vitest run $(scripts/ci/list-tests.sh vitest-excludes) \
+          # Las variables ficticias de Supabase se pasan explícitas como argumentos: no dependen de que
+          # el envoltorio sin red (sudo -E) conserve el entorno del job.
+          scripts/ci/sin-red.sh env VITE_SUPABASE_URL="$VITE_SUPABASE_URL" \
+            VITE_SUPABASE_PUBLISHABLE_KEY="$VITE_SUPABASE_PUBLISHABLE_KEY" \
+            npx vitest run $(scripts/ci/list-tests.sh vitest-excludes) \
             --reporter=default --reporter=json --outputFile=vitest-report.json || true
           node scripts/ci/vitest-baseline.mjs vitest-report.json docs/ops/vitest-baseline-2026-11-09.txt
 
