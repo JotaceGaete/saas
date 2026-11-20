@@ -3,7 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import RequireBusinessCountry from './RequireBusinessCountry';
 import RestrictedAccessScreen from './RestrictedAccessScreen';
-import { isRestrictedAccessEnabled } from '../config/restrictedAccess';
+import { isRestrictedAccessEnabled, isRestrictedAccessAllowedUser } from '../config/restrictedAccess';
 import PremiumLoader from './ui/PremiumLoader';
 
 /**
@@ -29,7 +29,7 @@ export default function RequireAuth({ children }) {
   // Modo de acceso restringido (temporal, ver src/config/restrictedAccess.js):
   // solo admins pasan; el resto ve la pantalla de mantenimiento en vez del
   // panel privado. isAdmin reutiliza app_metadata.role sin cambios.
-  if (isRestrictedAccessEnabled() && !isAdmin) {
+  if (isRestrictedAccessEnabled() && !isAdmin && !isRestrictedAccessAllowedUser(user)) {
     return <RestrictedAccessScreen />;
   }
 
