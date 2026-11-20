@@ -60,6 +60,13 @@ describe('RequireCrm — modo de acceso restringido (VITE_RESTRICTED_ACCESS)', (
     expect(screen.queryByText('crm-page')).not.toBeInTheDocument();
   });
 
+  it('flag=true + propietario de Artemis: permite CRM sin privilegios admin', () => {
+    vi.stubEnv('VITE_RESTRICTED_ACCESS', 'true');
+    useAuth.mockReturnValue(baseAuth({ user: { id: '75627d19-d67d-48b5-b975-cbe0ce7eb680' } }));
+    renderCrmRoute();
+    expect(screen.getByText('crm-page')).toBeInTheDocument();
+  });
+
   it('flag=true + admin: bypass normal y acceso permitido', () => {
     vi.stubEnv('VITE_RESTRICTED_ACCESS', 'true');
     useAuth.mockReturnValue(baseAuth({ isAdmin: true }));
