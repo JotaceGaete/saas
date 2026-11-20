@@ -25,7 +25,7 @@ function cloneDraft(value) {
 
 function TextField({ label, value, onChange, limit, multiline = false, disabled }) {
   const [min, max] = limit;
-  const length = (value ?? '').length;
+  const length = Array.from(value ?? '').length;
   const common = {
     className: inputClass,
     value: value ?? '',

@@ -90,6 +90,20 @@ begin
     return false;
   end if;
 
+  -- Contrato cerrado: sin claves extra en la sección ni en la imagen (igual que el lector de Artemis).
+  if (select array_agg(k order by k) from jsonb_object_keys(s) k)
+     is distinct from (select array_agg(k order by k) from unnest(
+       case when p_has_highlights
+         then array['eyebrow','title','text','image','ctaLabel','href','highlights']
+         else array['eyebrow','title','text','image','ctaLabel','href'] end::text[]) k) then
+    return false;
+  end if;
+  if jsonb_typeof(s->'image') is distinct from 'object'
+     or (select array_agg(k order by k) from jsonb_object_keys(s->'image') k)
+        is distinct from (select array_agg(k order by k) from unnest(array['url','alt']::text[]) k) then
+    return false;
+  end if;
+
   if not (
     public.wa_jsonb_text_in_range(s->'eyebrow', 1, 40)
     and public.wa_jsonb_text_in_range(s->'title', 1, 90)
@@ -136,7 +150,8 @@ begin
   if jsonb_typeof(p) is distinct from 'object' then
     return false;
   end if;
-  if coalesce(p->>'version', '') <> '1' then
+  -- Debe ser texto "1" (no el número 1), igual que el validador JS y el lector de Artemis.
+  if jsonb_typeof(p->'version') is distinct from 'string' or (p->>'version') <> '1' then
     return false;
   end if;
   if jsonb_typeof(p->'sections') is distinct from 'object' then

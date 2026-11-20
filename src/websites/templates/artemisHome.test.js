@@ -84,3 +84,25 @@ describe('artemis-home contrato v1', () => {
     expect(validateArtemisHomeContent(d).some((e) => e.includes('Versión'))).toBe(true);
   });
 });
+
+describe('artemis-home contrato v1: cierre de claves y conteo', () => {
+  it('rechaza claves extra dentro de una sección', () => {
+    const d = publishable();
+    d.sections.editorialVintage.extra = 'x';
+    expect(validateArtemisHomeContent(d).some((e) => e.includes('editorialVintage: hay claves'))).toBe(true);
+  });
+
+  it('rechaza claves extra dentro de la imagen', () => {
+    const d = publishable();
+    d.sections.editorialIngles.image.width = 10;
+    expect(validateArtemisHomeContent(d).some((e) => e.includes('image: claves'))).toBe(true);
+  });
+
+  it('cuenta caracteres como puntos de código, no como unidades UTF-16', () => {
+    const d = publishable();
+    d.sections.editorialIngles.eyebrow = '😀'.repeat(40); // 40 caracteres, 80 unidades UTF-16
+    expect(validateArtemisHomeContent(d)).toEqual([]);
+    d.sections.editorialIngles.eyebrow = '😀'.repeat(41);
+    expect(validateArtemisHomeContent(d).some((e) => e.includes('eyebrow'))).toBe(true);
+  });
+});

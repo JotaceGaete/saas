@@ -84,8 +84,15 @@ function isPlainObject(value) {
   return value !== null && typeof value === 'object' && !Array.isArray(value);
 }
 
+// Longitud en caracteres (puntos de código), igual que char_length de Postgres.
 function textInRange(value, [min, max]) {
-  return typeof value === 'string' && value.length >= min && value.length <= max;
+  if (typeof value !== 'string') return false;
+  const len = Array.from(value).length;
+  return len >= min && len <= max;
+}
+
+function sameKeys(obj, expected) {
+  return Object.keys(obj).sort().join(',') === [...expected].sort().join(',');
 }
 
 // Devuelve la lista de errores (vacía si el documento es válido).
@@ -96,10 +103,8 @@ export function validateArtemisHomeContent(doc) {
   if (doc.version !== '1') errors.push('Versión de contrato no válida.');
   if (!isPlainObject(doc.sections)) return [...errors, 'Falta "sections".'];
 
-  const rootKeys = Object.keys(doc).sort().join(',');
-  if (rootKeys !== 'sections,version') errors.push('Hay claves no permitidas en la raíz.');
-  const sectionKeys = Object.keys(doc.sections).sort().join(',');
-  if (sectionKeys !== 'editorialIngles,editorialVintage') errors.push('Las secciones no coinciden con la plantilla.');
+  if (!sameKeys(doc, ['sections', 'version'])) errors.push('Hay claves no permitidas en la raíz.');
+  if (!sameKeys(doc.sections, ['editorialIngles', 'editorialVintage'])) errors.push('Las secciones no coinciden con la plantilla.');
 
   for (const section of ARTEMIS_HOME_SECTIONS) {
     const data = doc.sections[section.key];
@@ -108,6 +113,8 @@ export function validateArtemisHomeContent(doc) {
       errors.push(`${prefix}: falta la sección.`);
       continue;
     }
+    const expectedKeys = section.fields.map((f) => f.key);
+    if (!sameKeys(data, expectedKeys)) errors.push(`${prefix}: hay claves no permitidas.`);
     for (const field of section.fields) {
       const value = data[field.key];
       if (field.type === 'text' || field.type === 'textarea') {
@@ -119,6 +126,7 @@ export function validateArtemisHomeContent(doc) {
           errors.push(`${prefix}.image: falta la imagen.`);
           continue;
         }
+        if (!sameKeys(value, ['alt', 'url'])) errors.push(`${prefix}.image: claves no permitidas.`);
         if (typeof value.url !== 'string' || !IMAGE_URL_RE.test(value.url)) errors.push(`${prefix}.image.url: solo imágenes de ${AUTHORIZED_IMAGE_HOST} (https).`);
         if (!textInRange(value.alt, LIMITS.alt)) errors.push(`${prefix}.image.alt: entre 1 y 140 caracteres.`);
       } else if (field.type === 'list') {
