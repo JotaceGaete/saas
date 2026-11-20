@@ -191,6 +191,16 @@ begin
   ) then
     raise exception 'not_authorized' using errcode = '42501';
   end if;
+
+  -- Piloto de fase 1: solo comercios habilitados. Los admins de Walinka pueden entrar a cualquiera.
+  -- Debe mantenerse igual a WEBSITE_EDITOR_PILOT_SLUGS en src/websites/templates/index.js.
+  if not public.wa_is_admin() and not exists (
+    select 1 from public.wa_businesses b
+    where b.id = p_business_id
+      and b.slug = any (array['artemis-chile']::text[])
+  ) then
+    raise exception 'not_in_pilot' using errcode = '42501';
+  end if;
 end;
 $$;
 

@@ -7,6 +7,7 @@ import { uploadToMediaService } from './mediaUploadService';
 const ERROR_MESSAGES = {
   not_authenticated: 'Tu sesión venció. Vuelve a iniciar sesión.',
   not_authorized: 'No tienes permiso para editar este sitio.',
+  not_in_pilot: 'El editor de sitio web todavía no está habilitado para este comercio.',
   invalid_draft: 'El borrador es demasiado grande o tiene un formato no válido.',
   invalid_template_key: 'La plantilla no es válida.',
   no_draft: 'Primero guarda un borrador antes de publicar.',
