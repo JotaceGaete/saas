@@ -23,6 +23,25 @@ function cloneDraft(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+// Combina el borrador guardado con los valores iniciales de la plantilla, campo por campo.
+function mergeDraft(defaults, stored) {
+  const out = cloneDraft(defaults);
+  if (!stored || typeof stored !== 'object' || !stored.sections || typeof stored.sections !== 'object') return out;
+  for (const [sectionKey, fields] of Object.entries(out.sections)) {
+    const savedSection = stored.sections[sectionKey];
+    if (!savedSection || typeof savedSection !== 'object') continue;
+    for (const [fieldKey, fallback] of Object.entries(fields)) {
+      const saved = savedSection[fieldKey];
+      if (saved === undefined) continue;
+      const sameType = Array.isArray(fallback)
+        ? Array.isArray(saved)
+        : saved !== null && typeof saved === typeof fallback && !Array.isArray(saved);
+      if (sameType) fields[fieldKey] = saved;
+    }
+  }
+  return out;
+}
+
 function TextField({ label, value, onChange, limit, multiline = false, disabled }) {
   const [min, max] = limit;
   const length = Array.from(value ?? '').length;
@@ -113,9 +132,9 @@ export default function WebsiteEditorPage() {
     (async () => {
       try {
         const state = await getSiteContentState({ businessId: business.id, templateKey: TEMPLATE_KEY });
-        const initial = state?.draft && Object.keys(state.draft).length > 0
-          ? state.draft
-          : template.buildInitialDraft();
+        // Un borrador guardado con forma inesperada no debe romper el editor: cada campo
+        // usa el valor guardado solo si tiene el tipo esperado; si no, el valor inicial.
+        const initial = mergeDraft(template.buildInitialDraft(), state?.draft);
         if (cancelled) return;
         setDraft(cloneDraft(initial));
         setSavedDraft(cloneDraft(initial));

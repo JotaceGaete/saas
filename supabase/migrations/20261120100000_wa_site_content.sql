@@ -297,3 +297,15 @@ as $$
 $$;
 
 grant execute on function public.wa_get_published_site_content(text, text) to anon, authenticated;
+
+-- 5) Mínimo privilegio ----------------------------------------------------------
+-- Los helpers y el verificador de editor solo los usan las funciones SECURITY DEFINER
+-- (que corren como dueño de la migración). Ningún rol de cliente debe invocarlos directamente.
+-- Sin esto, un usuario autenticado podría sondear IDs de comercio para deducir si es dueño
+-- o si el piloto lo bloquea.
+revoke all on function public.wa_site_content_assert_editor(uuid) from public, anon, authenticated;
+revoke all on function public.wa_jsonb_text_in_range(jsonb, integer, integer) from public, anon, authenticated;
+revoke all on function public.wa_site_content_image_url_allowed(text) from public, anon, authenticated;
+revoke all on function public.wa_site_content_v1_section_is_valid(jsonb, boolean) from public, anon, authenticated;
+revoke all on function public.wa_site_content_v1_is_valid(jsonb) from public, anon, authenticated;
+
