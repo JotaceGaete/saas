@@ -13,6 +13,7 @@ import CountrySelectPage from "./pages/country-select";
 import BusinessRegistration from './pages/business-registration';
 import LandingPage from './pages/landing-page';
 import BusinessConfiguration from './pages/business-configuration';
+import WebsiteEditorPage from './pages/website-editor';
 import CompleteBusinessSetupPage from './pages/complete-business-setup';
 import ProductManagement from './pages/product-management';
 import Dashboard from './pages/dashboard';
@@ -161,6 +162,7 @@ const Routes = () => {
             <Route path="/crm/costos"             element={<RequireCrm><FeatureGate feature="fixedCosts"><CrmCostos /></FeatureGate></RequireCrm>} />
             <Route path="/crm/barcodes"           element={<RequireCrm><FeatureGate feature="barcodePrinting"><CrmBarcodes /></FeatureGate></RequireCrm>} />
             <Route path="/business-configuration" element={<RequireAuth><BusinessConfiguration /></RequireAuth>} />
+            <Route path="/sitio-web" element={<RequireAuth><WebsiteEditorPage /></RequireAuth>} />
             <Route path="/product-management" element={<RequireAuth><ProductManagement /></RequireAuth>} />
             <Route path="/dashboard" element={<RequireAuth><Dashboard /></RequireAuth>} />
             <Route path="/product-editor" element={<RequireAuth><ProductEditor /></RequireAuth>} />

@@ -18,6 +18,7 @@ const NAV_ITEMS = [
   { label: 'Historial pedidos',  path: '/orders/historial',       icon: 'History' },
   { label: 'Configuración',      path: '/business-configuration', icon: 'Settings' },
   { label: 'Diseño',             path: '/design',                 icon: 'Palette' },
+  { label: 'Sitio web',          path: '/sitio-web',              icon: 'Globe', pilotSlugs: ['artemis-chile'] },
   { label: 'Plan y facturación', path: '/planes',                 icon: 'CreditCard' },
   { label: 'Ayuda',              path: '/ayuda',                  icon: 'HelpCircle' },
   { section: true, label: '—' },
@@ -171,7 +172,7 @@ Motivo (opcional):`;
       {/* Navigation */}
       <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-2.5" aria-label="Navegación principal">
         <ul className="space-y-0.5" role="list">
-          {NAV_ITEMS?.filter(item => !item?.adminOnly || isAdmin)?.map((item, idx) => {
+          {NAV_ITEMS?.filter(item => (!item?.adminOnly || isAdmin) && (!item?.pilotSlugs || isAdmin || item.pilotSlugs.includes(business?.slug)))?.map((item, idx) => {
             if (item?.section) {
               if (collapsed) return null;
               return (
