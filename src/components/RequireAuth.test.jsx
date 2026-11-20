@@ -63,6 +63,13 @@ describe('RequireAuth — modo de acceso restringido (VITE_RESTRICTED_ACCESS)', 
     expect(screen.queryByText('private-page')).not.toBeInTheDocument();
   });
 
+  it('flag=true + propietario de Artemis: permite acceso sin rol admin', () => {
+    vi.stubEnv('VITE_RESTRICTED_ACCESS', 'true');
+    useAuth.mockReturnValue(baseAuth({ user: { id: '75627d19-d67d-48b5-b975-cbe0ce7eb680' } }));
+    renderPrivateRoute();
+    expect(screen.getByText('private-page')).toBeInTheDocument();
+  });
+
   it('flag=true + admin: permite continuar normalmente (renderiza la ruta privada)', () => {
     vi.stubEnv('VITE_RESTRICTED_ACCESS', 'true');
     useAuth.mockReturnValue(baseAuth({ isAdmin: true }));

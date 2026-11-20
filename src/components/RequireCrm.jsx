@@ -3,7 +3,7 @@ import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { usePlanFeature } from '../hooks/usePlanFeature';
 import RestrictedAccessScreen from './RestrictedAccessScreen';
-import { isRestrictedAccessEnabled } from '../config/restrictedAccess';
+import { isRestrictedAccessEnabled, isRestrictedAccessAllowedUser } from '../config/restrictedAccess';
 import PremiumLoader from './ui/PremiumLoader';
 import Icon from './AppIcon';
 
@@ -38,7 +38,7 @@ export default function RequireCrm({ children }) {
   // Admins Ventalink tienen acceso sin restricción de plan
   if (isAdmin) return <>{children}</>;
 
-  if (isRestrictedAccessEnabled()) {
+  if (isRestrictedAccessEnabled() && !isRestrictedAccessAllowedUser(user)) {
     return <RestrictedAccessScreen />;
   }
 
