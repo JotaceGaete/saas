@@ -1,4 +1,4 @@
--- BORRADOR (no aplicado). Walinka Websites · Fase 1: contenido editable por comercio y plantilla.
+-- Walinka Websites · Fase 1: contenido editable por comercio y plantilla.
 --
 -- Principios:
 --   * Una fila por (comercio, plantilla). draft y published son columnas separadas.
@@ -308,4 +308,3 @@ revoke all on function public.wa_jsonb_text_in_range(jsonb, integer, integer) fr
 revoke all on function public.wa_site_content_image_url_allowed(text) from public, anon, authenticated;
 revoke all on function public.wa_site_content_v1_section_is_valid(jsonb, boolean) from public, anon, authenticated;
 revoke all on function public.wa_site_content_v1_is_valid(jsonb) from public, anon, authenticated;
-

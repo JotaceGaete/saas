@@ -119,18 +119,20 @@ La huella de D corresponde al bloque de verificación `DO $verify$ ...`, **no** 
 - **No es parte de la estructura:** no va en `localdb/build.sh` ni en reconstrucciones. Volver a ejecutarlo
   falla en `create schema fiscal_backup` y la transacción completa se revierte.
 
-## Migraciones pendientes (NO aplicadas en producción)
+## Migración posterior: Walinka Websites, fase 1 (aplicada 2026-11-20)
 
-Esta sección registra trabajo preparado en el repositorio que todavía no existe en producción. No es un
-historial de aplicación: no hay filas en `supabase_migrations.schema_migrations` para estas entradas, y no se
-modifica ninguna fila histórica de la tabla anterior.
+Aplicada en producción con `apply_migration`, previa autorización expresa, desde el archivo del repositorio.
+La versión la asignó el servidor (no coincide con el prefijo del nombre del archivo). La huella es el md5 de
+`array_to_string(statements, E'\n')` leído de `supabase_migrations.schema_migrations`.
 
-| Archivo en el repositorio | md5 del archivo | Rama / PR | Estado |
-|---|---|---|---|
-| `supabase/migrations/20261120100000_wa_site_content.sql` (Walinka Websites, fase 1: `wa_site_content`, RPC de borrador y publicación, RLS) | `87eb12e505ec2a44e4c7bdea0dc39895` | `feature/website-content-editor` / PR #143 (borrador) | **Pendiente.** Validada solo en PostgreSQL 16 local. No aplicada en producción ni en una rama de Supabase. |
+| Paso | Versión registrada | Nombre registrado | Archivo fuente en este repositorio | Cómo se aplicó |
+|---|---|---|---|---|
+| Walinka Websites F1 | `20261120222149` | `wa_site_content` | `supabase/migrations/20261120100000_wa_site_content.sql` | Herramienta de migraciones; SQL completo |
 
-Cuando se autorice y se aplique en producción, se agregará una fila nueva con la versión real que devuelva el
-servidor y el md5 verificado después de aplicar. Hasta entonces, esta fila sigue como pendiente.
+- md5 de la entrada registrada: `f3c46e1cb6629fcc06e190e42a3e34e5`. Coincide con el md5 del archivo tal como está en el repositorio.
+- Al aplicar se omitió la línea de comentario `BORRADOR (no aplicado)` de la primera línea. Solo cambia un comentario; el archivo del repositorio se alineó con el texto aplicado.
+- Verificación posterior de solo lectura (`03-verify`): 10/10 en `true` (tabla existe, RLS activo, 1 política, anon sin acceso a la tabla, anon lee publicado, anon no escribe borradores, authenticated no ejecuta el verificador, sin publicación aún, tabla sin filas).
+- No modifica tablas existentes. Reversión: `99-rollback.sql`, solo sobre los objetos de esta migración.
 
 ## Reglas para futuros despliegues
 
