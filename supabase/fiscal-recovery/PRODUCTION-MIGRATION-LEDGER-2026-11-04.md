@@ -119,6 +119,21 @@ La huella de D corresponde al bloque de verificación `DO $verify$ ...`, **no** 
 - **No es parte de la estructura:** no va en `localdb/build.sh` ni en reconstrucciones. Volver a ejecutarlo
   falla en `create schema fiscal_backup` y la transacción completa se revierte.
 
+## Migración posterior: Walinka Websites, fase 1 (aplicada 2026-11-20)
+
+Aplicada en producción con `apply_migration`, previa autorización expresa, desde el archivo del repositorio.
+La versión la asignó el servidor (no coincide con el prefijo del nombre del archivo). La huella es el md5 de
+`array_to_string(statements, E'\n')` leído de `supabase_migrations.schema_migrations`.
+
+| Paso | Versión registrada | Nombre registrado | Archivo fuente en este repositorio | Cómo se aplicó |
+|---|---|---|---|---|
+| Walinka Websites F1 | `20261120222149` | `wa_site_content` | `supabase/migrations/20261120100000_wa_site_content.sql` | Herramienta de migraciones; SQL completo |
+
+- md5 de la entrada registrada: `f3c46e1cb6629fcc06e190e42a3e34e5`. Coincide con el md5 del archivo tal como está en el repositorio.
+- Al aplicar se omitió la línea de comentario `BORRADOR (no aplicado)` de la primera línea. Solo cambia un comentario; el archivo del repositorio se alineó con el texto aplicado.
+- Verificación posterior de solo lectura (`03-verify`): 10/10 en `true` (tabla existe, RLS activo, 1 política, anon sin acceso a la tabla, anon lee publicado, anon no escribe borradores, authenticated no ejecuta el verificador, sin publicación aún, tabla sin filas).
+- No modifica tablas existentes. Reversión: `99-rollback.sql`, solo sobre los objetos de esta migración.
+
 ## Reglas para futuros despliegues
 
 1. **No volver a ejecutar A–I ni el Respaldo en producción** (en particular D y G) ni editar, borrar o renumerar las filas históricas para hacerlas parecer uniformes.
